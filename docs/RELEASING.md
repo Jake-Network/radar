@@ -14,11 +14,11 @@ compiler. Source analysis needs Git, and optional test execution needs its runne
 
 | Target | Native build runner | Archive | Current qualification |
 |---|---|---|---|
-| Linux amd64 | Ubuntu 22.04, system C compiler | `radar-linux_amd64.tar.gz` | Local Linux native package/installed smoke/installer pass; hosted unverified |
-| macOS arm64 | macOS 15 Apple Silicon, Clang | `radar-darwin_arm64.tar.gz` | Configured, native runtime unverified in this workspace |
-| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Configured; native executable and installer execution unverified in the 0.4 Linux workspace |
-| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | Required hosted matrix target, native execution unverified here |
-| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | Required hosted matrix target, native execution unverified here |
+| Linux amd64 | Ubuntu 22.04, system C compiler | `radar-linux_amd64.tar.gz` | 0.4.0 hosted matrix passed |
+| macOS arm64 | macOS 15 Apple Silicon, Clang | `radar-darwin_arm64.tar.gz` | 0.4.0 hosted matrix passed |
+| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Removed from the 0.4.0 matrix: tests fail on runner Git defaults (`core.autocrlf`, long paths) |
+| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | 0.4.0 hosted matrix passed |
+| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | 0.4.0 hosted matrix passed |
 
 No unvalidated placeholder binaries are created. Every native build's vet, full
 suite, race suite and installed artifact smoke are required; macOS failures are

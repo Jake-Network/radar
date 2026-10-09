@@ -29,51 +29,29 @@ Next: repair on the branches above, commit, then rerun: radar gate --run
 
 ## Install
 
-Use an explicitly selected **published** version; the commands below do not
-assume that a release or Homebrew tap already exists. Download the installer
-from that reviewed tag, inspect it, then install a checksum-verified binary:
+Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-# Linux amd64 / macOS arm64 (after the corresponding native release qualifies)
-version=vX.Y.Z
-curl -fsSL "https://raw.githubusercontent.com/Jake-Network/radar/$version/scripts/install-release.sh" -o install-radar.sh
-bash install-radar.sh --version "$version" --dir "$HOME/.local/bin"
-radar version
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.4.0/scripts/install-release.sh | bash -s -- --version v0.4.0
+```
+
+This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
+Binaries need no Go or C compiler; Git is required, and `radar gate --run` uses
+your repository's own test runners. Then:
+
+```sh
 radar doctor
 radar setup --agent both --dry-run
 ```
 
-Windows amd64, from a reviewed local installer downloaded from the selected tag:
-
-```powershell
-./install-release.ps1 -Version vX.Y.Z
-# Add $env:LOCALAPPDATA\Radar\bin to your user PATH, then run radar doctor.
-```
-
-Binaries need no Go or C compiler. Git is required for checkpoint analysis;
-verification needs the selected repository's test runners and dependencies.
-Installers preserve existing binaries unless explicitly replaced, check SHA-256,
-reject unsafe archive members, and retain license notices.
-
-| Platform | Native packaging | Validation in this workspace |
-|---|---|---|
-| Linux amd64 | `.tar.gz`; CI baseline glibc 2.35+ | Native archive, installed binary smoke and installer regressions passed |
-| macOS arm64 | `.tar.gz`; native Apple Silicon runner | Workflow configured; native runtime/hosted result unverified |
-| Windows amd64 | `.zip`; native UCRT64 CGO build | Native PowerShell installer: 27 assertions passed; actual binary/hosted build unverified |
-| Linux arm64 / macOS amd64 | Optional native matrix entries retained | Unverified here |
-
-Build from source on other systems (Go 1.23+ and a native C compiler for
-Tree-sitter):
+Windows binaries are not published for 0.4.0: Windows Git defaults such as
+`core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go build -trimpath -o radar ./cmd/radar
-# Or install an explicitly reviewed published module version:
-go install github.com/Jake-Network/radar/cmd/radar@vX.Y.Z
+go install github.com/Jake-Network/radar/cmd/radar@v0.4.0
 ```
 
-Homebrew formula generation remains available for maintainers after all native
-assets qualify; no tap update is automatic. See [release requirements and runtime
-limits](docs/RELEASING.md) and [validation evidence](docs/MISSION_VALIDATION.md).
+Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
 ## Use
 
@@ -202,7 +180,7 @@ bash scripts/smoke.sh "$(go build -o /tmp/radar ./cmd/radar && echo /tmp/radar)"
 make demo-all
 ```
 
-Native release jobs target Linux and macOS (amd64 and arm64) and Windows amd64.
+Native release jobs target Linux and macOS (amd64 and arm64).
 Tags prepare assets; publishing requires a separate manual request. See
 [RELEASING](docs/RELEASING.md) and [0.4 validation](docs/RADAR_0_4_VALIDATION.md).
 Also see [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md)

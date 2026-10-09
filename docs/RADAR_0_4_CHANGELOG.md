@@ -1,4 +1,4 @@
-# Radar 0.4 development changelog
+# Radar 0.4.0 changelog
 
 * Default executed gates require selection completeness alongside recognized
   combined execution; uncovered changes and incomplete inventory block CI.
@@ -11,8 +11,10 @@
 * CI enforces PR-driver, workflow syntax/security, archive metadata, installer,
   parser/artifact smoke and executable benchmark regressions. Fixed a PR example
   workflow expression-scope error; Actions use pinned revisions.
-* Native Linux packaging qualified locally; configured macOS/Windows/arm64 jobs
-  remain unqualified by this workspace. Publishing remains manual and protected.
+* 0.4.0 binaries are published for Linux and macOS (amd64, arm64) after the
+  native hosted matrix passed. Fixed Git for Windows rejecting `NUL` as
+  `GIT_CONFIG_GLOBAL` and macOS `/private/var` path comparisons. Windows
+  binaries are withheld until Windows Git defaults (`core.autocrlf`) qualify.
 * Added pinned, offline-default evaluation with separate integration and mutation
   detection, observed execution versus selection recall, full-CI comparison,
   bounded command output, timing/RSS and retained unavailable samples.
@@ -20,4 +22,4 @@
   and Homebrew drift. Java-first and separate C/C++ designs are proposals only.
 
 See [validation](RADAR_0_4_VALIDATION.md) for executed evidence, compatibility
-changes and remaining limits. No tag or release was published.
+changes and remaining limits.
