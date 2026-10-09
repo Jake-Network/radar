@@ -1,0 +1,16 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema",
+ "title":"Radar finding v1",
+ "type":"object",
+ "required":["id","severity","evidence","code","explanation"],
+ "properties":{
+  "id":{"type":"string","minLength":1},
+  "severity":{"enum":["error","warning","info"]},
+  "evidence":{"enum":["verified_static","verified_tool","observed_test","inferred","proposed","unknown"]},
+  "code":{"type":"string"},"explanation":{"type":"string"},
+  "contract":{"type":"string"},"producer":{"type":"string"},"consumer":{"type":"string"},
+  "branches":{"type":"array","items":{"type":"string"}},
+  "locations":{"type":"array","items":{"type":"object"}},
+  "remediation":{"type":"string"},"verification":{"type":"string"}
+ },"additionalProperties":false
+}

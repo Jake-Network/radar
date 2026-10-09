@@ -1,0 +1,543 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1"
+    },
+    "feature_id": {
+      "type": "string"
+    },
+    "intent": {
+      "type": "string"
+    },
+    "base_revision": {
+      "type": "string"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/requirement"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/constraint"
+      }
+    },
+    "contract_deltas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/contract_delta"
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/criterion"
+      }
+    },
+    "graph_deltas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/graph_delta"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provenance"
+      }
+    },
+    "incomplete": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval": {
+      "$ref": "#/$defs/approval"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entity": {
+                "type": "string"
+              },
+              "score": {
+                "type": "integer"
+              },
+              "explanation": {
+                "type": "string"
+              },
+              "evidence": {
+                "$ref": "#/$defs/provenance"
+              }
+            },
+            "required": [
+              "entity",
+              "score",
+              "explanation",
+              "evidence"
+            ]
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "planning_depth": {
+          "enum": [
+            "minimal",
+            "extended"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "feature_id",
+    "intent",
+    "base_revision",
+    "requirements"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radar-engine.github.io/schemas/plan.schema.json",
+  "title": "Radar plan v1",
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "end_line": {
+          "type": "integer"
+        },
+        "method": {
+          "type": "string"
+        },
+        "evidence": {
+          "enum": [
+            "verified_static",
+            "verified_tool",
+            "observed_test",
+            "inferred",
+            "proposed",
+            "unknown"
+          ]
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "revision",
+        "method",
+        "evidence"
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "provenance"
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        }
+      },
+      "required": [
+        "id",
+        "from",
+        "to",
+        "kind",
+        "provenance"
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "file_exists",
+            "json_property",
+            "graph_entity",
+            "test_run"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "pointer": {
+          "type": "string"
+        },
+        "property": {
+          "type": "string"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "security_sensitive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "intent"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tradeoffs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "intent"
+      ]
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        }
+      },
+      "required": [
+        "id",
+        "intent"
+      ]
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "requirement": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        }
+      },
+      "required": [
+        "id",
+        "requirement",
+        "intent"
+      ]
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contracts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "acceptance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "consequential": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "requirements",
+        "depends_on",
+        "acceptance"
+      ]
+    },
+    "contract_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "add",
+            "remove",
+            "modify"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "consumers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "schema": {
+          "type": "string"
+        },
+        "pointer": {
+          "type": "string"
+        },
+        "expected": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract",
+        "operation",
+        "description"
+      ]
+    },
+    "graph_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "add",
+            "remove",
+            "modify"
+          ]
+        },
+        "node": {
+          "$ref": "#/$defs/node"
+        },
+        "edge": {
+          "$ref": "#/$defs/edge"
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "node"
+          ],
+          "not": {
+            "required": [
+              "edge"
+            ]
+          }
+        },
+        {
+          "required": [
+            "edge"
+          ],
+          "not": {
+            "required": [
+              "node"
+            ]
+          }
+        }
+      ]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewer": {
+          "type": "string"
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checkpoint": {
+          "type": "string"
+        },
+        "plan_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "reviewer",
+        "reviewed_at",
+        "checkpoint",
+        "plan_digest"
+      ]
+    }
+  }
+}

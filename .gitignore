@@ -1,0 +1,10 @@
+/bin/
+/radar
+*.test
+coverage.out
+.radar/state.db*
+.radar/config.json
+.radar/plans/
+.omx/
+
+/dist/

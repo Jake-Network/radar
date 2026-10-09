@@ -1,0 +1,25 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Organization dataset example", "version": "1.0.0"},
+  "paths": {
+    "/organizations/{organization_id}/datasets/{dataset_id}/summary": {
+      "get": {
+        "operationId": "dataset_summary",
+        "parameters": [
+          {"name": "organization_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "dataset_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Dataset row count", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ExportSummary"}}}}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ExportSummary": {
+        "type": "object",
+        "required": ["dataset_id", "total"],
+        "properties": {"dataset_id": {"type": "string"}, "total": {"type": "integer"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": "1",
+  "feature_id": "organization-exports",
+  "intent": "Implement asynchronous exports of large organization-scoped datasets",
+  "base_revision": "WORKTREE",
+  "requirements": [
+    {
+      "id": "summary",
+      "intent": "Preserve the summary total response field"
+    },
+    {
+      "id": "scope",
+      "intent": "Verify organization-scoped access before export",
+      "security_sensitive": true
+    }
+  ],
+  "decisions": [
+    {
+      "id": "queue",
+      "intent": "Reuse existing queue boundary before replacing in-memory persistence",
+      "alternatives": [
+        "Keep synchronous export",
+        "Add durable queue adapter"
+      ],
+      "tradeoffs": [
+        "Current in-memory fixture is not durable; bounded execution and retries require behavioral tests"
+      ]
+    }
+  ],
+  "constraints": [],
+  "contract_deltas": [],
+  "tasks": [
+    {
+      "id": "contract",
+      "intent": "Preserve existing summary contract while adding exports",
+      "requirements": [
+        "summary"
+      ],
+      "acceptance": [
+        "total-present"
+      ],
+      "depends_on": [],
+      "contracts": [
+        "dataset-summary"
+      ]
+    },
+    {
+      "id": "scope",
+      "intent": "Review organization membership and dataset scope enforcement",
+      "requirements": [
+        "scope"
+      ],
+      "acceptance": [
+        "auth-module"
+      ],
+      "depends_on": [],
+      "components": []
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "total-present",
+      "requirement": "summary",
+      "intent": "Summary contract retains total",
+      "rule": {
+        "kind": "json_property",
+        "path": "contracts/openapi.json",
+        "pointer": "/components/schemas/ExportSummary/properties",
+        "property": "total"
+      }
+    },
+    {
+      "id": "auth-module",
+      "requirement": "scope",
+      "intent": "Authorization module exists; behavior requires separate tests",
+      "rule": {
+        "kind": "file_exists",
+        "path": "backend/auth.py"
+      }
+    }
+  ],
+  "graph_deltas": [],
+  "assumptions": [
+    "Authorization presence does not prove isolation: review auth.py and test denial across organizations.",
+    "Queue durability, memory bounds, retries and export scale remain unverified."
+  ],
+  "evidence": [],
+  "incomplete": []
+}

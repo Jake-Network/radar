@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "id": "dataset-summary",
+      "schema": "contracts/openapi.json",
+      "pointer": "/components/schemas/ExportSummary",
+      "producer": "backend/models.py",
+      "consumer": "frontend/summary.ts",
+      "fields": [
+        "dataset_id",
+        "total"
+      ],
+      "direction": "response"
+    }
+  ]
+}

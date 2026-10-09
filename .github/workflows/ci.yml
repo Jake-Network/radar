@@ -1,0 +1,25 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build -o /tmp/radar ./cmd/radar
+      - name: End-to-end demo
+        run: bash examples/organization/demo.sh /tmp/radar
+      - name: Committed verification demo
+        run: bash examples/verification/demo.sh /tmp/radar
+      - name: Native release packaging
+        run: bash scripts/release.sh /tmp/radar-release
+      - name: Formatting
+        run: test -z "$(gofmt -l cmd internal)"
