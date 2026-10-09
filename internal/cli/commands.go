@@ -22,6 +22,7 @@ type options struct {
 type command struct {
 	name, usage, summary string
 	state                bool // requires initialized .radar state
+	advanced             bool // listed only by `radar help --all`
 	flags                func(*flag.FlagSet, *options)
 	run                  func(*app, options) int
 }
@@ -40,9 +41,12 @@ var commands []command
 
 func init() {
 	commands = []command{
+		gateCommand(),
 		checkCommand(),
-		setupCommand(),
 		discoveryCommand(),
+		setupCommand(),
+		{name: "doctor", usage: "radar doctor", summary: "Report capabilities, tools and repository state.", run: (*app).doctor},
+		{name: "mcp", usage: "radar mcp [--root DIR]", summary: "Serve Radar tools to coding agents over the Model Context Protocol (stdio).", run: (*app).mcp},
 		mergeCheckCommand(),
 		{name: "init", usage: "radar init", summary: "Create .radar state for this repository (linked worktrees share the main worktree's state).",
 			run: func(a *app, _ options) int {
@@ -54,7 +58,6 @@ func init() {
 				})
 				return 0
 			}},
-		{name: "doctor", usage: "radar doctor", summary: "Report capabilities, tools and repository state.", run: (*app).doctor},
 		{name: "index", usage: "radar index [--ref REF] [--summary]", summary: "Index source structure, import dependencies and explicit contracts.", state: true,
 			flags: func(fs *flag.FlagSet, o *options) {
 				refFlag(fs, o, refUsage)
@@ -129,7 +132,11 @@ func init() {
 		{name: "contracts", usage: "radar contracts [--ref REF]", summary: "Lint .radar/contracts.json: schemas, pointers, declared fields and stale consumers.", state: true,
 			flags: func(fs *flag.FlagSet, o *options) { refFlag(fs, o, "checkpoint to lint (default: working tree)") }, run: (*app).contracts},
 		{name: "explain", usage: "radar explain FINDING_ID", summary: "Show a persisted finding with its evidence.", state: true, run: (*app).explain},
-		{name: "mcp", usage: "radar mcp [--root DIR]", summary: "Serve Radar tools to coding agents over the Model Context Protocol (stdio).", run: (*app).mcp},
+	}
+	// The plan/evidence/graph toolkit stays out of the default help.
+	core := map[string]bool{"gate": true, "check": true, "discover": true, "setup": true, "doctor": true, "mcp": true}
+	for i := range commands {
+		commands[i].advanced = !core[commands[i].name]
 	}
 }
 
@@ -154,18 +161,38 @@ func (c command) usageText(w io.Writer) {
 	fs.PrintDefaults()
 }
 
-func printHelp(w io.Writer) {
-	fmt.Fprintln(w, "Radar — plan against code, coordinate contracts, verify evidence.")
+func printHelp(w io.Writer, all bool) {
+	fmt.Fprintln(w, "Radar — know whether your agents' branches work together before you merge them.")
 	fmt.Fprintln(w, "\nUsage: radar <command> [flags] [--root DIR] [--json]")
-	fmt.Fprintln(w, "\nCommands:")
 	width := 0
 	for _, c := range commands {
 		width = max(width, len(c.name))
 	}
-	for _, c := range commands {
-		fmt.Fprintf(w, "  %-*s  %s\n", width, c.name, c.summary)
+	list := func(advanced bool) (n int) {
+		for _, c := range commands {
+			if c.advanced == advanced {
+				fmt.Fprintf(w, "  %-*s  %s\n", width, c.name, c.summary)
+				n++
+			}
+		}
+		return n
 	}
-	fmt.Fprintln(w, "\nRun `radar help COMMAND` for flags. --json prints machine-readable output.")
-	fmt.Fprintln(w, "Exit codes: 0 success/informational, 1 a supported check failed, 2 invocation or analysis error.")
-	fmt.Fprintln(w, "No telemetry, cloud inference or destructive Git operations. Test execution requires explicit opt-in.")
+	fmt.Fprintln(w, "\nCommands:")
+	list(false)
+	if all {
+		fmt.Fprintln(w, "\nAdvanced (merge-check flags, plans, evidence, contracts, graph):")
+		list(true)
+	} else {
+		n := 0
+		for _, c := range commands {
+			if c.advanced {
+				n++
+			}
+		}
+		fmt.Fprintf(w, "\n%d advanced commands (plans, evidence, contracts, graph queries): radar help --all\n", n)
+	}
+	fmt.Fprintln(w, "\nStart here:  radar gate            # combine every worktree branch, check, suggest tests")
+	fmt.Fprintln(w, "             radar gate --run      # ...and run those tests on the combined tree")
+	fmt.Fprintln(w, "\nRun `radar help COMMAND` for flags. Exit codes: 0 ok, 1 a check failed or required evidence is missing, 2 error.")
+	fmt.Fprintln(w, "No telemetry, no LLM calls, never modifies your branches. Repository code runs only with --run / --allow-execution.")
 }

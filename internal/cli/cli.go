@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
+	"runtime/debug"
 	"strings"
 
 	"github.com/Jake-Network/radar/internal/checkpoint"
@@ -19,7 +21,20 @@ import (
 	"github.com/Jake-Network/radar/internal/storage"
 )
 
-const Version = "0.2.0"
+// Version is set at release time with -ldflags "-X .../internal/cli.Version=X.Y.Z";
+// `go install module@vX.Y.Z` builds report the module version instead.
+var Version = "0.3.0-dev"
+
+// releaseVersion matches tagged module versions, not VCS pseudo-versions
+// (v0.0.0-20261009072112-e5ed75a0bfa9) or dirty builds.
+var releaseVersion = regexp.MustCompile(`^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$`)
+var pseudoVersion = regexp.MustCompile(`\d{14}-[0-9a-f]{12}$`)
+
+func init() {
+	if info, ok := debug.ReadBuildInfo(); ok && strings.HasSuffix(Version, "-dev") && releaseVersion.MatchString(info.Main.Version) && !pseudoVersion.MatchString(info.Main.Version) {
+		Version = strings.TrimPrefix(info.Main.Version, "v")
+	}
+}
 
 type app struct {
 	ctx         context.Context
@@ -59,13 +74,15 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	}
 	a := &app{ctx: ctx, out: out, errout: errout, machine: machine}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
+		all := false
 		if len(rest) > 1 {
 			if c, ok := lookup(rest[1]); ok {
 				c.usageText(out)
 				return 0
 			}
+			all = rest[1] == "--all" || rest[1] == "all"
 		}
-		printHelp(out)
+		printHelp(out, all)
 		return 0
 	}
 	if rest[0] == "version" || rest[0] == "--version" {

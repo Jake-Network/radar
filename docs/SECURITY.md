@@ -10,7 +10,10 @@ Analysis inputs and paths are untrusted. Supported paths must remain within
 the repository. Large files and generated directories are bounded or skipped;
 diagnostics explain available analysis.
 
-Verification itself does not execute commands. `radar test --allow-execution`
+Verification itself does not execute commands. `radar gate` without `--run`
+never executes repository code; `radar gate --run` is equivalent to
+`merge-check --verify --allow-execution --suite balanced` and carries the same
+host-permission caveats as the execution modes below. `radar test --allow-execution`
 explicitly runs an exact command declared by a plan's `test_run` rule, in a private
 copy of committed files, under a timeout and output limit. Review the command and
 repository before opting in. This copy protects your checkout from normal test
@@ -45,3 +48,22 @@ privately to the maintainers before publishing exploit details. A dedicated
 private reporting channel is not configured yet.
 
 Read-only Git subprocesses disable repository-configured filesystem monitor hooks; Radar never enables Git pagers and runs repository test commands only through the explicit opt-in workflow. Checks use bounded local reads and do not resolve remote schema references.
+
+## PR execution and native installation
+
+The PR example uses `pull_request`, read-only contents permissions, pinned tool
+source, trusted-base helpers and no persisted checkout credentials. Untrusted
+metadata becomes subprocess arguments, never shell source. Static inspection is
+available without executable verification. Execution requires repository-owner
+configuration; selected additional PRs require separate explicit authorization.
+Numbers are mutable: review their latest fetched heads. Candidate directories
+are not OS sandboxes, and local/Radar execution consent is not a claim that code
+is safe. Use ephemeral runners without repository secrets or privileged services.
+
+Release installers validate checksums, version and archive paths/types, stream
+only the expected executable, and preserve installed binaries on validation
+failure. Windows rejects destination reparse points and supports native amd64
+only. Checksums do not authenticate a compromised publisher. Release signing,
+notarization and provenance attestations are not configured. Native release
+qualification blocks on tests; publication is an explicit manual protected
+workflow operation. No automatic branch or Homebrew-tap updates occur.

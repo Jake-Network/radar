@@ -1,0 +1,4 @@
+# Fixture qualification versions; not a comprehensive compatibility matrix.
+fastapi==0.115.0
+pydantic==2.9.2
+httpx==0.27.2

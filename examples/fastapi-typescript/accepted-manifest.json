@@ -1,0 +1,1 @@
+{"version":1,"bindings":[{"id":"reviewed-current-user","schema":"schema.json","producer":"backend/routes/users.py","consumer":"frontend/client.ts","fields":["profile.email"],"direction":"response"},{"id":"reviewed-current-user-name","schema":"schema.json","producer":"backend/routes/users.py","consumer":"frontend/axios-client.ts","fields":["display_name"],"direction":"response"}]}

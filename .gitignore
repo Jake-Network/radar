@@ -11,3 +11,7 @@ coverage.out
 .idea/
 
 /dist/
+
+# Python tooling and example test caches
+__pycache__/
+*.pyc

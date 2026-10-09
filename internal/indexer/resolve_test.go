@@ -2,8 +2,10 @@ package indexer
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Jake-Network/radar/internal/model"
@@ -107,5 +109,76 @@ func TestEntityIDsAreReadableAndLocationIndependent(t *testing.T) {
 	}
 	if len(a) != len(b) {
 		t.Fatal("identities depend on checkout location")
+	}
+}
+
+func TestTypeScriptAliasAndWorkspaceResolution(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		// Shared base config with comments and trailing commas, extended by the app.
+		"tsconfig.base.json":                 "{\n  // shared\n  \"compilerOptions\": {\n    \"baseUrl\": \".\", /* aliases resolve from the repository root */\n    \"paths\": {\n      \"@app/*\": [\"apps/web/src/*\"],\n      \"@app/config\": [\"apps/web/config/index.ts\"],\n    },\n  },\n}\n",
+		"apps/web/tsconfig.json":             "{ \"extends\": \"../../tsconfig.base.json\", \"compilerOptions\": { \"strict\": true } }",
+		"apps/web/src/main.ts":               "import { Button } from '@acme/ui';\nimport { format } from 'utils/format';\nimport { store } from '@app/state/store';\nimport cfg from '@app/config';\nimport { Header } from '@app/components/Header';\nimport React from 'react';\n",
+		"apps/web/src/state/store.ts":        "export const store = 1;\n",
+		"apps/web/src/components/Header.tsx": "export const Header = 1;\n",
+		"apps/web/config/index.ts":           "export default 1;\n",
+		"packages/ui/package.json":           `{"name":"@acme/ui","main":"dist/index.js","types":"dist/index.d.ts"}`,
+		"packages/ui/src/index.ts":           "export const Button = 1;\n",
+		"packages/utils/package.json":        `{"name":"utils","exports":{".":{"types":"./src/index.ts"},"./format":"./src/format.ts"}}`,
+		"packages/utils/src/index.ts":        "export * from './format';\n",
+		"packages/utils/src/format.ts":       "export const format = 1;\n",
+		// Two packages claiming one name are ambiguous and never guessed.
+		"dup/a/package.json":   `{"name":"dup"}`,
+		"dup/a/index.ts":       "",
+		"dup/b/package.json":   `{"name":"dup"}`,
+		"dup/b/index.ts":       "",
+		"legacy/jsconfig.json": `{"compilerOptions":{"baseUrl":"."}}`,
+		"legacy/app.js":        "import helper from 'lib/helper';\nimport d from 'dup';\n",
+		"legacy/lib/helper.js": "export default 1;\n",
+	}
+	for p, content := range files {
+		write(t, root, p, content)
+	}
+	s, err := Index(context.Background(), root, "WORKTREE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := map[string]bool{}
+	for _, e := range s.Edges {
+		if e.Kind == "DEPENDS_ON" {
+			deps[model.PathFromID(e.From)+" -> "+model.PathFromID(e.To)] = true
+		}
+	}
+	for _, want := range []string{
+		"apps/web/src/main.ts -> packages/ui/src/index.ts",
+		"apps/web/src/main.ts -> packages/utils/src/format.ts",
+		"apps/web/src/main.ts -> apps/web/src/state/store.ts",
+		"apps/web/src/main.ts -> apps/web/config/index.ts",
+		"apps/web/src/main.ts -> apps/web/src/components/Header.tsx",
+		"packages/utils/src/index.ts -> packages/utils/src/format.ts",
+		"legacy/app.js -> legacy/lib/helper.js",
+	} {
+		if !deps[want] {
+			t.Errorf("missing %s; have %v", want, deps)
+		}
+	}
+	for d := range deps {
+		if strings.HasPrefix(d, "legacy/app.js -> dup/") {
+			t.Error("ambiguous package name resolved", d)
+		}
+	}
+	if len(deps) != 7 {
+		t.Errorf("unexpected dependencies %v", deps)
+	}
+}
+
+func TestStripJSONC(t *testing.T) {
+	in := "{\n \"a\": \"// not a comment\", // trailing\n \"b\": [1, 2, /* c */ ],\n \"c\": \"x,}\",\n}"
+	var v map[string]any
+	if err := json.Unmarshal(stripJSONC([]byte(in)), &v); err != nil {
+		t.Fatal(err, string(stripJSONC([]byte(in))))
+	}
+	if v["a"] != "// not a comment" || len(v["b"].([]any)) != 2 || v["c"] != "x,}" {
+		t.Fatal(v)
 	}
 }

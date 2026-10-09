@@ -62,6 +62,7 @@ type Command struct {
 	GroupedFrom []string `json:"grouped_from,omitempty"`
 }
 type Proposal struct {
+	Omitted     []Omission   `json:"omitted,omitempty"`
 	Status      model.Status `json:"status"`
 	Commands    []Command    `json:"commands"`
 	Inventory   Inventory    `json:"inventory"`
@@ -478,8 +479,16 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		if priority == 0 {
 			continue
 		}
+		omitUnsupported := func(explanation string) {
+			tier := TierRequired
+			if reason == "package_fallback" {
+				tier = TierOptional
+			}
+			result.Omitted = append(result.Omitted, Omission{ID: test.ID, CWD: test.PackageRoot, TestFiles: []string{test.Path}, Tier: tier, Reason: "unsupported_configuration", Explanation: explanation})
+		}
 		if test.Framework == "cargo" && !has(inv.Manifests, path.Join(test.PackageRoot, "Cargo.toml")) {
 			result.Limitations = append(result.Limitations, "Cargo test has no discovered Cargo.toml: "+test.Path)
+			omitUnsupported("Cargo test has no discovered Cargo.toml")
 			continue
 		}
 		argv, cwd := commandFor(test)
@@ -488,6 +497,7 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		}
 		if len(argv) == 0 {
 			result.Limitations = append(result.Limitations, "No safely recognized runner for "+test.Path+"; inspect test configuration manually.")
+			omitUnsupported("No safely recognized runner for " + test.Framework)
 			continue
 		}
 		description := map[string]string{"changed_test": "Changed conventional test file.", "dependency_impact": "Test imports a changed file through recorded inferred dependency paths.", "declared_contract_impact": "Test imports a consumer reached through explicit producer/schema and declared contract dependencies; runtime usage remains unproven.", "go_package_companion": "Go test shares a package directory with changed Go source.", "package_fallback": "Conservative package-root fallback; a direct dependency was not established.", "file_reference": "Test source names a changed non-code file (for example a schema or fixture); lexical reference, runtime use unproven.", "cross_component_integration": "Integration-named suite prioritized because changes span multiple test package roots; naming is not semantic proof."}[reason]
@@ -517,6 +527,10 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		return result.Commands[i].ID < result.Commands[j].ID
 	})
 	if o.Limit > 0 && len(result.Commands) > o.Limit {
+		for _, c := range result.Commands[o.Limit:] {
+			c.Tier = tierFor(c)
+			result.Omitted = append(result.Omitted, omission(c, "recommendation_limit", "Recommendation limit reached before execution planning."))
+		}
 		result.Commands = result.Commands[:o.Limit]
 		result.Limitations = append(result.Limitations, "Recommendation limit reached; inspect inventory for omitted candidates.")
 	}

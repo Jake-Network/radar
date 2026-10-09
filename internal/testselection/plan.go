@@ -2,6 +2,7 @@ package testselection
 
 import (
 	"fmt"
+	"os/exec"
 	"path"
 	"sort"
 	"strings"
@@ -94,7 +95,40 @@ func Plan(p Proposal, changed []string, mode string, maxCommands int) (Selection
 	var candidates []Command
 	if mode == ModeFull {
 		candidates = fullSuite(p)
+		covered := map[string]bool{}
+		for _, c := range candidates {
+			for _, f := range c.TestFiles {
+				covered[f] = true
+			}
+		}
+		for _, t := range p.Inventory.Tests {
+			if covered[t.Path] {
+				continue
+			}
+			c := Command{ID: t.ID, CWD: t.PackageRoot, TestFiles: []string{t.Path}, Tier: TierRequired}
+			s.Omitted = append(s.Omitted, omission(c, "unsupported_configuration", "No supported executable command for inventoried framework "+t.Framework))
+			s.Blocking = append(s.Blocking, "inventoried test unsupported: "+t.Path)
+		}
+		for _, o := range p.Omitted {
+			restored := len(o.TestFiles) > 0
+			for _, file := range o.TestFiles {
+				restored = restored && covered[file]
+			}
+			if o.Reason == "recommendation_limit" && o.Tier == TierRequired && !restored {
+				s.Omitted = append(s.Omitted, o)
+				s.Blocking = append(s.Blocking, "required recommendation omitted before full planning: "+o.ID)
+			}
+		}
 	} else {
+		for _, o := range p.Omitted {
+			if mode == ModeTargeted && o.Tier == TierOptional {
+				o.Reason = "mode_excluded"
+			}
+			s.Omitted = append(s.Omitted, o)
+			if o.Tier == TierRequired {
+				s.Blocking = append(s.Blocking, "required verification omitted: "+strings.Join(o.TestFiles, ", "))
+			}
+		}
 		for _, c := range p.Commands {
 			c.Tier = tierFor(c)
 			if mode == ModeTargeted && c.Tier == TierOptional {
@@ -106,6 +140,10 @@ func Plan(p Proposal, changed []string, mode string, maxCommands int) (Selection
 		candidates = group(candidates)
 		s.Uncovered = uncovered(p, changed)
 	}
+	for _, d := range p.Inventory.Diagnostics {
+		s.Blocking = append(s.Blocking, "inventory incomplete: "+d.Path+": "+d.Message)
+	}
+
 	s.Candidates = len(candidates)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		a, b := candidates[i], candidates[j]
@@ -298,8 +336,31 @@ func fullSuite(p Proposal) []Command {
 		switch k.framework {
 		case "pytest":
 			argv = []string{"python3", "-m", "pytest"}
-		case "unittest":
-			argv = []string{"python3", "-m", "unittest", "discover"}
+			for _, file := range unique(seen[k]) {
+				rel := strings.TrimPrefix(file, k.root+"/")
+				if k.root == "." {
+					rel = file
+				}
+				argv = append(argv, "./"+rel)
+			}
+		case "unittest", "node-test":
+			// Explicit inventoried paths avoid runner discovery omitting nested
+			// non-package unittest directories or nonstandard Node filenames.
+			for _, file := range unique(seen[k]) {
+				argv, cwd = commandFor(Test{Path: file, Framework: k.framework, PackageRoot: k.root})
+				if len(argv) == 0 {
+					continue
+				}
+				available, known := tools[k.framework+"\x00"+cwd]
+				if !known {
+					_, err := exec.LookPath(argv[0])
+					available = err == nil
+				}
+				c := Command{Command: argv, CWD: cwd, Framework: k.framework, Tier: TierRequired, TestFiles: []string{file}, Priority: 50, ToolAvailable: available, EvidenceReasons: []Reason{{Code: "full_suite", Explanation: "Explicit inventoried test in full mode.", Evidence: model.Inferred}}}
+				c.ID = commandID(c)
+				out = append(out, c)
+			}
+			continue
 		case "go":
 			argv = []string{"go", "test", "-json", "./..."}
 		case "jest":
@@ -313,13 +374,14 @@ func fullSuite(p Proposal) []Command {
 		}
 		available, known := tools[k.framework+"\x00"+cwd]
 		if !known {
-			available = k.framework != "jest" && k.framework != "vitest"
+			_, err := exec.LookPath(argv[0])
+			available = err == nil
 		}
 		c := Command{Command: argv, CWD: cwd, Framework: k.framework, Tier: TierRequired, TestFiles: unique(seen[k]), Affected: []string{}, Priority: 50, ToolAvailable: available, EvidenceReasons: []Reason{{Code: "full_suite", Explanation: "Whole discovered suite for this framework and package root; the runner's configuration selects tests.", Evidence: model.Inferred}}}
 		c.ID = commandID(c)
 		out = append(out, c)
 	}
-	return out
+	return group(out)
 }
 
 // uncovered lists changed non-documentation files, including data and

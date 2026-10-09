@@ -1,92 +1,110 @@
-# Native release packaging
+# Native release qualification
 
-## Install a published binary
+Radar embeds Tree-sitter via CGO. A working GOOS/GOARCH cross-build is not native
+qualification. `scripts/release.py` checks the actual host, target and CGO setting,
+builds with trimpath, collects contributing dependency licenses, verifies the
+reported version and runs read-only parser smoke before creating an archive.
+The existing Bash `release.sh [OUT] [VERSION]` entry point remains compatible.
+Python is a maintainer packaging dependency; installed binaries need no Go or C
+compiler. Source analysis needs Git, and optional test execution needs its runners.
 
-The repository includes a no-Go installer for **Linux x86_64 with glibc 2.35 or
-newer**. A matching GitHub Release must first exist; the commands below do not
-claim that any version is currently published. Replace `vX.Y.Z` with a published
-version from [GitHub Releases](https://github.com/Jake-Network/radar/releases).
+## Platform matrix
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/main/scripts/install-release.sh -o /tmp/install-radar.sh
-# Inspect the script before running it.
-bash /tmp/install-radar.sh --version vX.Y.Z
-export PATH="$HOME/.local/bin:$PATH"
-radar version
-radar setup --agent codex
-```
+| Target | Native build runner | Archive | Current qualification |
+|---|---|---|---|
+| Linux amd64 | Ubuntu 22.04, system C compiler | `radar-linux_amd64.tar.gz` | Local Linux native package/installed smoke/installer pass; hosted unverified |
+| macOS arm64 | macOS 15 Apple Silicon, Clang | `radar-darwin_arm64.tar.gz` | Configured, native runtime unverified in this workspace |
+| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Native PowerShell installer passed 27 assertions; actual Go binary unverified |
+| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | Optional, unverified here |
+| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | Optional, unverified here |
 
-The installer checks the archive checksum before extracting a single executable
-member, preserves existing installations unless `--force` is explicit, and keeps
-the complete release archive alongside the binary for project and dependency
-notices. `--dir PATH` selects another user-writable installation directory.
-Downloads and checksums both come from the same GitHub Release; integrity checking
-does not provide independent publisher authentication. It requires Bash, curl,
-GNU tar, GNU coreutils and a compatible C runtime. No privileged write, Go, Python,
-LLM credential, or telemetry is involved. It executes the downloaded binary's
-`version` command after checksum verification.
+No unvalidated placeholder binaries are created. Every native build's vet, full
+suite, race suite and installed artifact smoke are required; macOS failures are
+no longer informational. A platform failing those checks prevents collection and
+publication. Tool presence or a configured matrix is not an observed CI success.
 
-Windows, macOS, Linux arm64, musl/Alpine and older glibc do not have a validated
-binary release target in this milestone. The existing source installer remains
-available for native development environments; successful compilation on another
-platform is not a support claim.
+## Prepare assets locally
 
-## Prepare artifacts without publishing
-
-`.github/workflows/release.yml` is a manual `workflow_dispatch` workflow with
-read-only repository permissions. It runs regression, race and vet checks,
-packages on native Ubuntu 22.04, inspects runtime libraries, executes bundled
-demos and uploads an Actions artifact. It neither creates tags nor publishes a
-release. Download and review that artifact before any separately authorized
-publication. Keep the archive and its adjacent `.sha256` file together when
-uploading assets to a reviewed, explicitly versioned release.
-
-The workflow has not been executed remotely as part of local validation. Linux
-amd64 is the only prepared binary target. Its CGO runtime minimum is glibc 2.35
-when built by this workflow; locally packaged binaries may require a different
-C runtime depending on the build host.
-
-## Build locally
-
-From a reviewed checkout with Go 1.23+, a C compiler, Python 3, GNU tar and gzip:
+On the matching native host with Go, a C compiler, Git and Python:
 
 ```sh
-go test ./...
-go vet ./...
-go test -race ./...
-go build -o /tmp/radar ./cmd/radar
+CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets 0.3.0-rc.1
+python3 scripts/release-test.py
+python3 scripts/validate-release.py /tmp/radar-assets 0.3.0-rc.1
 bash scripts/install-release-test.sh
-bash examples/organization/demo.sh /tmp/radar
-bash examples/verification/demo.sh /tmp/radar
-bash scripts/release.sh /tmp/radar-release
 ```
 
-The helper builds for the current Go host target and packages `radar`, project
-license, README, documentation, integration skill, clean examples, schemas, dependency inventory and license notices copied from exact
-module directories contributing packages to the executable. GNU tar ordering and fixed archive timestamps,
-`gzip -n`, `-trimpath`, disabled VCS stamping and disabled Go build ID reduce
-incidental build differences. Reproducibility requires the same source,
-toolchain, C compiler, target and dependencies; the helper is not a claim of
-cross-toolchain reproducibility. Set `SOURCE_DATE_EPOCH` to a fixed release time
-if desired. The checksum file permits integrity checking after distribution.
+On Windows, with native Go and UCRT64 GCC on PATH:
 
-Inspect dependency notices before publishing. This is packaging only: it does
-not upload, tag, push, sign or create a GitHub release. The initial tested target
-is Linux amd64, and the helper accepts only that native target with CGO enabled.
-Other platforms require native build and execution validation;
-CGO parsers preclude pretending that a pure-Go cross-build validates support.
+```powershell
+$env:CGO_ENABLED = '1'
+$env:CC = 'gcc'
+python scripts/release.py "$env:TEMP/radar-assets" 0.3.0-rc.1
+python scripts/validate-release.py "$env:TEMP/radar-assets" 0.3.0-rc.1
+./scripts/install-release-test.ps1
+```
 
-To inspect a packaged build, extract it into a new directory and run its bundled
-examples with the absolute binary path:
+Windows external linking requests static compiler runtime libraries. Installed
+artifact smoke removes MSYS/MinGW compiler directories from PATH before launching
+Radar, so an accidentally required GCC DLL prevents qualification. Windows's
+system UCRT remains an OS dependency. Tests run against the archive executable,
+not merely an unarchived build.
+
+Archives contain the correct executable name, LICENSE, VERSION.txt, dependency
+inventory, actual module notices, third_party notices, docs, schemas, examples
+and installation scripts. Sorted metadata avoids timestamps, owners, cache paths
+and build-directory leaks. SHA-256 files cover the exact archive bytes.
+`VERSION.txt` and `radar version` match the selected version without leading `v`.
+
+## Controlled hosted workflow
+
+`.github/workflows/release.yml` builds each artifact on its native runner, then
+collects only after every host's required tests and smoke pass. Tags **prepare**
+assets only. A manual workflow dispatch on an already existing version tag with
+`publish=true` requests publication through the `release` environment.
+Configure that environment with required maintainers and protected tag rules
+before enabling publication. No script here creates a tag or pushes a branch.
+The job verifies checksums again before `gh release create --verify-tag`.
+
+The Homebrew formula is generated as a reviewable asset; the workflow does not
+push to a tap. Maintainers may review and update their tap separately. Hosted
+Actions, release creation, authentic downloads and Homebrew installation remain
+unverified until actual runs and published assets exist. Artifact attestations
+and signing/notarization are not currently enabled; checksums provide integrity,
+not an independent publisher authentication mechanism.
+
+## Installation and runtime limits
+
+From a reviewed checkout, use an explicit published version:
 
 ```sh
-tar -xzf /tmp/radar-release/radar-linux_amd64.tar.gz -C /tmp
-/tmp/radar-linux_amd64/radar doctor --root /tmp/radar-linux_amd64/examples/organization --json
-bash /tmp/radar-linux_amd64/examples/verification/demo.sh /tmp/radar-linux_amd64/radar
+bash scripts/install-release.sh --version vX.Y.Z --dir "$HOME/.local/bin"
+# --force replaces an existing binary only after successful validation.
 ```
 
-Do not overwrite an existing installation until you have checked the checksum
-and validated the target platform. Executable scripts in examples run only when
-you invoke them explicitly.
+```powershell
+./scripts/install-release.ps1 -Version vX.Y.Z
+# Default: $env:LOCALAPPDATA/Radar/bin; -Directory overrides; -Force replaces.
+```
 
-The Linux binary uses CGO and the native system C runtime. Distribute it only to compatible architecture and libc targets; verify runtime dependencies when producing an artifact for another host.
+Installers validate OS/CPU and exact checksum name, reject traversal and special
+archive members, extract only the named executable as a stream, check version,
+retain the original notice archive, and preserve existing executables on failure.
+Windows rejects directory junctions/symlinks in installation paths and replaces
+files atomically. No administrator privileges are required for default paths.
+Installers do not silently edit PATH.
+
+Linux hosted release baseline is glibc 2.35+; musl/Alpine and older glibc need a
+source build. A local archive inherits its local host's libc and must not be
+advertised as the Ubuntu baseline. macOS deployment target is 11.0; Developer ID
+signing/notarization are not configured. Windows arm64 is unsupported for binary
+installation. Windows process timeout currently kills the direct process; child
+process-tree termination is not qualified, so executable verification on Windows
+has that explicit limitation. Read-only embedded parsing is the platform smoke.
+
+If CGO build fails, verify `go env CGO_ENABLED` and native compiler availability;
+setting target variables does not install a compiler. If verification blocks,
+prepare the declared test environment rather than treating runner absence as a
+passing suite. `radar doctor` reports available tools without enabling semantic
+indexing. Source fallback: `go build -trimpath -o radar ./cmd/radar` (`radar.exe` on
+Windows), using a compiler for the actual host.

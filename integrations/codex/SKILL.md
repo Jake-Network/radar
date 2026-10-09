@@ -1,12 +1,23 @@
 ---
 name: radar-architecture
-description: Ground feature design and verification in Radar repository evidence.
+description: Check that parallel agent branches integrate before merging (radar gate), and ground feature design and verification in Radar repository evidence.
 ---
 
 # Radar architecture workflow
 
 Run the local `radar` binary from the target repository. If it is unavailable,
 report that fact; do not fabricate Radar output.
+
+Before merging parallel work (several agents, worktrees or branches), run
+`radar gate --json`. With no arguments it combines every worktree branch that
+has commits beyond the base in private Git state and reports conflicts,
+breaking contract changes and, in `attribution`, the branches whose files each
+finding points at. It never runs repository code. Follow its `next` field;
+`radar gate --run` executes repository tests on the combined tree, so ask the
+user first. Repair on the attributed branch, commit and rerun; results for
+individual branches never prove the combination works.
+
+For feature design and verification:
 
 1. Select a committed baseline. Run `radar doctor`, `radar index --ref <SHA> --json`,
    and `radar plan "feature intent" --ref <SHA>`.

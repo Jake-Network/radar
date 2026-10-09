@@ -19,6 +19,8 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build -o /tmp/radar ./cmd/radar
+      - name: Gate smoke test (two passing branches, one failing combination)
+        run: bash scripts/smoke.sh /tmp/radar
       - name: End-to-end demo
         run: bash examples/organization/demo.sh /tmp/radar
       - name: Committed verification demo

@@ -21,6 +21,7 @@ type Candidate struct {
 	Consumer    string             `json:"consumer,omitempty"`
 	Contract    string             `json:"contract"`
 	Endpoint    string             `json:"endpoint,omitempty"`
+	Method      string             `json:"method,omitempty"`
 	Fields      []string           `json:"fields"`
 	Evidence    model.Evidence     `json:"evidence"`
 	Locations   []model.Provenance `json:"locations"`

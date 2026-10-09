@@ -1,71 +1,87 @@
-# Example workflow for a repository that uses Radar. Copy it to
-# .github/workflows/radar.yml and point RADAR_SOURCE at your Radar checkout or
-# replace the build step with a published binary.
-#
-# It reports, as annotations:
-#   - contract changes in this pull request against declared consumers,
-#   - files, contracts and plan tasks affected through import dependencies,
-#   - contract conflicts between this pull request and other open pull requests.
-# It never merges, rebases or pushes.
-name: radar
+# Copy this file to .github/workflows/radar.yml and the reviewed run.py/report.py
+# to .github/radar/. Set RADAR_REVISION to a reviewed immutable Radar commit.
+# Static inspection is the default. See the adjacent README before execution.
+name: Radar integration gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   radar:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
-      BASE_REF: ${{ github.base_ref }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      RADAR_SOURCE: https://example.invalid/your-org/radar.git
+      RADAR_REVISION: ${{ vars.RADAR_REVISION }}
+      RADAR_BASE: ${{ github.event.pull_request.base.sha }}
+      RADAR_HEAD: ${{ github.event.pull_request.head.sha }}
+      RADAR_EXECUTE: ${{ vars.RADAR_EXECUTE == 'true' && 'true' || 'false' }}
+      RADAR_TRUSTED: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'true' || 'false' }}
+      # Explicit PR numbers only. The helper validates and fetches these refs.
+      RADAR_ADDITIONAL_PRS: ${{ vars.RADAR_ADDITIONAL_PRS }}
+      RADAR_TRUST_ADDITIONAL: ${{ vars.RADAR_TRUST_ADDITIONAL == 'true' && 'true' || 'false' }}
+      RADAR_REPORT: ${{ runner.temp }}/radar-report.json
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.23"
-      - name: Build Radar
+      - name: Validate the immutable tool revision
+        shell: bash
         run: |
-          git clone --depth 1 "$RADAR_SOURCE" "$RUNNER_TEMP/radar-src"
-          (cd "$RUNNER_TEMP/radar-src" && go build -o "$RUNNER_TEMP/radar" ./cmd/radar)
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Prepare
-        run: |
-          radar init
-          echo "MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD)" >> "$GITHUB_ENV"
-      - name: Contract manifest
-        run: radar contracts --ref HEAD
-      - name: Affected files and contracts
-        run: radar affected --base "$MERGE_BASE" --head HEAD
-      - name: Contract impact of this pull request
-        run: |
-          status=0
-          radar impact --base "$MERGE_BASE" --head HEAD --json > impact.json || status=$?
-          jq -r '.findings[] | "::\(if .severity == "error" then "error" else "warning" end) title=\(.code)::\(.explanation)"' impact.json
-          jq -r '.diagnostics[] | "::warning title=radar diagnostic::\(.path) \(.message)"' impact.json
-          exit "$status"
-      - name: Conflicts with other open pull requests
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          branches=HEAD
-          for number in $(gh pr list --base "$BASE_REF" --state open --json number --jq '.[].number'); do
-            [ "$number" = "$PR_NUMBER" ] && continue
-            if git fetch --quiet origin "pull/$number/head:refs/radar/pr-$number"; then
-              branches="$branches,refs/radar/pr-$number"
-            fi
-          done
-          if [ "$branches" = HEAD ]; then
-            echo "No other open pull requests."
-            exit 0
+          if [[ ! "$RADAR_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Set the RADAR_REVISION repository variable to a reviewed 40-character Radar commit SHA.'
+            exit 2
           fi
-          status=0
-          radar scan --base "$MERGE_BASE" --branches "$branches" --json > scan.json || status=$?
-          jq -r '.findings[] | "::\(if .severity == "error" then "error" else "warning" end) title=\(.code)::\(.explanation) (\(.branches | join(" vs ")))"' scan.json
-          exit "$status"
+      # Read helpers from the trusted PR base, never from the PR merge/head.
+      - name: Check out trusted workflow helpers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: radar-control
+          persist-credentials: false
+      - name: Check out pinned Radar source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Jake-Network/radar
+          ref: ${{ env.RADAR_REVISION }}
+          path: radar-tool
+          persist-credentials: false
+      - name: Set up Go for the trusted tool
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version-file: radar-tool/go.mod
+          cache: false
+      - name: Build the pinned tool
+        shell: bash
+        working-directory: radar-tool
+        run: go build -trimpath -o "$RUNNER_TEMP/radar" ./cmd/radar
+      - name: Check out repository revisions for inspection
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: radar-target
+          persist-credentials: false
+      - name: Evaluate PR and explicitly selected combined candidate
+        env:
+          RADAR_BIN: ${{ runner.temp }}/radar
+          RADAR_ROOT: ${{ github.workspace }}/radar-target
+        shell: bash
+        run: python3 radar-control/.github/radar/run.py
+      - name: Render findings and gate verdict
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RADAR_REPORT" ]]; then
+            python3 radar-control/.github/radar/report.py "$RADAR_REPORT"
+          else
+            echo '::error::Radar produced no gate report; verification is unavailable. Review earlier setup errors.'
+          fi
+      - name: Preserve machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: radar-verification
+          path: ${{ runner.temp }}/radar-report.json
+          if-no-files-found: warn
+          retention-days: 7
