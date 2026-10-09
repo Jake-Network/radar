@@ -75,12 +75,14 @@ tasks. `radar mcp` exposes read-mostly commands as MCP tools; test execution and
 review declarations are not exposed. `radar_index` returns counts and
 diagnostics (`index --summary`) and tool output is capped at 40,000 bytes.
 
-Native-host release packaging includes dependency notices and checksums for
-linux/darwin × amd64/arm64, each built and smoke-tested on its own GitHub
-runner; a tag publishes a GitHub Release and updates the Homebrew tap
-([RELEASING](RELEASING.md)). Local validation covers linux/amd64; the other
-three targets are validated by the release workflow when it runs. Signing and
-notarization are not configured. Windows has no binary target. Indexing retains transactional full snapshots; incremental parsing
+Native-host release packaging defines dependency notices and checksums for
+linux/darwin × amd64/arm64 and Windows amd64. Jobs build and smoke-test on their
+matching runners when the workflow executes; configured jobs are not hosted
+validation evidence. Tags prepare artifacts only. Publication requires manual
+dispatch and the release environment; Homebrew formula generation does not
+publish a tap ([RELEASING](RELEASING.md)). Current validation covers Linux amd64;
+native macOS and Windows executable validation remains unverified here. Signing
+and notarization are not configured. Indexing retains transactional full snapshots; incremental parsing
 and source-specific semantic reference resolution are deferred.
 
 Compatibility direction is explicit: request schemas constrain what consumers
@@ -92,7 +94,7 @@ property removals are risks. Missing direction makes every change a risk.
 Strict approved-design drift still reports unplanned changes even when
 schema-compatible.
 
-## Gate (0.3)
+## Gate (0.4; extends 0.3)
 
 `radar gate [BRANCH ...] [--base REF] [--run]` is the everyday front end to
 `merge-check`. It needs no initialization or manifest. Without branches it uses
@@ -109,6 +111,15 @@ that reads a changed file at runtime without importing it is not attributed.
 Without `--run` and without a policy, exit 1 means a supported failure
 (conflict, breaking declared contract); missing test evidence alone exits 0
 and is reported as not tested. MCP exposes the static form as `radar_gate`.
+
+Executed defaults require both `integration_execution` and `test_selection`:
+passing commands cannot override uncovered changes or incomplete inventory.
+Custom limited policies remain supported and labelled in terminal output.
+`worktrees` exposes excluded uncommitted paths and detached state;
+`configuration_inputs` binds exact selected plan/policy bytes and reports
+boundary instability. These JSON fields are additive. See
+[verdict semantics](VERIFICATION_POLICY.md) and
+[configuration observation limits](CONFIGURATION_OBSERVATIONS.md).
 
 ## Agent-native integration milestone
 

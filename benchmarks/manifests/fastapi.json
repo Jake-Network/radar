@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "FastAPI",
+    "url": "https://github.com/fastapi/fastapi",
+    "revision": "40e33e492dbf4af6172997f4e3238a32e56cbe26",
+    "local_checkout": "/tmp/radar-04-fastapi"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests"
+      ],
+      "test_files": [],
+      "recognizer": "pytest"
+    }
+  ],
+  "cases": [
+    {
+      "id": "fastapi-controlled-source",
+      "category": "python-sync-runtime-dispatch",
+      "ground_truth": "Existing upstream request tests (including tests/test_route_scope.py with synchronous handlers) define callable dispatch. Mutation bypasses thread-pool dispatch for sync handlers. Expected regression only; no external runtime execution or observed ground truth.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "fastapi/routing.py",
+            "find": "return await run_in_threadpool(dependant.call, **values)",
+            "replace": "return await dependant.call(**values)"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "fastapi-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "<p align=\"center\">",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

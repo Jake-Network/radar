@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
-	"github.com/Jake-Network/radar/internal/planning"
 	"github.com/Jake-Network/radar/internal/testselection"
 )
 
@@ -41,11 +41,14 @@ type gateAttribution struct {
 // gateReport is merge-check's report plus branch attribution and the single
 // next command a person or agent should run.
 type gateReport struct {
-	BaseRef     string                     `json:"base_ref"`
-	Branches    []gateBranch               `json:"branches"`
-	Skipped     []string                   `json:"skipped_branches,omitempty"`
-	Attribution map[string]gateAttribution `json:"attribution"`
-	Next        string                     `json:"next,omitempty"`
+	WorktreeInspectionError string                     `json:"worktree_inspection_error,omitempty"`
+	Worktrees               []gitrepo.WorktreeStatus   `json:"worktrees"`
+	Configuration           []ConfigurationInput       `json:"configuration_inputs,omitempty"`
+	BaseRef                 string                     `json:"base_ref"`
+	Branches                []gateBranch               `json:"branches"`
+	Skipped                 []string                   `json:"skipped_branches,omitempty"`
+	Attribution             map[string]gateAttribution `json:"attribution"`
+	Next                    string                     `json:"next,omitempty"`
 	integration.Report
 }
 
@@ -70,10 +73,11 @@ func (a *app) gate(o options) int {
 	if e := a.repository(); e != nil {
 		return a.fail(e)
 	}
-	policy, err := a.loadPolicy(o)
+	configuration, err := a.captureConfiguration(o)
 	if err != nil {
 		return a.fail(err)
 	}
+	policy := configuration.Policy
 	baseRef := o.base
 	if baseRef == "" {
 		if baseRef = gitrepo.DefaultBranch(a.ctx, a.root); baseRef == "" {
@@ -88,14 +92,7 @@ func (a *app) gate(o options) int {
 	if err != nil {
 		return a.fail(err)
 	}
-	var plan *planning.Plan
-	if o.plan != "" {
-		p, e := a.loadPlan(o.plan)
-		if e != nil {
-			return a.fail(e)
-		}
-		plan = &p
-	}
+	plan := configuration.Plan
 	options := integration.Options{Base: baseSHA, Branches: refs, Policy: policy, Plan: plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
@@ -108,7 +105,18 @@ func (a *app) gate(o options) int {
 	if err != nil {
 		return a.fail(err)
 	}
-	g := gateReport{BaseRef: baseRef, Skipped: skipped, Attribution: map[string]gateAttribution{}, Report: r}
+	configuration.applyIntegration(&r)
+	g := gateReport{Configuration: configuration.Inputs, BaseRef: baseRef, Skipped: skipped, Attribution: map[string]gateAttribution{}, Report: r}
+	g.Worktrees, err = gitrepo.InspectWorktrees(a.ctx, a.root)
+	if err != nil {
+		// Worktree warnings are independent of committed candidate verification.
+		g.WorktreeInspectionError = err.Error()
+		g.Worktrees = []gitrepo.WorktreeStatus{}
+	}
+	for i := range g.Worktrees {
+		w := &g.Worktrees[i]
+		w.CommitIncluded = w.Commit == r.Base || slices.Contains(r.Inputs, w.Commit)
+	}
 	for i, ref := range refs {
 		changed, e := a.branchChanges(baseSHA, r.Inputs[i])
 		if e != nil {
@@ -123,11 +131,17 @@ func (a *app) gate(o options) int {
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
 	case r.Gate.Verdict == gate.Fail:
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+	case r.Gate.Verdict == gate.Blocked && o.verify:
+		g.Next = "resolve the missing evidence above, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
+	case configurationUnstable(configuration.Inputs):
+		g.Next = "restore stable configuration, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+	case r.Gate.Verdict == gate.Error:
+		g.Next = "resolve the reported analysis or execution error and rerun the same gate."
 	case !o.verify:
 		g.Next = strings.TrimSpace("radar gate --run " + rerun)
 	}
 	a.report(g, func(w io.Writer) { renderGate(w, g, o.verify) })
-	if policy != nil || o.verify {
+	if policy != nil || o.verify || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
 	}
 	// Without --run no test evidence exists by construction; only a supported
@@ -146,6 +160,12 @@ func (a *app) gate(o options) int {
 func (a *app) gateBranches(args []string, baseRef, baseSHA string) ([]string, []string, error) {
 	refs := []string{}
 	for _, arg := range args {
+		// Commas are legal in Git branch names. Prefer the exact reference;
+		// retain the historical comma-list shorthand only when it is not a ref.
+		if _, err := gitrepo.Resolve(a.ctx, a.root, arg); err == nil {
+			refs = append(refs, arg)
+			continue
+		}
 		for _, ref := range strings.Split(arg, ",") {
 			if ref = strings.TrimSpace(ref); ref != "" {
 				refs = append(refs, ref)
@@ -256,18 +276,39 @@ func contains(sorted []string, p string) bool {
 func gateArgs(o options, baseRef string, refs []string) string {
 	args := []string{}
 	if o.base != "" {
-		args = append(args, "--base "+baseRef)
+		args = append(args, "--base "+shellArg(baseRef))
 	}
 	if o.policy != "" {
-		args = append(args, "--policy "+o.policy)
+		args = append(args, "--policy "+shellArg(o.policy))
 	}
 	if o.plan != "" {
-		args = append(args, "--plan "+o.plan)
+		args = append(args, "--plan "+shellArg(o.plan))
+	}
+	if o.suite != "" {
+		args = append(args, "--suite "+shellArg(o.suite))
 	}
 	if len(o.args) > 0 {
-		args = append(args, refs...)
+		for _, ref := range refs {
+			args = append(args, shellArg(ref))
+		}
 	}
 	return strings.Join(args, " ")
+}
+
+// Suggested commands are presentation only, but remain safe to copy into a
+// POSIX shell even when a valid Git ref contains shell metacharacters.
+func shellArg(s string) string {
+	safe := s != ""
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_./:@%+=,-", r)) {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 var verdictMark = map[gate.Verdict]string{gate.Pass: "PASS", gate.Fail: "FAIL", gate.Blocked: "NOT VERIFIED", gate.Error: "ERROR"}
@@ -277,6 +318,9 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	verdict := verdictMark[r.Gate.Verdict]
 	if !ran && r.Gate.Verdict == gate.Pass {
 		verdict = "PASS (static)"
+	}
+	if ran && r.Gate.Verdict == gate.Pass {
+		verdict = "PASS (selected policy; bounded verification)"
 	}
 	fmt.Fprintf(w, "Radar gate: %s — %d branch(es) onto %s @ %s\n\n", verdict, len(g.Branches), g.BaseRef, short(r.Base))
 	width := 0
@@ -289,7 +333,21 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	for _, s := range g.Skipped {
 		fmt.Fprintf(w, "  skipped: %s\n", s)
 	}
+	if g.WorktreeInspectionError != "" {
+		fmt.Fprintf(w, "  ! worktree inspection unavailable: %s. Candidate verification is unchanged; inspect worktrees manually for excluded uncommitted changes.\n", g.WorktreeInspectionError)
+	}
+	for _, wt := range g.Worktrees {
+		if wt.InspectionError != "" {
+			fmt.Fprintf(w, "  ! worktree %q: status unavailable: %s\n", wt.Path, wt.InspectionError)
+		} else if len(wt.Staged)+len(wt.Unstaged)+len(wt.Untracked) > 0 {
+			fmt.Fprintf(w, "  ! worktree %q (%s): %d staged, %d unstaged, %d untracked; uncommitted changes EXCLUDED. Commit intended changes and rerun.\n", wt.Path, wt.Branch, len(wt.Staged), len(wt.Unstaged), len(wt.Untracked))
+		}
+		if wt.Detached {
+			fmt.Fprintf(w, "  ! detached worktree %q @ %s: commit included=%t; name its commit explicitly to include it.\n", wt.Path, short(wt.Commit), wt.CommitIncluded)
+		}
+	}
 	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  Policy: %s; requires %s\n", r.Gate.Policy.Name, strings.Join(r.Gate.Policy.Require, ", "))
 	for _, c := range r.Gate.Required {
 		fmt.Fprintf(w, "  %s  %s\n", gateMark(c.Status), gateLabel(c))
 	}
@@ -331,7 +389,7 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		fmt.Fprintf(w, "\n  … %d more warning(s); see --json\n", warnings-5)
 	}
 	if !ran && r.VerificationProposal != nil && len(r.VerificationProposal.Commands) > 0 {
-		fmt.Fprintf(w, "\n  Tests that cover these changes (not run):\n")
+		fmt.Fprintf(w, "\n  Suggested tests (static relationships; not run):\n")
 		for i, c := range r.VerificationProposal.Commands {
 			if i == 5 {
 				fmt.Fprintf(w, "    … %d more\n", len(r.VerificationProposal.Commands)-5)
@@ -341,9 +399,17 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		}
 	}
 	if ran && r.Selection != nil {
+		fmt.Fprintf(w, "\n  Test files: %d inventoried, %d selected (relationships are not behavioral coverage)\n", r.Selection.Inventory, r.Selection.TestFiles)
 		fmt.Fprintf(w, "\n  Tests (%s): ran %d of %d selected command(s)\n", r.Selection.Mode, len(r.Executions), len(r.Selection.Commands))
 		for _, ev := range r.Executions {
-			fmt.Fprintf(w, "    %s  %s  (in %s)\n", gateMark(ev.Status), strings.Join(shorten(ev.Command, 6), " "), ev.CWD)
+			fmt.Fprintf(w, "    %s  %s  (in %s; %d recognized test(s))\n", gateMark(ev.Status), strings.Join(shorten(ev.Command, 6), " "), ev.CWD, ev.Observation.TestsRun)
+		}
+		if len(r.Selection.Uncovered) > 0 {
+			fmt.Fprintf(w, "  Uncovered changes (no established test relationship): %s\n", strings.Join(r.Selection.Uncovered, ", "))
+			fmt.Fprintln(w, "  Resolve with supported tests, review --suite full, or explicitly select a limited --policy.")
+		}
+		if !slices.Contains(r.Gate.Policy.Require, "test_selection") || !slices.Contains(r.Gate.Policy.Require, "integration_execution") {
+			fmt.Fprintln(w, "  Limited policy: test selection or combined execution is not required; PASS applies only to the named requirements.")
 		}
 		for _, b := range r.Selection.Blocking {
 			fmt.Fprintf(w, "    not run: %s\n", b)

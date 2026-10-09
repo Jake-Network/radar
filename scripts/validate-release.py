@@ -73,5 +73,6 @@ with tempfile.TemporaryDirectory(prefix="radar-installed-smoke-") as tmp:
     env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep) if not any(x in p.lower() for x in ("msys", "mingw", "ucrt64", "go/bin")))
     version = subprocess.check_output([str(binary), "version"], text=True, env=env).strip()
     assert version == "radar " + sys.argv[2], version
+    assert (stage / "VERSION.txt").read_text(encoding="utf-8").strip() == version, "Archive version metadata mismatch"
     subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("smoke-release.py")), str(binary)], env=env, check=True)
 print("Installed archive checksum, notices, version and native parser checks passed: " + target)

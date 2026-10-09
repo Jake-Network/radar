@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// MaxBytes bounds policy/plan input reads and parsing.
+const MaxBytes = 4 << 20
+
 func Load(path string) (Plan, error) {
 	var p Plan
 	f, err := os.Open(path)
@@ -19,20 +22,26 @@ func Load(path string) (Plan, error) {
 		return p, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, (4<<20)+1))
+	data, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if err != nil {
 		return p, err
 	}
-	if len(data) > 4<<20 {
+	return Parse(data)
+}
+
+// Parse decodes exact captured plan bytes without reopening an input file.
+func Parse(data []byte) (Plan, error) {
+	var p Plan
+	if len(data) > MaxBytes {
 		return p, fmt.Errorf("plan exceeds 4 MiB analysis limit")
 	}
 	d := json.NewDecoder(strings.NewReader(string(data)))
 	d.DisallowUnknownFields()
-	if err = d.Decode(&p); err != nil {
+	if err := d.Decode(&p); err != nil {
 		return p, fmt.Errorf("invalid plan: %w", err)
 	}
 	var extra any
-	if err = d.Decode(&extra); err != io.EOF {
+	if err := d.Decode(&extra); err != io.EOF {
 		return p, fmt.Errorf("plan must contain one JSON object")
 	}
 	return p, nil

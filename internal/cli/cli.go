@@ -23,7 +23,7 @@ import (
 
 // Version is set at release time with -ldflags "-X .../internal/cli.Version=X.Y.Z";
 // `go install module@vX.Y.Z` builds report the module version instead.
-var Version = "0.3.0-dev"
+var Version = "0.4.0-dev"
 
 // releaseVersion matches tagged module versions, not VCS pseudo-versions
 // (v0.0.0-20261009072112-e5ed75a0bfa9) or dirty builds.
@@ -99,7 +99,15 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	if c.flags != nil {
 		c.flags(fs, &o)
 	}
-	if e := fs.Parse(rest[1:]); e != nil {
+	parseArgs := rest[1:]
+	if c.name == "gate" {
+		var e error
+		parseArgs, e = gateFlagArgs(fs, parseArgs)
+		if e != nil {
+			return a.fail(e)
+		}
+	}
+	if e := fs.Parse(parseArgs); e != nil {
 		if errors.Is(e, flag.ErrHelp) {
 			c.usageText(out)
 			return 0

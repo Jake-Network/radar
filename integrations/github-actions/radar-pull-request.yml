@@ -23,7 +23,6 @@ jobs:
       # Explicit PR numbers only. The helper validates and fetches these refs.
       RADAR_ADDITIONAL_PRS: ${{ vars.RADAR_ADDITIONAL_PRS }}
       RADAR_TRUST_ADDITIONAL: ${{ vars.RADAR_TRUST_ADDITIONAL == 'true' && 'true' || 'false' }}
-      RADAR_REPORT: ${{ runner.temp }}/radar-report.json
     steps:
       - name: Validate the immutable tool revision
         shell: bash
@@ -66,10 +65,13 @@ jobs:
         env:
           RADAR_BIN: ${{ runner.temp }}/radar
           RADAR_ROOT: ${{ github.workspace }}/radar-target
+          RADAR_REPORT: ${{ runner.temp }}/radar-report.json
         shell: bash
         run: python3 radar-control/.github/radar/run.py
       - name: Render findings and gate verdict
         if: always()
+        env:
+          RADAR_REPORT: ${{ runner.temp }}/radar-report.json
         shell: bash
         run: |
           if [[ -f "$RADAR_REPORT" ]]; then

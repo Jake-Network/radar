@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "Hono",
+    "url": "https://github.com/honojs/hono",
+    "revision": "73ff6c0e82d66468e28ed439481220f56ab03882",
+    "local_checkout": "/tmp/radar-04-hono"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "test_files": [],
+      "recognizer": "vitest"
+    }
+  ],
+  "cases": [
+    {
+      "id": "hono-controlled-source",
+      "category": "typescript-shared-utility-nested-runtime-roots",
+      "ground_truth": "Upstream src/utils/url.test.ts asserts splitPath('/') and splitPath('/hello'). Controlled wrong separator is expected to violate those assertions; runtime unobserved. Exports map and multiple runtime roots complicate full-suite accounting.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "src/utils/url.ts",
+            "find": "const paths = path.split('/')",
+            "replace": "const paths = path.split('-')"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "hono-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "<div align=\"center\">",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

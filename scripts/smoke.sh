@@ -37,7 +37,8 @@ git -C "$workspace/frontend" commit -qam 'Frontend agent raises quantity'
 "$radar" help >/dev/null
 "$radar" gate --root "$repo" >/dev/null
 for branch in agent-backend agent-frontend; do
-    "$radar" gate --root "$repo" --run "$branch" >/dev/null
+    # Runtime reads of frontend.ts are invisible to static import selection.
+    "$radar" gate --root "$repo" --run --suite full "$branch" >/dev/null
 done
 set +e
 "$radar" gate --root "$repo" --run > "$workspace/combined.txt"

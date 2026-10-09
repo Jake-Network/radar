@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "repository": {"name": "Pallets Click", "url": "https://github.com/pallets/click", "revision": "2247b35ea1c47c727d7a06e51fa280e12a863ff6", "local_checkout": "/tmp/radar-click-evaluation"},
+  "full_suite": [{"cwd": ".", "argv": ["python3", "-m", "pytest", "-q", "tests"], "test_files": [], "recognizer": "pytest"}],
+  "cases": [
+    {"id": "click-intrange-clamp", "category": "python-library", "ground_truth": "Independent existing Click IntRange tests define correct open-bound clamping; runtime remains unavailable until isolated execution.", "defect_expected": true,
+      "agents": [[{"path": "src/click/types.py", "find": "return bound + dir", "replace": "return bound - dir"}]]},
+    {"id": "click-docs-only", "category": "no-defect", "ground_truth": "Documentation mutation; no test failure expected, not asserted without execution.", "defect_expected": false,
+      "agents": [[{"path": "README.md", "find": "Click", "replace": "Click (evaluation note)"}]]}
+  ]
+}

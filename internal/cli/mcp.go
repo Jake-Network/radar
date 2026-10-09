@@ -278,10 +278,37 @@ func compactVerification(raw string) string {
 		return raw
 	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next"} {
+	for _, key := range []string{"gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
+	}
+	if worktrees, ok := full["worktrees"].([]any); ok {
+		compact := []any{}
+		dirty := 0
+		for _, raw := range worktrees {
+			wt, _ := raw.(map[string]any)
+			entry := map[string]any{}
+			for _, k := range []string{"path", "branch", "commit", "detached", "commit_included", "uncommitted_included", "inspection_error"} {
+				if v, ok := wt[k]; ok {
+					entry[k] = v
+				}
+			}
+			count := 0
+			for _, k := range []string{"staged", "unstaged", "untracked"} {
+				paths, _ := wt[k].([]any)
+				entry[k+"_count"] = len(paths)
+				count += len(paths)
+			}
+			if count > 0 {
+				dirty++
+			}
+			if len(compact) < 8 {
+				compact = append(compact, entry)
+			}
+		}
+		out["worktrees"], out["worktree_count"], out["dirty_worktree_count"] = compact, len(worktrees), dirty
+		out["worktree_scope"] = "Committed candidate only; uncommitted contents excluded. Use CLI --json for all paths."
 	}
 	if branches, ok := full["branches"].([]any); ok {
 		compact := []any{}

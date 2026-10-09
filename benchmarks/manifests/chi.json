@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "go-chi/chi",
+    "url": "https://github.com/go-chi/chi",
+    "revision": "67be7d9cafdaeb4e04e887ff78d09e030ee43b00",
+    "local_checkout": "/tmp/radar-04-chi"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./..."
+      ],
+      "test_files": [],
+      "recognizer": "go"
+    }
+  ],
+  "cases": [
+    {
+      "id": "chi-controlled-source",
+      "category": "go-routing-semantics",
+      "ground_truth": "Upstream mux_test.go tests not-found routing and custom handlers. The mutation changes an empty mux response handler; expected defect is a hypothesis until runtime tests execute in isolation.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "mux.go",
+            "find": "mx.NotFoundHandler().ServeHTTP(w, r)",
+            "replace": "mx.MethodNotAllowedHandler().ServeHTTP(w, r)"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "chi-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "# <img alt=\"chi\" src=\"https://cdn.rawgit.com/go-chi/chi/master/_examples/chi.svg\" width=\"220\" />",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

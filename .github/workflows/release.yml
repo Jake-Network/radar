@@ -74,7 +74,7 @@ jobs:
       - name: Packaging regression
         run: python scripts/release-test.py
       - name: Unix installer regression
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         shell: bash
         run: bash scripts/install-release-test.sh
       - name: Windows installer regression

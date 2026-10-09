@@ -1,0 +1,5 @@
+self-hosted-runner:
+  # Native GitHub hosted labels added after actionlint v1.7.7's label inventory.
+  labels:
+    - ubuntu-22.04-arm
+    - macos-15-intel

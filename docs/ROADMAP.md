@@ -60,8 +60,11 @@ worktree discovery and default base, branch attribution, one `next` command,
 commands with the toolkit under `radar help --all`; value-first README with the
 full reference moved to USAGE.md; TypeScript tsconfig `paths`/`baseUrl`
 (relative `extends`) and workspace package resolution; native release builds
-for linux/darwin × amd64/arm64 with a portable smoke test, GitHub Release
-publication on tags and Homebrew tap updates.
+for linux/darwin × amd64/arm64 with a portable smoke test.
+**Superseded release behavior:** tag publication and Homebrew tap automation
+were replaced by manual protected publication and formula generation for review.
+Windows amd64 native packaging is configured; actual native execution remains
+unverified in the Linux development environment.
 
 Next: watch mode that re-runs the static gate while agents work, so conflicts
 surface before branches finish; failure attribution by re-running failing
@@ -79,3 +82,16 @@ resolution for project references.
 
 These are future vertical slices, not implementations in the current reliability,
 PR integration, Python/TypeScript discovery and native distribution milestones.
+
+## Reliability and adoption (0.4)
+
+Implemented locally: fail-closed default selected verification, interspersed gate
+flags, excluded dirty-worktree reporting, captured plan/policy stability,
+continuous PR-driver/workflow/packaging/installer checks, and reproducible
+candidate-versus-full-suite evaluation. See [validation](RADAR_0_4_VALIDATION.md)
+and [benchmark results and limits](BENCHMARKS_0_4.md).
+
+Native non-Linux execution and independent external runtime benchmarks remain
+unqualified until their configured environments execute successfully. Next
+language recommendation: Java before C/C++, with separate bounded vertical
+slices described in [LANGUAGE_EXPANSION](LANGUAGE_EXPANSION.md).

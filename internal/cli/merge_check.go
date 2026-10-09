@@ -43,10 +43,11 @@ func (a *app) mergeCheck(o options) int {
 			return a.fail(err)
 		}
 	}
-	policy, err := a.loadPolicy(o)
+	configuration, err := a.captureConfiguration(o)
 	if err != nil {
 		return a.fail(err)
 	}
+	policy := configuration.Policy
 	if o.output != "" {
 		clean, e := pathutil.RepoRelative(o.output)
 		if e != nil || !strings.HasPrefix(clean, ".radar/evidence/") || !o.verify {
@@ -67,14 +68,9 @@ func (a *app) mergeCheck(o options) int {
 		return a.fail(e)
 	}
 	digest := ""
-	var plan *planning.Plan
-	if o.plan != "" {
-		p, e := a.loadPlan(o.plan)
-		if e != nil {
-			return a.fail(e)
-		}
-		digest = planning.Digest(p)
-		plan = &p
+	plan := configuration.Plan
+	if plan != nil {
+		digest = planning.Digest(*plan)
 	}
 	refs := strings.Split(o.branches, ",")
 	for i := range refs {
@@ -84,7 +80,11 @@ func (a *app) mergeCheck(o options) int {
 	if e != nil {
 		return a.fail(e)
 	}
-	if len(r.Executions) > 0 && o.output != "" {
+	configuration.applyIntegration(&r)
+	if o.output != "" && configurationUnstable(configuration.Inputs) {
+		r.Limitations = append(r.Limitations, "Evidence output omitted: selected configuration changed during this invocation. Restore stable artifacts and rerun; actual execution observations remain in this report.")
+	}
+	if len(r.Executions) > 0 && o.output != "" && !configurationUnstable(configuration.Inputs) {
 		// Only explicit artifact output may write repository files; default
 		// preview and verification leave the user worktree entirely untouched.
 		path, e := project.SafePath(a.root, o.output)
@@ -99,9 +99,16 @@ func (a *app) mergeCheck(o options) int {
 			return a.fail(e)
 		}
 	}
-	a.report(r, func(w io.Writer) {
+	report := struct {
+		integration.Report
+		Configuration []ConfigurationInput `json:"configuration_inputs,omitempty"`
+	}{r, configuration.Inputs}
+	a.report(report, func(w io.Writer) {
 		fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
 		fmt.Fprintf(w, "Analysis: %s\nBase: %s\n", r.Status, r.Base)
+		if o.output != "" && configurationUnstable(configuration.Inputs) {
+			fmt.Fprintln(w, "Evidence output omitted: selected configuration changed. Restore stable artifacts and rerun.")
+		}
 		if r.CandidateTree != "" {
 			fmt.Fprintf(w, "Candidate tree: %s\n", r.CandidateTree)
 		}
@@ -118,7 +125,7 @@ func (a *app) mergeCheck(o options) int {
 		}
 		fmt.Fprintf(w, "Changed: %d files; affected import dependents: %d\n", len(r.Changed), len(r.Affected))
 	})
-	if policy != nil {
+	if policy != nil || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
 	}
 	if o.strict {

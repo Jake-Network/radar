@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "trusted integration fixture",
+    "fixture": "../fixtures/integration"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "test_checkout"
+      ],
+      "test_files": [
+        "test_checkout.py"
+      ],
+      "recognizer": "unittest"
+    }
+  ],
+  "cases": [
+    {
+      "id": "combined-budget",
+      "category": "runtime-file-read",
+      "ground_truth": "The existing budget assertion passes on each branch and fails when price and quantity both double.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "backend.py",
+            "find": "unit_price\": 1",
+            "replace": "unit_price\": 2"
+          }
+        ],
+        [
+          {
+            "path": "frontend.ts",
+            "find": "QUANTITY = 1",
+            "replace": "QUANTITY = 2"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "harmless-price",
+      "category": "no-defect",
+      "ground_truth": "Price doubles within the existing budget assertion.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "backend.py",
+            "find": "unit_price\": 1",
+            "replace": "unit_price\": 2"
+          }
+        ]
+      ]
+    }
+  ],
+  "baseline_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "test_checkout"
+      ],
+      "test_files": [
+        "test_checkout.py"
+      ],
+      "recognizer": "unittest"
+    }
+  ]
+}
