@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "tRPC TypeScript monorepo",
+    "url": "https://github.com/trpc/trpc",
+    "revision": "85841a1ae4679847fd29ad5454c1a584a2e206d2",
+    "local_checkout": "/tmp/radar-04-trpc"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "pnpm",
+        "test-ci"
+      ],
+      "test_files": [],
+      "recognizer": "vitest"
+    }
+  ],
+  "cases": [
+    {
+      "id": "trpc-controlled-source",
+      "category": "typescript-workspaces-barrels-package-aliases",
+      "ground_truth": "Existing packages/tests/server/errors.test.ts and upstream error snapshots define error codes. Controlled INTERNAL_SERVER_ERROR to BAD_REQUEST changes public semantics; expected defect only. Workspace aliases/barrels, generated code, type checks and nested packages complicate selection. Runtime unobserved.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "packages/server/src/unstable-core-do-not-import/error/TRPCError.ts",
+            "find": "code: 'INTERNAL_SERVER_ERROR'",
+            "replace": "code: 'BAD_REQUEST'"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "trpc-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "<a href=\"https://trpc.io/\" target=\"_blank\" rel=\"noopener\">",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

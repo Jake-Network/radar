@@ -49,6 +49,9 @@ type Result struct {
 	Explanation string  `json:"explanation"`
 }
 
+// MaxBytes bounds policy/plan input reads and parsing.
+const MaxBytes = 1 << 20
+
 func Load(path string) (Policy, error) {
 	var p Policy
 	f, e := os.Open(path)
@@ -56,19 +59,25 @@ func Load(path string) (Policy, error) {
 		return p, e
 	}
 	defer f.Close()
-	b, e := io.ReadAll(io.LimitReader(f, (1<<20)+1))
+	b, e := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if e != nil {
 		return p, e
 	}
-	if len(b) > 1<<20 {
+	return Parse(b)
+}
+
+// Parse decodes the exact captured policy bytes without reopening an input file.
+func Parse(b []byte) (Policy, error) {
+	var p Policy
+	if len(b) > MaxBytes {
 		return p, fmt.Errorf("policy exceeds 1 MiB")
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
-	if e = d.Decode(&p); e != nil {
+	if e := d.Decode(&p); e != nil {
 		return p, fmt.Errorf("invalid policy: %w", e)
 	}
-	if e = d.Decode(new(any)); e != io.EOF {
+	if e := d.Decode(new(any)); e != io.EOF {
 		return p, fmt.Errorf("policy must contain one JSON object")
 	}
 	return p, Validate(p)

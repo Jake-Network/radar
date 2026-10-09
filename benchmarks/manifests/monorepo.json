@@ -1,0 +1,450 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "trusted selection monorepo",
+    "fixture": "../../examples/selection-eval/fixture"
+  },
+  "full_suite": [
+    {
+      "cwd": "services/api",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_inventory.py"
+      ],
+      "test_files": [
+        "services/api/tests/test_inventory.py"
+      ],
+      "recognizer": "unittest"
+    },
+    {
+      "cwd": "services/api",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_orders.py"
+      ],
+      "test_files": [
+        "services/api/tests/test_orders.py"
+      ],
+      "recognizer": "unittest"
+    },
+    {
+      "cwd": "services/api",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_pricing.py"
+      ],
+      "test_files": [
+        "services/api/tests/test_pricing.py"
+      ],
+      "recognizer": "unittest"
+    },
+    {
+      "cwd": "services/api",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_serializers.py"
+      ],
+      "test_files": [
+        "services/api/tests/test_serializers.py"
+      ],
+      "recognizer": "unittest"
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "integration",
+        "-p",
+        "test_order_contract.py"
+      ],
+      "test_files": [
+        "integration/test_order_contract.py"
+      ],
+      "recognizer": "unittest"
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test",
+        "test/cart.test.js"
+      ],
+      "test_files": [
+        "web/test/cart.test.js"
+      ],
+      "recognizer": "node"
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test",
+        "test/contract.integration.test.js"
+      ],
+      "test_files": [
+        "web/test/contract.integration.test.js"
+      ],
+      "recognizer": "node"
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test",
+        "test/format.test.js"
+      ],
+      "test_files": [
+        "web/test/format.test.js"
+      ],
+      "recognizer": "node"
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test",
+        "test/summary.test.js"
+      ],
+      "test_files": [
+        "web/test/summary.test.js"
+      ],
+      "recognizer": "node"
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test",
+        "test/theme.test.js"
+      ],
+      "test_files": [
+        "web/test/theme.test.js"
+      ],
+      "recognizer": "node"
+    },
+    {
+      "cwd": "gosvc",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./clock"
+      ],
+      "test_files": [
+        "gosvc/clock/clock_test.go"
+      ],
+      "recognizer": "go"
+    },
+    {
+      "cwd": "gosvc",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./health"
+      ],
+      "test_files": [
+        "gosvc/health/health_test.go"
+      ],
+      "recognizer": "go"
+    },
+    {
+      "cwd": "gosvc",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./ratelimit"
+      ],
+      "test_files": [
+        "gosvc/ratelimit/limiter_test.go"
+      ],
+      "recognizer": "go"
+    }
+  ],
+  "cases": [
+    {
+      "id": "py-discount-rounding",
+      "category": "python-backend",
+      "ground_truth": "Discount stops rounding half up. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "services/api/app/pricing.py",
+            "find": "(cents * percent + 50) // 100",
+            "replace": "(cents * percent) // 100"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "py-line-total",
+      "category": "python-backend",
+      "ground_truth": "Line total adds instead of multiplying (transitively used by orders). Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "services/api/app/pricing.py",
+            "find": "return unit_cents * quantity",
+            "replace": "return unit_cents + quantity"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "py-inventory-leak",
+      "category": "python-backend",
+      "ground_truth": "Reservation increases stock. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "services/api/app/inventory.py",
+            "find": "available - quantity",
+            "replace": "available + quantity"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "py-serializer-order",
+      "category": "python-backend",
+      "ground_truth": "Serializer output is no longer key-sorted. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "services/api/app/serializers.py",
+            "find": "sort_keys=True",
+            "replace": "sort_keys=False"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "api-currency-rename",
+      "category": "shared-api-schema",
+      "ground_truth": "Producer renames currency to currency_code in code and schema; storefront consumer not updated. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "services/api/app/orders.py",
+            "find": "\"currency\": currency",
+            "replace": "\"currency_code\": currency"
+          },
+          {
+            "path": "contracts/order-summary.schema.json",
+            "find": "\"currency\"",
+            "replace": "\"currency_code\"",
+            "all": true
+          }
+        ]
+      ]
+    },
+    {
+      "id": "schema-items-type",
+      "category": "shared-api-schema",
+      "ground_truth": "Schema-only change: items becomes a string. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "contracts/order-summary.schema.json",
+            "find": "\"items\": {\"type\": \"integer\"}",
+            "replace": "\"items\": {\"type\": \"string\"}"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "js-format-padding",
+      "category": "typescript-frontend",
+      "ground_truth": "Money formatting pads cents to one digit. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "web/src/format.js",
+            "find": "padStart(2, \"0\")",
+            "replace": "padStart(1, \"0\")"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "js-summary-field",
+      "category": "cross-language",
+      "ground_truth": "Consumer reads amount instead of the contract's total. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "web/src/summary.js",
+            "find": "summary.total",
+            "replace": "summary.amount"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "js-theme-contrast",
+      "category": "typescript-frontend",
+      "ground_truth": "Contrast colors swapped in an isolated module. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "web/src/theme.js",
+            "find": "? \"#111827\" : \"#ffffff\"",
+            "replace": "? \"#ffffff\" : \"#111827\""
+          }
+        ]
+      ]
+    },
+    {
+      "id": "go-clock-advance",
+      "category": "go-package",
+      "ground_truth": "Manual clock advances half the duration (used by ratelimit). Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "gosvc/clock/clock.go",
+            "find": "m.now.Add(d)",
+            "replace": "m.now.Add(d / 2)"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "go-health-threshold",
+      "category": "go-package",
+      "ground_truth": "Health reports down with one dependency up. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "gosvc/health/health.go",
+            "find": "case dependenciesUp == 0:",
+            "replace": "case dependenciesUp <= 1:"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "docs-only",
+      "category": "unrelated",
+      "ground_truth": "Documentation-only change. Independent existing per-file fixture tests are the oracle; fixture was historically tuned, not held out.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "Go rate limiter.",
+            "replace": "Go rate limiter. See docs for deployment."
+          }
+        ]
+      ]
+    }
+  ],
+  "baseline_suite": [
+    {
+      "cwd": "services/api",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "recognizer": "unittest",
+      "test_files": [
+        "services/api/tests/test_inventory.py",
+        "services/api/tests/test_orders.py",
+        "services/api/tests/test_pricing.py",
+        "services/api/tests/test_serializers.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "integration"
+      ],
+      "recognizer": "unittest",
+      "test_files": [
+        "integration/test_order_contract.py"
+      ]
+    },
+    {
+      "cwd": "web",
+      "argv": [
+        "node",
+        "--test"
+      ],
+      "recognizer": "node",
+      "test_files": [
+        "web/test/cart.test.js",
+        "web/test/contract.integration.test.js",
+        "web/test/format.test.js",
+        "web/test/summary.test.js",
+        "web/test/theme.test.js"
+      ]
+    },
+    {
+      "cwd": "gosvc",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./..."
+      ],
+      "recognizer": "go",
+      "test_files": [
+        "gosvc/clock/clock_test.go",
+        "gosvc/health/health_test.go",
+        "gosvc/ratelimit/limiter_test.go"
+      ]
+    }
+  ]
+}

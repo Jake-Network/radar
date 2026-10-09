@@ -1,6 +1,6 @@
 # Gate verdict and analysis coverage
 
-`check` and `merge-check` now report three separate values:
+`gate`, `check` and `merge-check` report three separate values:
 
 - `gate.verdict`: `pass`, `fail`, `blocked` (required evidence absent/unestablished), or `error` (execution/environment error, including timeout).
 - `coverage`: analyzer scope, exclusions, unavailable capabilities and uncertainty.
@@ -89,6 +89,52 @@ The schema change is additive: `retired`, `obligation_changes` and
 unchanged.
 
 ## Mixed-source and omitted-test observations
+
+## Gate defaults and terminal results (0.4)
+
+`radar gate --run` defaults to balanced selection and requires `textual_merge`,
+`no_breaking_contracts`, `integration_execution` **and `test_selection`**.
+A passing command cannot compensate for uncovered changes, incomplete inventory,
+or omitted required verification. This deliberately blocks some runtime-read or
+dynamic-import changes whose tests cannot be related statically. Inspect the
+reported paths; a reviewed `--suite full` runs all supported inventoried suites
+and checks inventory omissions, but does not establish behavioral coverage or
+discover every test in the repository.
+
+Explicit policies keep their named requirements. A limited policy may pass with
+uncovered changes; terminal output identifies that limited result and JSON keeps
+all check/coverage gaps. Policies do not grant execution permission.
+
+| Verdict | Exit | Meaning |
+| --- | --- | --- |
+| `pass` without `--run` | 0 | Selected static requirements passed; combined tests have not run |
+| `pass` with `--run` | 0 | Named policy requirements passed on committed candidate; bounded evidence only |
+| `blocked` | 1 | Required evidence missing, incomplete, unsupported or runner unavailable before execution |
+| `fail` | 1 | Required known violation/test failure; or `on_missing: fail` maps missing evidence to failure |
+| `error` | 2 | Invocation, analysis or observed execution error/timeout |
+
+Individual checks preserve simultaneous failures and missing evidence. Discovered
+test files, selected commands/files, executed commands and recognized harness
+test counts are distinct. Import relationships are inferred relevance, never
+behavioral coverage. A runner absent before execution is a blocked omission;
+a runner that starts and encounters an execution error is an error observation.
+
+Gate combines **committed revisions only**. `worktrees` reports each registered
+worktree's staged, unstaged and nonignored untracked paths, detached state and
+whether its tip equals an input/base commit. All uncommitted content is excluded;
+commit intended edits and rerun. Detached worktree tips are not auto-selected;
+name the SHA explicitly. Status inspection is a read-only boundary observation,
+not a filesystem lock, and does not prove the absence of transient writes.
+Bare entries are skipped. Status inspections run with at most four concurrent
+Git processes and retain listing order. Global ignore files, including
+conditional configuration includes, are read as data without enabling global
+fsmonitor or hooks. If worktree listing is unavailable (including Git before
+2.36 without porcelain `-z`), `worktree_inspection_error` and a terminal warning
+report the missing observation; the committed candidate verdict is preserved.
+
+Gate options can occur before or after branch arguments. `--` terminates options.
+An exact branch name containing commas takes precedence over the historical
+comma-separated reference shorthand. Other command parsers are unchanged.
 
 `check` pins named committed revisions before analysis. WORKTREE boundary
 fingerprints include source, runner configuration and accepted declarations,

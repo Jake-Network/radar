@@ -84,7 +84,9 @@ func TestGateRunFailsCombinedTreeAndPointsAtBranch(t *testing.T) {
 	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	agent("agent-frontend", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
 	for _, branch := range []string{"agent-backend", "agent-frontend"} {
-		if r := invoke(t, root, 0, "gate", "--run", branch); r["gate"].(map[string]any)["verdict"] != "pass" {
+		// The test reads frontend.ts at runtime, which import analysis cannot
+		// relate. A reviewed full inventory run is required for that branch.
+		if r := invoke(t, root, 0, "gate", "--run", "--suite", "full", branch); r["gate"].(map[string]any)["verdict"] != "pass" {
 			t.Fatal("each branch passes alone", branch, r["gate"])
 		}
 	}

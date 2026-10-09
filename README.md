@@ -5,7 +5,7 @@
 You run coding agents in parallel, each in its own worktree (cmux, Orca, Claude
 Code, Codex, or plain `git worktree`). Each branch passes its own tests. Merged
 together, they break. Radar combines the branches in private Git state, checks
-the combination, runs the tests that cover it, and points at the branch to fix.
+the combination, runs selected tests when authorized, and provides repair leads.
 
 It is a local CLI. It needs no API key, sends no telemetry, and never touches
 your branches.
@@ -84,15 +84,37 @@ radar gate          # combine every worktree branch; conflicts, contract breaks,
 radar gate --run    # also run those tests on the combined tree
 ```
 
-That is the whole everyday workflow. You don't need setup or configuration
+The default execution gate blocks when changed files lack an established test
+relationship, inventory is incomplete, or required execution evidence is missing.
+It lists discovered/selected tests, actual commands and recognized results.
+Static relationships do not prove behavioral coverage. Review `--suite full`
+for changes involving runtime file reads or dynamic imports; it runs supported
+inventoried suites, with remaining inventory gaps still blocking.
+
+You don't need setup or configuration
 files. `radar gate` picks the base (`origin/HEAD`'s branch, `main`, `master` or
 `trunk`) and every worktree branch that has commits beyond it. To choose
 branches yourself, name them: `radar gate feature/api feature/web --base
 develop`.
 
+Only committed changes enter the candidate. Dirty worktrees are reported with
+excluded staged, unstaged and nonignored untracked paths. Commit intended changes
+and rerun. Detached worktree commits must be named explicitly.
+
+Try the core failure scenario in an isolated temporary repository:
+
+```sh
+# From a source checkout, with Go, a C compiler, Git and Python 3:
+go build -o /tmp/radar ./cmd/radar
+bash scripts/smoke.sh /tmp/radar
+```
+
+The demo executes only the checked-in fixture: each full-inventory branch run
+passes and the combined test fails. Nothing is merged into your checkout.
+
 | Exit | Meaning |
 | --- | --- |
-| `0` | Every required check passed, or (without `--run`) nothing supported failed |
+| `0` | Named requirements passed; static mode has no runtime proof |
 | `1` | A check failed (conflict, breaking contract, failing tests) or required evidence is missing |
 | `2` | Radar could not run (bad ref, unreadable configuration, environment error) |
 
@@ -125,10 +147,14 @@ executes repository code; a person runs it.
 **CI.** Name the branches and choose which evidence is required:
 
 ```sh
-mkdir -p .radar && echo '{"version":1,"require":["textual_merge","no_breaking_contracts","integration_execution"]}' \
+mkdir -p .radar && echo '{"version":1,"require":["textual_merge","no_breaking_contracts","integration_execution","test_selection"]}' \
   > .radar/integration-policy.json
 radar gate --run --policy .radar/integration-policy.json feature/api feature/web
 ```
+
+This matches the default execution requirements. A deliberately limited custom
+policy can omit requirements; its pass applies only to the listed checks and
+remaining coverage gaps stay visible.
 
 With a policy, required evidence that is missing makes the gate fail with
 `NOT VERIFIED` (blocked), rather than letting it pass.
@@ -143,7 +169,8 @@ evidence. Additional PR heads participate only when explicitly selected.
 
 Radar reports evidence. It doesn't certify correctness.
 
-- **PASS:** every required check passed. Without `--run`, the gate says
+- **PASS:** every named requirement passed within the reported scope. It does
+  not mean comprehensive verification. Without `--run`, the gate says
   `PASS (static)`, because no tests ran.
 - **Import-based analysis:** dependency analysis follows imports. It does not
   resolve compiler types, and it does not see runtime reads such as files,
@@ -175,7 +202,8 @@ bash scripts/smoke.sh "$(go build -o /tmp/radar ./cmd/radar && echo /tmp/radar)"
 make demo-all
 ```
 
-Releases are built natively on Linux and macOS (amd64 and arm64) and published
-as reviewed release assets; publication is a separate manual step. See [RELEASING](docs/RELEASING.md).
+Native release jobs target Linux and macOS (amd64 and arm64) and Windows amd64.
+Tags prepare assets; publishing requires a separate manual request. See
+[RELEASING](docs/RELEASING.md) and [0.4 validation](docs/RADAR_0_4_VALIDATION.md).
 Also see [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md)
 and the [roadmap](docs/ROADMAP.md). MIT licensed.

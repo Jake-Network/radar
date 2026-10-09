@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "tokio-rs/axum",
+    "url": "https://github.com/tokio-rs/axum",
+    "revision": "fe56a310efbb30b3b178059c48a31d1000ed5f62",
+    "local_checkout": "/tmp/radar-04-axum"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "cargo",
+        "test",
+        "--workspace"
+      ],
+      "test_files": [],
+      "recognizer": "cargo"
+    }
+  ],
+  "cases": [
+    {
+      "id": "axum-controlled-source",
+      "category": "rust-workspace-route-validation",
+      "ground_truth": "Upstream axum/src/routing/tests/mod.rs routes_must_start_with_slash defines route validation; inverted guard is expected to reject valid routes. Cargo workspace/internal tests are difficult inventory cases. Runtime unobserved.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "axum/src/routing/path_router.rs",
+            "find": "else if !path.starts_with('/')",
+            "replace": "else if path.starts_with('/')"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "axum-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "axum/README.md",
+            "find": "# axum",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

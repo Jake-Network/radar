@@ -3,7 +3,9 @@
 Radar embeds Tree-sitter via CGO. A working GOOS/GOARCH cross-build is not native
 qualification. `scripts/release.py` checks the actual host, target and CGO setting,
 builds with trimpath, collects contributing dependency licenses, verifies the
-reported version and runs read-only parser smoke before creating an archive.
+reported version and checks actual parsed symbols in Python, TypeScript, Go and
+Rust before creating an archive. Installed artifact smoke also checks index
+counts, agent setup dry-run and gate options following branch arguments.
 The existing Bash `release.sh [OUT] [VERSION]` entry point remains compatible.
 Python is a maintainer packaging dependency; installed binaries need no Go or C
 compiler. Source analysis needs Git, and optional test execution needs its runners.
@@ -14,9 +16,9 @@ compiler. Source analysis needs Git, and optional test execution needs its runne
 |---|---|---|---|
 | Linux amd64 | Ubuntu 22.04, system C compiler | `radar-linux_amd64.tar.gz` | Local Linux native package/installed smoke/installer pass; hosted unverified |
 | macOS arm64 | macOS 15 Apple Silicon, Clang | `radar-darwin_arm64.tar.gz` | Configured, native runtime unverified in this workspace |
-| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Native PowerShell installer passed 27 assertions; actual Go binary unverified |
-| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | Optional, unverified here |
-| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | Optional, unverified here |
+| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Configured; native executable and installer execution unverified in the 0.4 Linux workspace |
+| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | Required hosted matrix target, native execution unverified here |
+| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | Required hosted matrix target, native execution unverified here |
 
 No unvalidated placeholder binaries are created. Every native build's vet, full
 suite, race suite and installed artifact smoke are required; macOS failures are
@@ -30,6 +32,7 @@ On the matching native host with Go, a C compiler, Git and Python:
 ```sh
 CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets 0.3.0-rc.1
 python3 scripts/release-test.py
+python3 scripts/workflow-test.py
 python3 scripts/validate-release.py /tmp/radar-assets 0.3.0-rc.1
 bash scripts/install-release-test.sh
 ```
@@ -57,6 +60,18 @@ and build-directory leaks. SHA-256 files cover the exact archive bytes.
 `VERSION.txt` and `radar version` match the selected version without leading `v`.
 
 ## Controlled hosted workflow
+
+Every push and pull request runs Go formatting, vet, unit and race checks, all
+five demos and integration smoke, PR driver regressions, benchmark fixture
+regressions, archive metadata tests, offline Unix installer regressions, Linux
+native packaging and installed artifact validation. A separate Windows job
+executes native PowerShell installer regressions. Workflow syntax and expressions
+are checked by pinned actionlint v1.7.7; targeted regression checks enforce SHA
+action pins, read-only default tokens, no persisted checkout credentials and
+manual publication guards. GitHub branch protection must require these CI jobs;
+the repository files alone do not configure branch protection or environment
+reviewers. Native Windows packaging still runs in the release qualification
+matrix, while the ordinary CI Windows job tests the installer using local fixtures.
 
 `.github/workflows/release.yml` builds each artifact on its native runner, then
 collects only after every host's required tests and smoke pass. Tags **prepare**
@@ -101,6 +116,16 @@ signing/notarization are not configured. Windows arm64 is unsupported for binary
 installation. Windows process timeout currently kills the direct process; child
 process-tree termination is not qualified, so executable verification on Windows
 has that explicit limitation. Read-only embedded parsing is the platform smoke.
+
+The 0.4 local qualification on 2026-10-09 used Linux x86_64, Go 1.26.8,
+GCC 13.3.0 and glibc 2.39. Native `0.4.0-dev` packaging and unpacked checksum,
+version metadata, notice preservation, actual parser symbols and CLI smoke
+passed. Archive metadata regressions cover all five artifact formats; this is
+format validation, not macOS/Windows/arm64 executable evidence. Unix installer
+regressions are now host-aware and required on Linux and macOS release runners;
+only Linux execution was available locally. PowerShell was unavailable, so the
+Windows installer and executable remain unverified for this milestone. No release
+was published and no tag was created.
 
 If CGO build fails, verify `go env CGO_ENABLED` and native compiler availability;
 setting target variables does not install a compiler. If verification blocks,

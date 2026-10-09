@@ -49,6 +49,14 @@ private reporting channel is not configured yet.
 
 Read-only Git subprocesses disable repository-configured filesystem monitor hooks; Radar never enables Git pagers and runs repository test commands only through the explicit opt-in workflow. Checks use bounded local reads and do not resolve remote schema references.
 
+Gate inspects registered worktree status without optional Git locks. It never
+stashes, commits or cleans dirty files; uncommitted changes are excluded from
+candidates and reported explicitly. Selected plan/policy artifacts are captured
+as bounded bytes with digests and checked again after analysis. Changed artifacts
+invalidate passing required evidence even under a limited policy. Boundary
+observations cannot detect transient writes reverted between observations and
+do not authenticate local configuration owners.
+
 ## PR execution and native installation
 
 The PR example uses `pull_request`, read-only contents permissions, pinned tool

@@ -20,6 +20,7 @@ import (
 
 type coverageCheck = gate.Check
 type checkReport struct {
+	Configuration        []ConfigurationInput     `json:"configuration_inputs,omitempty"`
 	VerificationProposal *testselection.Proposal  `json:"verification_proposal,omitempty"`
 	Selection            *testselection.Selection `json:"selection,omitempty"`
 	Gate                 gate.Result              `json:"gate"`
@@ -61,10 +62,11 @@ func (a *app) check(o options) int {
 // The callback keeps the observation boundary testable without timing-dependent
 // concurrent writes. It is always the read-only recommender in the public CLI.
 func (a *app) checkWithRecommendation(o options, recommend func(context.Context, string, string, model.Snapshot, []string, *planning.Plan) (testselection.Proposal, error)) int {
-	policy, err := a.loadPolicy(o)
+	configuration, err := a.captureConfiguration(o)
 	if err != nil {
 		return a.fail(err)
 	}
+	policy := configuration.Policy
 	if o.base == "" {
 		return a.fail(errors.New("--base is required"))
 	}
@@ -90,14 +92,7 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 	if err != nil {
 		return a.fail(err)
 	}
-	var selectedPlan *planning.Plan
-	if o.plan != "" {
-		p, e := a.loadPlan(o.plan)
-		if e != nil {
-			return a.fail(e)
-		}
-		selectedPlan = &p
-	}
+	selectedPlan := configuration.Plan
 	declared, err := contracts.Impact(a.ctx, a.root, impact.Base, o.head, verification.ApprovedRetirements(selectedPlan)...)
 	if err != nil {
 		return a.fail(err)
@@ -242,6 +237,12 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 		selected = *policy
 	}
 	r.Gate = gate.Evaluate(selected, checks)
+	configurationCheck := configuration.finish()
+	r.Checks, r.Gate = applyConfiguration(configurationCheck, checks, r.Gate)
+	r.Configuration = configuration.Inputs
+	if configurationCheck.Status == model.StatusIncomplete && r.Status != model.StatusFailed && r.Status != model.StatusError {
+		r.Status = model.StatusIncomplete
+	}
 	r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
 	ids := []string{r.Base, r.Head}
 	for _, f := range r.Findings {
@@ -268,7 +269,7 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 		}
 		fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
 	})
-	if policy != nil {
+	if policy != nil || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
 	}
 	if o.strict {
