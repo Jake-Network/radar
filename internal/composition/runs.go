@@ -31,6 +31,8 @@ type Selection struct {
 	Bases   []string `json:"bases"`
 	With    []string `json:"with"`
 	Only    []string `json:"only"`
+	// All lists every repo ID in scope before --only.
+	All []string `json:"all"`
 }
 
 // RecordRepo is the pinned state of one repository in a run.

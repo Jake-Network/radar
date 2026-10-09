@@ -6,9 +6,11 @@ import (
 	"strings"
 )
 
-// gateFlagArgs moves recognized flags before branches for flag.FlagSet.
-// Values are kept verbatim, never evaluated by a shell. -- ends flag parsing.
-func gateFlagArgs(fs *flag.FlagSet, args []string) ([]string, error) {
+// interspersedFlagArgs moves recognized flags before positional arguments
+// for flag.FlagSet, so `radar gate BRANCH --run` and `radar workspace add PATH
+// --id ID` parse. Values are kept verbatim, never evaluated by a shell. --
+// ends flag parsing.
+func interspersedFlagArgs(name string, fs *flag.FlagSet, args []string) ([]string, error) {
 	var flags, refs []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -27,7 +29,7 @@ func gateFlagArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 				flags = append(flags, arg)
 				continue
 			}
-			return nil, fmt.Errorf("unknown gate option %q; use -- before literal positional references", arg)
+			return nil, fmt.Errorf("unknown %s option %q; use -- before literal positional references", name, arg)
 		}
 		flags = append(flags, arg)
 		boolean, ok := f.Value.(interface{ IsBoolFlag() bool })

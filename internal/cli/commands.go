@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/project"
@@ -16,15 +18,32 @@ type options struct {
 	timeout                                                                                                                time.Duration
 	maxCommands                                                                                                            int
 	args                                                                                                                   []string
+	// Workspace gate and workspace command options.
+	bases, with, only []string
+	again             bool
+	replay, id        string
 }
+
+// listFlag collects a repeatable flag's values in order.
+type listFlag struct{ values *[]string }
+
+func (f listFlag) String() string {
+	if f.values == nil {
+		return ""
+	}
+	return strings.Join(*f.values, ",")
+}
+func (f listFlag) Set(v string) error { *f.values = append(*f.values, v); return nil }
 
 // command describes one subcommand: only its own flags are accepted.
 type command struct {
 	name, usage, summary string
 	state                bool // requires initialized .radar state
 	advanced             bool // listed only by `radar help --all`
-	flags                func(*flag.FlagSet, *options)
-	run                  func(*app, options) int
+	// advancedFlags are accepted but listed only by `radar help --all`.
+	advancedFlags []string
+	flags         func(*flag.FlagSet, *options)
+	run           func(*app, options) int
 }
 
 func planFlag(fs *flag.FlagSet, o *options) {
@@ -42,6 +61,7 @@ var commands []command
 func init() {
 	commands = []command{
 		gateCommand(),
+		workspaceCommand(),
 		checkCommand(),
 		discoveryCommand(),
 		setupCommand(),
@@ -134,7 +154,7 @@ func init() {
 		{name: "explain", usage: "radar explain FINDING_ID", summary: "Show a persisted finding with its evidence.", state: true, run: (*app).explain},
 	}
 	// The plan/evidence/graph toolkit stays out of the default help.
-	core := map[string]bool{"gate": true, "check": true, "discover": true, "setup": true, "doctor": true, "mcp": true}
+	core := map[string]bool{"gate": true, "workspace": true, "check": true, "discover": true, "setup": true, "doctor": true, "mcp": true}
 	for i := range commands {
 		commands[i].advanced = !core[commands[i].name]
 	}
@@ -157,8 +177,22 @@ func (c command) usageText(w io.Writer) {
 	fs := flag.NewFlagSet(c.name, flag.ContinueOnError)
 	c.flags(fs, &options{})
 	fmt.Fprintln(w, "\nFlags:")
-	fs.SetOutput(w)
-	fs.PrintDefaults()
+	visible := flag.NewFlagSet(c.name, flag.ContinueOnError)
+	fs.VisitAll(func(f *flag.Flag) {
+		if !slices.Contains(c.advancedFlags, f.Name) {
+			visible.Var(f.Value, f.Name, f.Usage)
+		}
+	})
+	visible.SetOutput(w)
+	visible.PrintDefaults()
+}
+
+// advancedUsage lists flags and subcommands kept out of the everyday help.
+var advancedUsage = [][2]string{
+	{"radar gate --base REPO:REF", "base for one workspace repository (repeatable)"},
+	{"radar gate --only REPO", "check only these workspace repositories (repeatable)"},
+	{"radar gate --replay RUN", "rebuild a recorded workspace run's exact commits (run ID or last)"},
+	{"radar workspace remove REPO", "unregister a repository from this repository's workspace"},
 }
 
 func printHelp(w io.Writer, all bool) {
@@ -182,6 +216,10 @@ func printHelp(w io.Writer, all bool) {
 	if all {
 		fmt.Fprintln(w, "\nAdvanced (merge-check flags, plans, evidence, contracts, graph):")
 		list(true)
+		fmt.Fprintln(w, "\nAdvanced workspace flags and subcommands:")
+		for _, u := range advancedUsage {
+			fmt.Fprintf(w, "  %-28s  %s\n", u[0], u[1])
+		}
 	} else {
 		n := 0
 		for _, c := range commands {
@@ -193,6 +231,7 @@ func printHelp(w io.Writer, all bool) {
 	}
 	fmt.Fprintln(w, "\nStart here:  radar gate            # combine every worktree branch, check, suggest tests")
 	fmt.Fprintln(w, "             radar gate --run      # ...and run those tests on the combined tree")
+	fmt.Fprintln(w, "             radar workspace add ../other-repo   # check several repositories together")
 	fmt.Fprintln(w, "\nRun `radar help COMMAND` for flags. Exit codes: 0 ok, 1 a check failed or required evidence is missing, 2 error.")
 	fmt.Fprintln(w, "No telemetry, no LLM calls, never modifies your branches. Repository code runs only with --run / --allow-execution.")
 }

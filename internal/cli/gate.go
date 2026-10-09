@@ -53,10 +53,15 @@ type gateReport struct {
 }
 
 func gateCommand() command {
-	return command{name: "gate", usage: "radar gate [BRANCH ...] [--base REF] [--run [--suite targeted|balanced|full] [--timeout 10m]] [--policy PATH] [--plan PATH]",
-		summary: "Combine branches (default: every worktree branch) and tell whether they integrate; --run also tests the combined tree.",
+	return command{name: "gate", usage: "radar gate [[REPO:]BRANCH ...] [--base REF] [--with PATH] [--again] [--run [--suite targeted|balanced|full] [--timeout 10m]] [--policy PATH] [--plan PATH]",
+		summary:       "Combine branches (default: every worktree branch) and tell whether they integrate; --run also tests the combined tree.",
+		advancedFlags: []string{"only", "replay"},
 		flags: func(fs *flag.FlagSet, o *options) {
-			fs.StringVar(&o.base, "base", "", "integration base (default: origin/HEAD's branch, main, master or trunk)")
+			fs.Var(baseFlag{o}, "base", "integration `REF` (default: origin/HEAD's branch, main, master or trunk)")
+			fs.Var(listFlag{&o.with}, "with", "also check the repository at `PATH` in this run (repeatable; relative to the repository root)")
+			fs.BoolVar(&o.again, "again", false, "repeat the previous workspace run's selection on the latest commits")
+			fs.Var(listFlag{&o.only}, "only", "check only workspace repository `REPO` in this run (repeatable)")
+			fs.StringVar(&o.replay, "replay", "", "rebuild the exact commits of workspace `RUN` (run ID or last)")
 			fs.BoolVar(&o.verify, "run", false, "execute the selected tests on the combined tree with your host permissions (not an OS sandbox)")
 			fs.StringVar(&o.suite, "suite", "", "test selection with --run: targeted, balanced (default) or full")
 			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands --run executes")
@@ -72,6 +77,15 @@ func (a *app) gate(o options) int {
 	}
 	if e := a.repository(); e != nil {
 		return a.fail(e)
+	}
+	// A repository in a workspace, or a run with --with, --again or --replay,
+	// checks several repositories. Anything else is the single-repository gate.
+	invocation, err := a.workspaceInvocation(o)
+	if err != nil {
+		return a.fail(err)
+	}
+	if invocation != nil {
+		return a.workspaceGate(o, invocation)
 	}
 	configuration, err := a.captureConfiguration(o)
 	if err != nil {
@@ -153,6 +167,22 @@ func (a *app) gate(o options) int {
 		return 2
 	}
 	return 0
+}
+
+// baseFlag records every --base value for workspace runs; the
+// single-repository gate keeps using the last one.
+type baseFlag struct{ o *options }
+
+func (f baseFlag) String() string {
+	if f.o == nil {
+		return ""
+	}
+	return f.o.base
+}
+func (f baseFlag) Set(v string) error {
+	f.o.bases = append(f.o.bases, v)
+	f.o.base = v
+	return nil
 }
 
 // gateBranches returns the explicit branches, or every worktree branch with
