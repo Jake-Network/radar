@@ -141,7 +141,8 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 	for _, loc := range with {
 		absWith = append(absWith, loc.Root)
 	}
-	inv.selection = composition.Selection{Mode: mode, Targets: scope.Qualify(targets), Bases: scope.QualifyBases(o.bases), With: absWith, Only: scope.Only, All: scope.All}
+	only := append([]string{}, scope.Only...)
+	inv.selection = composition.Selection{Mode: mode, Targets: scope.Qualify(targets), Bases: scope.QualifyBases(o.bases), With: absWith, Only: only, All: scope.All}
 	return inv, nil
 }
 
