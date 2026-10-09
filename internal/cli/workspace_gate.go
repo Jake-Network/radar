@@ -264,7 +264,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 	}
 	repos, err := composition.Collect(a.ctx, composition.Request{Scope: inv.scope, Named: inv.named, Bases: inv.bases, Replay: inv.replay})
 	if err != nil {
-		return a.fail(wsError("radar gate --again", "%v", err))
+		return a.fail(wsError("rerun the same radar gate command once agents stop committing", "%v", err))
 	}
 	if inv.replay == nil && inv.named == nil {
 		branches, failures := 0, 0

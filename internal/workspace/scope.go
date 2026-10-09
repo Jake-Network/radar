@@ -129,7 +129,7 @@ func ResolveScope(in ScopeInput) (*Scope, error) {
 			s.Repos = append(s.Repos, sr)
 		}
 	} else {
-		s.Source = SourceWith
+		s.Source, s.OneOff = SourceWith, true
 		s.Key = AdhocKey(in.Current)
 		s.Current = in.Current.DefaultRepoID()
 		s.Repos = append(s.Repos, ScopeRepo{ID: s.Current, Path: in.Current.Root, CommonDir: in.Current.CommonDir, Origin: SourceWith})
