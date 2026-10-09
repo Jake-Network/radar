@@ -314,3 +314,20 @@ func TestConstraintProofBinding(t *testing.T) {
 		t.Fatal("constraint coverage not bound", e)
 	}
 }
+
+func TestMissingModuleIsEnvironmentErrorNotFailure(t *testing.T) {
+	pytest := []string{"python3", "-m", "pytest", "./tests/test_a.py"}
+	collection := "E   ModuleNotFoundError: No module named 'click'\n=========== 1 error in 0.10s ===========\n"
+	if !environmentFailure(pytest, []byte(collection)) {
+		t.Fatal("missing dependency reported as a test failure")
+	}
+	// An import error that removed a repository symbol is a real regression.
+	regression := "E   ImportError: cannot import name 'parse' from 'app'\n=========== 1 error in 0.10s ===========\n"
+	if environmentFailure(pytest, []byte(regression)) {
+		t.Fatal("regression downgraded to environment error")
+	}
+	mixed := "E   ModuleNotFoundError: No module named 'yaml'\n====== 1 failed, 3 passed, 1 error in 0.20s ======\n"
+	if environmentFailure(pytest, []byte(mixed)) {
+		t.Fatal("observed failures hidden")
+	}
+}

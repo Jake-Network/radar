@@ -1,0 +1,1 @@
+{"version":1,"bindings":[{"id":"order-summary","schema":"contracts/order-summary.schema.json","pointer":"","producer":"services/api/app/orders.py","consumer":"web/src/summary.js","fields":["total","currency"],"direction":"response"}]}

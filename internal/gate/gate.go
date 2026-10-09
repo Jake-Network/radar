@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/Jake-Network/radar/internal/model"
 )
@@ -154,16 +155,23 @@ func Exit(r Result) int {
 	}
 }
 
-// NoBreaking reports only supported error-severity contract findings. Absence
-// of such findings is distinct from complete schema/consumer coverage.
-func NoBreaking(findings []model.Finding) Check {
-	c := Check{ID: "no_breaking_contracts", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "No supported authoritative contract incompatibility was found; unknown and inferred relationships remain visible in coverage."}
+// NoBreaking passes only when no supported error-severity contract finding
+// exists AND the analysis established every declared obligation. Absence of
+// findings alone never passes: unverified lists each reason (removed, invalid
+// or unanalyzable declarations) that the verdict cannot be established.
+func NoBreaking(findings []model.Finding, unverified []string) Check {
+	c := Check{ID: "no_breaking_contracts", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "No supported authoritative contract incompatibility was found and every declared obligation was analyzed; unknown and inferred relationships remain visible in coverage."}
 	for _, f := range findings {
 		if f.Contract != "" && f.Severity == model.SeverityError {
 			c.Status = model.StatusFailed
 			c.Explanation = "Supported declared contract incompatibility: " + f.Explanation
-			break
+			return c
 		}
+	}
+	if len(unverified) > 0 {
+		c.Status = model.StatusUnknown
+		c.Evidence = model.Unknown
+		c.Explanation = "Declared contract obligations are unverified: " + strings.Join(unverified, "; ")
 	}
 	return c
 }

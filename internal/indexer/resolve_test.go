@@ -29,6 +29,15 @@ func TestImportResolution(t *testing.T) {
 		"engine/src/lib.rs":        "mod parser;\nuse crate::format::render;\n",
 		"engine/src/parser.rs":     "use super::format::{render, Style};\npub fn parse() {}\n",
 		"engine/src/format.rs":     "pub fn render() {}\n",
+		// Nested Python project: tests import the package from the project root.
+		"services/api/pyproject.toml":          "[project]\nname = \"api\"\n",
+		"services/api/app/__init__.py":         "",
+		"services/api/app/pricing.py":          "def total(): pass\n",
+		"services/api/tests/test_pricing.py":   "from app.pricing import total\n",
+		"services/web/src/storefront/views.py": "def view(): pass\n",
+		"services/web/setup.cfg":               "[metadata]\nname = web\n",
+		"services/web/tests/test_views.py":     "import storefront.views\n",
+		"unmarked/tests/test_orphan.py":        "from app.pricing import total\n",
 	}
 	for p, content := range files {
 		full := filepath.Join(root, filepath.FromSlash(p))
@@ -63,12 +72,14 @@ func TestImportResolution(t *testing.T) {
 		"engine/src/lib.rs -> engine/src/parser.rs",
 		"engine/src/lib.rs -> engine/src/format.rs",
 		"engine/src/parser.rs -> engine/src/format.rs",
+		"services/api/tests/test_pricing.py -> services/api/app/pricing.py",
+		"services/web/tests/test_views.py -> services/web/src/storefront/views.py",
 	} {
 		if !deps[want] {
 			t.Errorf("missing %s; have %v", want, deps)
 		}
 	}
-	if deps["cmd/main.go -> internal/store/a_test.go"] || len(deps) != 10 {
+	if deps["cmd/main.go -> internal/store/a_test.go"] || len(deps) != 12 || deps["unmarked/tests/test_orphan.py -> services/api/app/pricing.py"] {
 		t.Errorf("unexpected dependencies %v", deps)
 	}
 }

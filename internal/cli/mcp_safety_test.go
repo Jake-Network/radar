@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -68,5 +69,33 @@ func TestMCPVerificationSummaryPreservesGateAndBoundsInventory(t *testing.T) {
 				t.Fatal(args)
 			}
 		}
+	}
+}
+
+func TestMCPAgentBriefIsBoundedAndExplainsSelection(t *testing.T) {
+	commands := []string{}
+	for i := 0; i < 40; i++ {
+		commands = append(commands, fmt.Sprintf(`{"id":"c%d","tier":"required","command":["python3","-m","pytest","./a.py","./b.py","./c.py","./d.py","./e.py","./f.py","./g.py"],"test_files":["a","b"],"evidence_reasons":[{"code":"dependency_impact","explanation":"imports changed file","locations":[{"path":"x"}]}]}`, i))
+	}
+	raw := `{"gate":{"verdict":"blocked","required_checks":[{"id":"integration_execution","status":"incomplete","explanation":"2 required omitted"}]},` +
+		`"checks":[{"id":"test:c0","status":"failed"},{"id":"test:c1","status":"blocked","explanation":"Not executed (environment_unavailable)"}],` +
+		`"findings":[{"code":"contract_obligation_removed","contract":"summary","severity":"error","explanation":"x","remediation":"restore"}],` +
+		`"contract_obligations":[{"binding":"summary","kind":"removed"}],` +
+		`"selection":{"mode":"targeted","commands":[` + strings.Join(commands, ",") + `],"omitted":[{"id":"o1","tier":"required","reason":"budget_exceeded","test_files":["t"]}],"uncovered_changes":["src/x.py"],"blocking":["required command omitted by budget"]}}`
+	compact := compactVerification(raw)
+	if len(compact) > 12000 {
+		t.Fatal("unbounded agent summary", len(compact))
+	}
+	var report map[string]any
+	if err := json.Unmarshal([]byte(compact), &report); err != nil {
+		t.Fatal(err)
+	}
+	brief := report["agent_brief"].(map[string]any)
+	tests := brief["tests"].(map[string]any)
+	if tests["essential_count"].(float64) != 40 || len(tests["essential"].([]any)) != 8 || tests["omitted_count"].(float64) != 1 || len(tests["failed"].([]any)) != 1 || len(tests["not_run"].([]any)) != 1 {
+		t.Fatal(tests)
+	}
+	if brief["must_repair_count"].(float64) != 1 || len(brief["contract_obligation_changes"].([]any)) != 1 || len(brief["verify_next"].([]any)) != 2 {
+		t.Fatal(brief)
 	}
 }

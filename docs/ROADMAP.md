@@ -29,3 +29,25 @@ monorepos, improve supported import/contract resolution with inspectable evidenc
 and add reviewed candidate acceptance only when stale-source and ambiguity gates
 are tested. Secure execution isolation, automatic dependency provisioning,
 compiler semantics, signed releases and additional binary platforms remain deferred.
+
+## Verification trustworthiness milestone
+
+Implemented: contract obligations defined by the base manifest with explicit
+retirement (A); selection modes, grouping, command/time budgets and
+non-silent omissions (B); static runner readiness and missing-module
+environment errors (C, partial); labeled mutation evaluation on a fixture
+monorepo and Pallets Click (D); bounded `agent_brief` MCP summaries (E).
+
+Deferred:
+
+* Native selector adapters (Jest `--findRelatedTests`, Vitest `related`, Nx
+  affected, pytest-testmon). Each executes repository configuration and needs
+  installed dependencies, so it must run under the same authorization and
+  environment rules as tests; see TEST_SELECTION.md.
+* Symbol-level Python usage analysis (re-exports through package
+  `__init__`), the only way to reduce Click-style selections below all tests.
+* Rust and Jest/Vitest evaluation with real toolchains, and a monorepo-scale
+  benchmark.
+* Milestone F (real contract discovery: imported Pydantic models, APIRouter,
+  aliases, TypeScript re-exports and typed Axios consumers). It was not
+  started, so as not to compete with P0 work.

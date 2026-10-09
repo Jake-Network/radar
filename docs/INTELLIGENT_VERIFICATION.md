@@ -64,9 +64,10 @@ and proposal metadata. Observations bind argv, CWD, ordered input commits,
 candidate commit/tree, output digest and source integrity. Independent branch
 results are never imported as proof of combined success.
 
-The suite is bounded to 16 commands and one shared timeout (default two minutes,
-maximum 30 minutes). Oversized suites are rejected so users can narrow the plan
-or select an explicit command. No recommendations or no recognized executed
+The suite is grouped, then bounded by `--max-commands` (default 16) and one
+shared timeout (default two minutes, maximum 30 minutes). Commands beyond the
+budget are listed as omitted; a required omission blocks the gate rather than
+being silently dropped ([TEST_SELECTION.md](TEST_SELECTION.md)). No recommendations or no recognized executed
 tests leaves evidence unknown. Missing tools, build/setup failures and timeouts
 are execution/environment errors, not test success. Dependency installation is
 never implicit. Results can be incomplete if executed code modifies candidate

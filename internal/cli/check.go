@@ -19,31 +19,34 @@ import (
 
 type coverageCheck = gate.Check
 type checkReport struct {
-	VerificationProposal *testselection.Proposal `json:"verification_proposal,omitempty"`
-	Gate                 gate.Result             `json:"gate"`
-	Coverage             []gate.Coverage         `json:"coverage"`
-	Status               model.Status            `json:"status"`
-	Base                 string                  `json:"base"`
-	Head                 string                  `json:"head"`
-	Impact               affectedReport          `json:"impact"`
-	Declared             contracts.Report        `json:"declared_contracts"`
-	Discovered           discovery.Comparison    `json:"discovered_contracts"`
-	Plan                 *planning.Report        `json:"plan,omitempty"`
-	Checks               []coverageCheck         `json:"checks"`
-	Findings             []model.Finding         `json:"findings"`
-	Diagnostics          []model.Diagnostic      `json:"diagnostics"`
-	Limitations          []string                `json:"limitations"`
-	FeedbackDigest       string                  `json:"feedback_digest"`
-	RepairBudget         int                     `json:"suggested_repair_attempts"`
+	VerificationProposal *testselection.Proposal  `json:"verification_proposal,omitempty"`
+	Selection            *testselection.Selection `json:"selection,omitempty"`
+	Gate                 gate.Result              `json:"gate"`
+	Coverage             []gate.Coverage          `json:"coverage"`
+	Status               model.Status             `json:"status"`
+	Base                 string                   `json:"base"`
+	Head                 string                   `json:"head"`
+	Impact               affectedReport           `json:"impact"`
+	Declared             contracts.Report         `json:"declared_contracts"`
+	Discovered           discovery.Comparison     `json:"discovered_contracts"`
+	Plan                 *planning.Report         `json:"plan,omitempty"`
+	Checks               []coverageCheck          `json:"checks"`
+	Findings             []model.Finding          `json:"findings"`
+	Diagnostics          []model.Diagnostic       `json:"diagnostics"`
+	Limitations          []string                 `json:"limitations"`
+	FeedbackDigest       string                   `json:"feedback_digest"`
+	RepairBudget         int                      `json:"suggested_repair_attempts"`
 }
 
 func checkCommand() command {
-	return command{name: "check", usage: "radar check --base REF [--head REF|WORKTREE] [--plan PATH] [--policy PATH] [--suggest-tests]", summary: "Analyze changed files, dependency impact, declared and discovered contracts, and optional plan verification.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "check", usage: "radar check --base REF [--head REF|WORKTREE] [--plan PATH] [--policy PATH] [--suggest-tests] [--suite targeted|balanced|full [--max-commands N]]", summary: "Analyze changed files, dependency impact, declared and discovered contracts, and optional plan verification.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.base, "base", "", "base Git revision")
 		fs.StringVar(&o.head, "head", "WORKTREE", "head revision (default current working tree)")
 		planFlag(fs, o)
 		policyFlag(fs, o)
 		fs.BoolVar(&o.suggestTests, "suggest-tests", false, "recommend relevant tests without executing repository code")
+		fs.StringVar(&o.suite, "suite", "", "preview a bounded selection: targeted, balanced (alias recommended) or full; implies --suggest-tests, executes nothing")
+		fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "command budget for the --suite preview")
 		fs.BoolVar(&o.strict, "require-complete", false, "exit 1 for unknown or incomplete analysis coverage")
 	}, run: (*app).check}
 }
@@ -79,7 +82,15 @@ func (a *app) check(o options) int {
 	if err != nil {
 		return a.fail(err)
 	}
-	declared, err := contracts.Impact(a.ctx, a.root, impact.Base, o.head)
+	var selectedPlan *planning.Plan
+	if o.plan != "" {
+		p, e := a.loadPlan(o.plan)
+		if e != nil {
+			return a.fail(e)
+		}
+		selectedPlan = &p
+	}
+	declared, err := contracts.Impact(a.ctx, a.root, impact.Base, o.head, verification.ApprovedRetirements(selectedPlan)...)
 	if err != nil {
 		return a.fail(err)
 	}
@@ -122,18 +133,12 @@ func (a *app) check(o options) int {
 			}
 		}
 	}
-	var selectedPlan *planning.Plan
-	if o.plan != "" {
-		p, e := a.loadPlan(o.plan)
-		if e != nil {
-			return a.fail(e)
-		}
+	if selectedPlan != nil {
 		s, e := a.snapshot(o.head)
 		if e != nil {
 			return a.fail(e)
 		}
-		selectedPlan = &p
-		pr := verification.VerifyWithEvidence(a.ctx, p, s, a.root, nil)
+		pr := verification.VerifyWithEvidence(a.ctx, *selectedPlan, s, a.root, nil)
 		r.Plan = &pr
 		r.Findings = append(r.Findings, pr.Findings...)
 		add("plan_verification", pr.Status, model.VerifiedStatic, "Plan criteria evaluated; this read-only command supplies no observed test evidence.")
@@ -177,24 +182,26 @@ func (a *app) check(o options) int {
 	} else {
 		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Indexed source fingerprint was stable at the analysis boundaries; transient runtime changes are not observed."})
 	}
-	if o.suggestTests {
+	if o.suggestTests || o.suite != "" {
 		proposal, err := testselection.Recommend(a.ctx, a.root, o.head, snapshot, impact.Changed, selectedPlan)
 		if err != nil {
 			return a.fail(err)
 		}
 		r.VerificationProposal = &proposal
+		if o.suite != "" {
+			selection, err := testselection.Plan(proposal, impact.Changed, o.suite, o.maxCommands)
+			if err != nil {
+				return a.fail(err)
+			}
+			r.Selection = &selection
+		}
 	}
 	checks := append([]gate.Check(nil), r.Checks...)
-	noBreaking := gate.NoBreaking(r.Findings)
+	noBreaking := gate.NoBreaking(r.Findings, declared.Unestablished())
 	if (manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist)) {
 		noBreaking.Status = model.StatusUnknown
 		noBreaking.Evidence = model.Unknown
 		noBreaking.Explanation = "Declared contract configuration could not be read; no incompatibility verdict can be established."
-	}
-	if noBreaking.Status == model.StatusPassed && ((declared.Bindings > 0 && declared.Analyzed < declared.Bindings) || (manifestErr == nil && lint.Status == model.StatusIncomplete)) {
-		noBreaking.Status = model.StatusUnknown
-		noBreaking.Evidence = model.Unknown
-		noBreaking.Explanation = "A declared contract input could not be analyzed; missing schema evidence cannot establish compatibility."
 	}
 	checks = append(checks, noBreaking)
 	selected := gate.Policy{Version: 1, Name: "supported-analysis", Require: []string{"dependency_impact", "source_stability", "no_breaking_contracts"}}
@@ -213,6 +220,7 @@ func (a *app) check(o options) int {
 		fmt.Fprintf(w, "Analysis: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
 		renderAffected(w, impact)
 		renderProposal(w, r.VerificationProposal)
+		renderSelection(w, r.Selection)
 		for _, c := range r.Checks {
 			fmt.Fprintf(w, "%s: %s — %s\n", c.ID, c.Status, c.Explanation)
 		}
@@ -221,6 +229,9 @@ func (a *app) check(o options) int {
 		}
 		for _, d := range r.Diagnostics {
 			fmt.Fprintf(w, "%s: %s %s\n", d.Severity, d.Path, d.Message)
+		}
+		for _, o := range r.Declared.Obligations {
+			fmt.Fprintf(w, "contract obligation %s: %s — %s\n", o.Binding, o.Kind, o.Explanation)
 		}
 		fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
 	})

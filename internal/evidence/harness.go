@@ -277,3 +277,29 @@ func parseJUnit(reader io.Reader) (harnessResult, error) {
 	}
 	return r, nil
 }
+
+var missingModule = regexp.MustCompile(`(?m)^(?:E\s+)?ModuleNotFoundError: No module named`)
+
+// environmentFailure recognizes runs that failed because an import could not
+// be resolved before any test outcome was observed. Such a run is an
+// environment error (missing dependency or virtual environment), never an
+// observed test failure. A pytest run that also passed or failed tests keeps
+// its observed failure status.
+func environmentFailure(argv []string, data []byte) bool {
+	switch {
+	case isUnittest(argv):
+		return dependencyError.Match(data)
+	case uses(argv, "pytest") || uses(argv, "py.test"):
+		text := ansi.ReplaceAllString(string(data), "")
+		if !missingModule.MatchString(text) {
+			return false
+		}
+		matches := pytestSummary.FindAllStringSubmatch(text, -1)
+		if len(matches) == 0 {
+			return true
+		}
+		last := matches[len(matches)-1][1]
+		return !strings.Contains(last, "passed") && !strings.Contains(last, "failed")
+	}
+	return false
+}

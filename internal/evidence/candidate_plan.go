@@ -402,7 +402,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 	r.TestsSkipped = counts.Skipped
 	r.Harness = counts.Harness
 	status := outcome(runCtx.Err() != nil, r.ExitCode, counts, out.exceeded, argv, out.b.Bytes())
-	if isUnittest(argv) && dependencyError.Match(out.b.Bytes()) {
+	if environmentFailure(argv, out.b.Bytes()) {
 		status = model.StatusError
 	}
 	return finish(status), nil

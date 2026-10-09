@@ -308,3 +308,19 @@ func objectPresent(ctx context.Context, root, rev, path, pointer string) (bool, 
 	}
 	return true, nil
 }
+
+// ApprovedRetirements converts the removal deltas of a digest-bound approved
+// plan into contract retirements, so a reviewed removal is not reported as a
+// silently dropped obligation. Unapproved plans retire nothing.
+func ApprovedRetirements(p *planning.Plan) []contracts.Retirement {
+	if p == nil || !planning.Approved(*p) {
+		return nil
+	}
+	var out []contracts.Retirement
+	for _, d := range p.ContractDeltas {
+		if d.Operation == "remove" && d.Contract != "" {
+			out = append(out, contracts.Retirement{ID: d.Contract, Reason: "approved plan " + planning.Digest(*p)[:12] + " removes this contract: " + d.Description})
+		}
+	}
+	return out
+}

@@ -123,6 +123,12 @@ func renderContracts(w io.Writer, r contracts.Report) {
 	for _, d := range r.Diagnostics {
 		fmt.Fprintf(w, "  %s  %s %s\n", severityMark(d.Severity), d.Path, d.Message)
 	}
+	for _, o := range r.Obligations {
+		fmt.Fprintf(w, "  obligation %s at %s: %s — %s\n", o.Binding, short(o.Head), o.Kind, o.Explanation)
+	}
+	for _, u := range r.Unverified {
+		fmt.Fprintln(w, "  unverified: "+u)
+	}
 	if r.Status == model.StatusIncomplete {
 		fmt.Fprintln(w, "Some bindings were not analyzed; absence of findings is not a compatibility guarantee.")
 	}

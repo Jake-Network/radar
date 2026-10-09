@@ -10,6 +10,7 @@ import (
 	"github.com/Jake-Network/radar/internal/pathutil"
 	"github.com/Jake-Network/radar/internal/planning"
 	"github.com/Jake-Network/radar/internal/project"
+	"github.com/Jake-Network/radar/internal/testselection"
 	"io"
 	"os"
 	"strings"
@@ -17,14 +18,15 @@ import (
 )
 
 func mergeCheckCommand() command {
-	return command{name: "merge-check", usage: "radar merge-check --base REF --branches REF,REF [--plan PATH] [--policy PATH] [--suggest-tests] [--verify --allow-execution --suite recommended | --cwd DIR -- COMMAND ARGS]", summary: "Preview the combined branches in private Git state and optionally verify that candidate.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "merge-check", usage: "radar merge-check --base REF --branches REF,REF [--plan PATH] [--policy PATH] [--suggest-tests] [--verify --allow-execution --suite targeted|balanced|full [--max-commands N] | --cwd DIR -- COMMAND ARGS]", summary: "Preview the combined branches in private Git state and optionally verify that candidate.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.base, "base", "", "baseline commit or ref")
 		fs.StringVar(&o.branches, "branches", "", "ordered comma-separated branch refs")
 		planFlag(fs, o)
 		policyFlag(fs, o)
 		fs.BoolVar(&o.suggestTests, "suggest-tests", false, "recommend relevant candidate tests without execution")
 		fs.StringVar(&o.cwd, "cwd", ".", "repository-relative directory for an explicit verification command")
-		fs.StringVar(&o.suite, "suite", "", "verification selection: recommended (requires --verify --allow-execution)")
+		fs.StringVar(&o.suite, "suite", "", "verification selection mode: targeted, balanced (alias recommended) or full (requires --verify --allow-execution)")
+		fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped commands a --suite run executes; omitted required commands block the gate")
 		fs.StringVar(&o.output, "evidence-output", "", "new path under .radar/evidence/ to save execution metadata (default JSON output only)")
 		fs.BoolVar(&o.verify, "verify", false, "execute the supplied command against the combined candidate")
 		fs.BoolVar(&o.allow, "allow-execution", false, "authorize candidate code execution with host privileges")
@@ -78,7 +80,7 @@ func (a *app) mergeCheck(o options) int {
 	for i := range refs {
 		refs[i] = strings.TrimSpace(refs[i])
 	}
-	r, e := integration.Preview(a.ctx, a.root, integration.Options{CWD: o.cwd, SuggestTests: o.suggestTests, Suite: o.suite, Policy: policy, Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest})
+	r, e := integration.Preview(a.ctx, a.root, integration.Options{CWD: o.cwd, SuggestTests: o.suggestTests, Suite: o.suite, Policy: policy, Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest, MaxCommands: o.maxCommands})
 	if e != nil {
 		return a.fail(e)
 	}
@@ -104,6 +106,7 @@ func (a *app) mergeCheck(o options) int {
 			fmt.Fprintf(w, "Candidate tree: %s\n", r.CandidateTree)
 		}
 		renderProposal(w, r.VerificationProposal)
+		renderSelection(w, r.Selection)
 		for _, c := range r.Checks {
 			fmt.Fprintf(w, "  %-12s %s: %s\n", c.Status, c.ID, c.Explanation)
 		}

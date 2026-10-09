@@ -35,3 +35,16 @@ func TestInvalidAndAmbiguousPolicy(t *testing.T) {
 		t.Fatal("ambiguous evidence accepted")
 	}
 }
+
+func TestNoBreakingRequiresEstablishedObligations(t *testing.T) {
+	if c := NoBreaking(nil, nil); c.Status != model.StatusPassed {
+		t.Fatal(c)
+	}
+	if c := NoBreaking(nil, []string{"binding removed"}); c.Status != model.StatusUnknown || c.Evidence != model.Unknown {
+		t.Fatal("absence of findings passed with unverified obligations", c)
+	}
+	failing := []model.Finding{{Contract: "x", Severity: model.SeverityError, Explanation: "removed"}}
+	if c := NoBreaking(failing, []string{"other"}); c.Status != model.StatusFailed {
+		t.Fatal("confirmed failure masked by unverified coverage", c)
+	}
+}
