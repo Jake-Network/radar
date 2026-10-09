@@ -2,8 +2,8 @@
 
 | Language | Structural indexing | File dependencies | Semantic indexing |
 | --- | --- | --- | --- |
-| TypeScript / TSX | Tree-sitter declarations and imports | Relative specifiers (`./x`, `../x`, ESM `.js` → `.ts`, `index` files) | Unavailable |
-| JavaScript / JSX | Tree-sitter declarations and imports | Relative specifiers | Unavailable |
+| TypeScript / TSX | Tree-sitter declarations and imports | Relative specifiers (`./x`, `../x`, ESM `.js` → `.ts`, `index` files); nearest `tsconfig.json` `paths` and `baseUrl`, following relative `extends`; repository packages by `package.json` name (`exports`, `types`/`main` mapped from `dist/`, `build/`, `lib/`, `out/` back to `src/`, then `src/index`) | Unavailable |
+| JavaScript / JSX | Tree-sitter declarations and imports | Same as TypeScript, using `jsconfig.json` when present | Unavailable |
 | Python | Tree-sitter declarations and imports | Absolute modules from the importer's directory, the repository root or `src/`; relative imports; `from pkg import submodule` | Unavailable |
 | Go | Tree-sitter declarations and imports | Packages inside any `go.mod` module of the repository (non-test files) | Unavailable |
 | Rust | Tree-sitter declarations and imports | `crate::`, `self::`, `super::` paths and `mod name;` declarations | Unavailable |
@@ -12,7 +12,12 @@ Entities carry repository, revision, source location, method, and evidence.
 Entity IDs are readable and location independent (`kind:path#Qualified.Name`).
 Syntactic declarations are static evidence. `DEPENDS_ON` file edges are
 `inferred`: they follow each language's path conventions without a compiler,
-tsconfig `paths` aliases, PYTHONPATH, Go vendoring or Cargo workspace metadata.
+PYTHONPATH, Go vendoring or Cargo workspace metadata. TypeScript resolution
+reads tsconfig/jsconfig and package.json files but does not consult
+package-based `extends` (for example `@tsconfig/node18`), project references,
+`moduleSuffixes`, export conditions beyond a fixed preference order, or
+`node_modules`. Two repository packages claiming the same name are ambiguous
+and never resolved.
 Package imports from outside the repository stay unresolved `module` nodes.
 Indexing does not typecheck, establish runtime calls, resolve dynamic imports,
 or prove authorization behavior. Syntax errors are diagnostic evidence.
@@ -70,10 +75,12 @@ tasks. `radar mcp` exposes read-mostly commands as MCP tools; test execution and
 review declarations are not exposed. `radar_index` returns counts and
 diagnostics (`index --summary`) and tool output is capped at 40,000 bytes.
 
-Native-host release packaging includes dependency notices and checksums;
-a manual artifact preparation workflow and checksum installer are available; no release was published by this milestone. Signing is not configured. Initial execution evidence
-covers linux/amd64. Windows/macOS builds and release binaries are not yet
-validated. Indexing retains transactional full snapshots; incremental parsing
+Native-host release packaging includes dependency notices and checksums for
+linux/darwin × amd64/arm64, each built and smoke-tested on its own GitHub
+runner; a tag publishes a GitHub Release and updates the Homebrew tap
+([RELEASING](RELEASING.md)). Local validation covers linux/amd64; the other
+three targets are validated by the release workflow when it runs. Signing and
+notarization are not configured. Windows has no binary target. Indexing retains transactional full snapshots; incremental parsing
 and source-specific semantic reference resolution are deferred.
 
 Compatibility direction is explicit: request schemas constrain what consumers
@@ -84,6 +91,24 @@ removed request enum value are breaking. Response enum additions and request
 property removals are risks. Missing direction makes every change a risk.
 Strict approved-design drift still reports unplanned changes even when
 schema-compatible.
+
+## Gate (0.3)
+
+`radar gate [BRANCH ...] [--base REF] [--run]` is the everyday front end to
+`merge-check`. It needs no initialization or manifest. Without branches it uses
+every local branch checked out in a worktree that has commits beyond the base
+(branches already contained in the base are listed as skipped). The default
+base is the local branch behind `origin/HEAD`, then `main`, `master`, `trunk`.
+It always proposes tests; `--run` is `--verify --allow-execution --suite
+balanced` with a 10-minute total budget. The report adds `branches` (files each
+branch changed since its merge base), `attribution` (per finding, the branches
+whose changed files the finding names, or for failing tests the changed files
+the selected test files are or import; `basis` states which) and `next`.
+Attribution is a repair lead from static evidence, not causal proof: a test
+that reads a changed file at runtime without importing it is not attributed.
+Without `--run` and without a policy, exit 1 means a supported failure
+(conflict, breaking declared contract); missing test evidence alone exits 0
+and is reported as not tested. MCP exposes the static form as `radar_gate`.
 
 ## Agent-native integration milestone
 
@@ -166,3 +191,12 @@ locations. Proposed, inferred or unknown contract links are excluded; unrelated
 contracts retain separate identity. Relevance remains inferred and runtime use
 is unproved. Repositories without bindings still receive import/package-based
 recommendations, without invented cross-language transport links.
+
+## Contract discovery qualification
+
+The demonstrated FastAPI/Pydantic → TypeScript slice supports bounded local
+alias/import resolution, simple inherited/nested models, literal nested router
+registration, TS type barrels and typed fetch/Axios consumption. These are static
+candidates; origin, application startup, validators and serialization remain
+unverified. Accepted JSON/OpenAPI declarations remain a separate review step.
+See [the exact pattern matrix and quality fixture](DISCOVERY.md).

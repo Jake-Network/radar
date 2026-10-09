@@ -86,11 +86,14 @@ type Report struct {
 	Conflicts       []string                 `json:"conflicts"`
 	Changed         []string                 `json:"changed"`
 	Affected        []string                 `json:"affected"`
-	Checks          []Check                  `json:"checks"`
-	Findings        []model.Finding          `json:"findings"`
-	Diagnostics     []model.Diagnostic       `json:"diagnostics"`
-	Execution       *ExecutionEvidence       `json:"execution,omitempty"`
-	Limitations     []string                 `json:"limitations"`
+	// AffectedBy maps each affected file to the changed files it reaches
+	// through inferred import dependencies.
+	AffectedBy  map[string][]string `json:"affected_by,omitempty"`
+	Checks      []Check             `json:"checks"`
+	Findings    []model.Finding     `json:"findings"`
+	Diagnostics []model.Diagnostic  `json:"diagnostics"`
+	Execution   *ExecutionEvidence  `json:"execution,omitempty"`
+	Limitations []string            `json:"limitations"`
 	// ContractObligations lists base contract declarations the candidate
 	// removed, narrowed, moved or retired; see contracts.ObligationChange.
 	ContractObligations []contracts.ObligationChange `json:"contract_obligations,omitempty"`
@@ -346,18 +349,18 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	if e != nil {
 		return r, e
 	}
-	affected := map[string]bool{}
-	for _, p := range r.Changed {
-		if _, ok := g.Nodes[model.FileID(p)]; !ok {
+	r.AffectedBy = map[string][]string{}
+	for _, changed := range r.Changed {
+		if _, ok := g.Nodes[model.FileID(changed)]; !ok {
 			continue
 		}
-		for _, hop := range g.Distances(model.FileID(p), "DEPENDS_ON", true, 0) {
-			if p := model.PathFromID(hop.ID); p != "" {
-				affected[p] = true
+		for _, hop := range g.Distances(model.FileID(changed), "DEPENDS_ON", true, 0) {
+			if p := model.PathFromID(hop.ID); p != "" && p != changed {
+				r.AffectedBy[p] = append(r.AffectedBy[p], changed)
 			}
 		}
 	}
-	for p := range affected {
+	for p := range r.AffectedBy {
 		r.Affected = append(r.Affected, p)
 	}
 	sort.Strings(r.Affected)
@@ -615,7 +618,9 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, evidence.CandidateArtifacts(o.Plan))
 	if sourceErr != nil {
 		ev.SourceAfterExecution = "unknown"
-		ev.Status = model.StatusError
+		if ev.Status != model.StatusFailed {
+			ev.Status = model.StatusError
+		}
 		ev.ExecutionError = sourceErr.Error()
 	} else if !after.Matches {
 		ev.SourceAfterExecution = "modified"
@@ -637,7 +642,7 @@ func applyGate(r *Report, o Options) {
 	for _, c := range r.Checks {
 		// Configuration gaps never mask a confirmed incompatibility, except an
 		// unreadable configuration, which is an execution-grade error.
-		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed && (noBreaking.Status == model.StatusPassed || c.Status == model.StatusError) {
+		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed && (noBreaking.Status != model.StatusFailed && (noBreaking.Status == model.StatusPassed || c.Status == model.StatusError)) {
 			noBreaking.Status = c.Status
 			noBreaking.Evidence = model.Unknown
 			noBreaking.Explanation = c.Explanation
@@ -689,7 +694,7 @@ func unavailable(root string, c testselection.Command) string {
 }
 
 func aggregateExecution(current, next model.Status) model.Status {
-	rank := map[model.Status]int{model.StatusPassed: 0, model.StatusUnknown: 1, model.StatusIncomplete: 1, model.StatusWarning: 1, model.StatusFailed: 2, model.StatusTimeout: 3, model.StatusError: 3}
+	rank := map[model.Status]int{model.StatusPassed: 0, model.StatusUnknown: 1, model.StatusIncomplete: 1, model.StatusBlocked: 1, model.StatusWarning: 1, model.StatusFailed: 4, model.StatusTimeout: 3, model.StatusError: 3}
 	if rank[next] > rank[current] {
 		return next
 	}

@@ -98,7 +98,7 @@ func TestPlanDeclaredCommandsAreNotGroupedAndFullModeUsesSuites(t *testing.T) {
 		got = append(got, c.CWD+":"+strings.Join(c.Command, " "))
 	}
 	sort.Strings(got[1:])
-	want := ".:python3 -m pytest ./tests/test_a.py|.:python3 -m pytest|go:go test -json ./...|web:./node_modules/.bin/jest --runInBand"
+	want := ".:python3 -m pytest ./tests/test_a.py|.:python3 -m pytest ./tests/test_a.py|go:go test -json ./...|web:./node_modules/.bin/jest --runInBand"
 	if strings.Join(got, "|") != want {
 		t.Fatal(got)
 	}

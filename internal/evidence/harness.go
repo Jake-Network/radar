@@ -288,7 +288,17 @@ var missingModule = regexp.MustCompile(`(?m)^(?:E\s+)?ModuleNotFoundError: No mo
 func environmentFailure(argv []string, data []byte) bool {
 	switch {
 	case isUnittest(argv):
-		return dependencyError.Match(data)
+		if !dependencyError.Match(data) {
+			return false
+		}
+		// Import-loader pseudo-tests are setup errors. Preserve any actual
+		// failed test even when another module could not be imported.
+		for _, m := range failedCase.FindAllSubmatch(data, -1) {
+			if !strings.Contains(string(m[2]), "unittest.loader._FailedTest") {
+				return false
+			}
+		}
+		return true
 	case uses(argv, "pytest") || uses(argv, "py.test"):
 		text := ansi.ReplaceAllString(string(data), "")
 		if !missingModule.MatchString(text) {

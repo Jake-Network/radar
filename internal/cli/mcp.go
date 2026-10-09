@@ -37,6 +37,7 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
+	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base) in private Git state and report conflicts, contract changes and failing evidence with the branches to look at, plus the tests that cover the change. Never executes repository code; a human runs `radar gate --run` to test the combined tree.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("suite", "suite", "string", "preview a bounded selection without execution: targeted, balanced or full", false), p("max_commands", "max-commands", "integer", "command budget for the suite preview", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
@@ -188,7 +189,7 @@ func serveMCP(a *app, in io.Reader, out io.Writer) int {
 				"protocolVersion": version,
 				"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 				"serverInfo":      map[string]any{"name": "radar", "version": Version},
-				"instructions":    "Radar grounds plans in indexed repository evidence. Call radar_doctor first; radar_init once if uninitialized; radar_index before graph queries; radar_resolve to find entity IDs. Results distinguish verified, inferred, proposed and unknown evidence: never report unknown as passed. Test execution and plan approval require a human and are not available as tools.",
+				"instructions":    "Radar checks whether concurrent branches integrate. Call radar_gate before proposing a merge of parallel work; it needs no setup. For plans: call radar_doctor first; radar_init once if uninitialized; radar_index before graph queries; radar_resolve to find entity IDs. Results distinguish verified, inferred, proposed and unknown evidence: never report unknown as passed. Test execution and plan approval require a human and are not available as tools.",
 			}, nil)
 		case "ping":
 			send(req.ID, map[string]any{}, nil)
@@ -244,7 +245,7 @@ func (a *app) callTool(name string, arguments map[string]any) map[string]any {
 	var stdout, stderr bytes.Buffer
 	code := Run(a.ctx, args, &stdout, &stderr)
 	text := stdout.String()
-	if (spec.command == "check" || spec.command == "merge-check") && arguments["detail"] != true {
+	if (spec.command == "check" || spec.command == "merge-check" || spec.command == "gate") && arguments["detail"] != true {
 		text = compactVerification(text)
 	}
 	if len(text) > maxToolOutput {
@@ -277,10 +278,19 @@ func compactVerification(raw string) string {
 		return raw
 	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"gate", "status", "base", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations"} {
+	for _, key := range []string{"gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
+	}
+	if branches, ok := full["branches"].([]any); ok {
+		compact := []any{}
+		for _, raw := range branches {
+			b, _ := raw.(map[string]any)
+			changed, _ := b["changed"].([]any)
+			compact = append(compact, map[string]any{"ref": b["ref"], "commit": b["commit"], "changed_count": len(changed)})
+		}
+		out["branches"] = compact
 	}
 	for _, key := range []string{"findings", "diagnostics", "changed", "affected"} {
 		if values, ok := full[key].([]any); ok {

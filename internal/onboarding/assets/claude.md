@@ -1,6 +1,6 @@
 ---
 name: radar
-description: Ground feature design, multi-agent task splits and implementation checks in Radar repository evidence. Use for changes that touch shared API contracts, span several modules or agents, or need a reviewed plan and verifiable acceptance criteria.
+description: Check that parallel agent branches integrate before merging (radar_gate), and ground feature design, multi-agent task splits and implementation checks in Radar repository evidence. Use for changes that touch shared API contracts, span several modules or agents, or need a reviewed plan and verifiable acceptance criteria.
 ---
 
 # Radar workflow for Claude Code
@@ -10,6 +10,18 @@ structured plans against it, and verifies implementations. Use the `radar_*`
 MCP tools when they are available; otherwise run the `radar` binary from the
 repository root with `--json`. If neither is available, say so; never invent
 Radar output.
+
+## 0. Before merging parallel work: `radar_gate`
+
+When several agents or worktrees changed the repository, call `radar_gate`
+(or `radar gate --json`) before proposing a merge. With no arguments it
+combines every worktree branch that has commits beyond the base, in private Git
+state, and reports conflicts, breaking contract changes and the branches whose
+files each finding points at (`attribution`). It never runs repository code.
+Its `next` field is the command to run next; `radar gate --run` (tests on the
+combined tree) executes repository code, so ask the user before running it.
+Repair findings on the branch named in `attribution`, commit, and rerun the
+gate; results for individual branches never prove the combination works.
 
 ## 1. Ground the design
 

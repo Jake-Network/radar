@@ -197,6 +197,8 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 // result was recognized (missing dependencies, build or setup errors).
 func outcome(timedOut bool, exit int, result harnessResult, exceeded bool, argv []string, content []byte) model.Status {
 	switch {
+	case result.Failed > 0:
+		return model.StatusFailed
 	case timedOut:
 		return model.StatusTimeout
 	case exit == 0 && result.Failed > 0:

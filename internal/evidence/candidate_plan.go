@@ -343,7 +343,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		after, sourceErr := InspectCandidateSource(sourceCtx, root, c, artifacts)
 		r.Candidate.SourceAfter = after.Digest
 		r.Candidate.SourceUnchanged = sourceErr == nil && after.Matches && after.Digest == before.Digest
-		if sourceErr != nil {
+		if sourceErr != nil && r.Status != model.StatusFailed {
 			r.Status = model.StatusError
 		} else if !r.Candidate.SourceUnchanged && r.Status == model.StatusPassed {
 			r.Status = model.StatusUnknown
@@ -390,9 +390,18 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 	}
 	r.ExitCode = state.ExitCode()
 	counts := harnessCounts(argv, out.b.Bytes())
+	// Preserve observed failures even when the additionally declared report
+	// cannot be read. Missing report coverage cannot erase a failing test.
+	r.TestsRun = counts.Run
+	r.TestsFailed = counts.Failed
+	r.TestsSkipped = counts.Skipped
+	r.Harness = counts.Harness
 	if spec.JUnit != "" {
 		junit, junitErr := readJUnit(dir, spec.JUnit)
 		if junitErr != nil {
+			if outcome(runCtx.Err() != nil, r.ExitCode, counts, out.exceeded, argv, out.b.Bytes()) == model.StatusFailed && !environmentFailure(argv, out.b.Bytes()) {
+				return finish(model.StatusFailed), nil
+			}
 			return finish(model.StatusError), nil
 		}
 		counts = junit

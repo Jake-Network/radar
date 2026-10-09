@@ -5,7 +5,7 @@
 2. Contract MVP: committed Git comparisons, explicit OpenAPI/JSON Schema consumer mapping, explainable changes and independent-change negatives. Gate: Python producer/TS consumer total → total_cents conflict detected without demo-specific logic.
 3. Verification: committed implementation checks, digest-bound local review, opt-in test evidence, explicit contract drift and task feedback. Gate: compliant/noncompliant fixtures distinguish pass/fail/unknown.
 4. Agent and team workflow (0.2): location-independent IDs and worktree-shared state, inferred import dependencies and `affected`, robust contract comparison (annotations, nullability, enums, allOf, YAML), test environment errors and more harnesses (pytest, jest, vitest, JUnit), assumption lifecycle, next steps, human output, MCP server, Claude Code hook/skill and a GitHub Actions example. Gate: the regression scenarios in IMPLEMENTATION_STATUS.md.
-5. Expansion (deferred): compiler semantic resolution, SCIP ingestion, tsconfig path aliases and workspace-aware resolution, Protobuf, incremental parsing, scalable graph queries, richer language contracts, agent notifications and interactive UI.
+5. Expansion (deferred): compiler semantic resolution, SCIP ingestion, Protobuf, incremental parsing, scalable graph queries, richer language contracts, agent notifications and interactive UI.
 
 Current acceptance evidence is maintained in IMPLEMENTATION_STATUS.md. Release readiness requires all relevant tests, limitations and installation checks; milestones are never inferred from document existence.
 
@@ -51,3 +51,31 @@ Deferred:
 * Milestone F (real contract discovery: imported Pydantic models, APIRouter,
   aliases, TypeScript re-exports and typed Axios consumers). It was not
   started, so as not to compete with P0 work.
+
+## Adoption milestone (0.3)
+
+Implemented: `radar gate` as the single everyday command (zero-configuration
+worktree discovery and default base, branch attribution, one `next` command,
+`radar_gate` MCP tool, skills that call it first); default help limited to six
+commands with the toolkit under `radar help --all`; value-first README with the
+full reference moved to USAGE.md; TypeScript tsconfig `paths`/`baseUrl`
+(relative `extends`) and workspace package resolution; native release builds
+for linux/darwin × amd64/arm64 with a portable smoke test, GitHub Release
+publication on tags and Homebrew tap updates.
+
+Next: watch mode that re-runs the static gate while agents work, so conflicts
+surface before branches finish; failure attribution by re-running failing
+tests on subsets of branches (observed rather than inferred); notifications
+into agent terminals (for example `cmux notify`); compiler-backed TypeScript
+resolution for project references.
+
+## Future independent language slices
+
+- Java: Tree-sitter structural indexing and import dependencies, then native
+  Maven/Gradle project roots and JUnit test/evidence integration, with fixtures
+  and unsupported semantic coverage explicit.
+- C/C++: Tree-sitter structural indexing, include dependencies and compilation
+  database support, then CTest/GoogleTest selection and observed evidence.
+
+These are future vertical slices, not implementations in the current reliability,
+PR integration, Python/TypeScript discovery and native distribution milestones.

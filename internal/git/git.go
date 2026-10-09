@@ -125,6 +125,59 @@ func Inspect(ctx context.Context, root string) (Info, error) {
 	return info, nil
 }
 
+// WorktreeBranches lists local branches checked out in any worktree of the
+// repository, in `git worktree list` order. Detached worktrees are omitted.
+func WorktreeBranches(ctx context.Context, root string) ([]string, error) {
+	b, err := run(ctx, root, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		if ref, ok := strings.CutPrefix(strings.TrimSpace(line), "branch refs/heads/"); ok && ref != "" {
+			out = append(out, ref)
+		}
+	}
+	return out, nil
+}
+
+// DefaultBranch guesses the integration base: the local counterpart of
+// origin/HEAD, then main, master or trunk. It returns "" when none exists.
+func DefaultBranch(ctx context.Context, root string) string {
+	candidates := []string{}
+	if b, err := run(ctx, root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		remote := strings.TrimSpace(string(b))
+		if local, ok := strings.CutPrefix(remote, "origin/"); ok {
+			candidates = append(candidates, local)
+		}
+		candidates = append(candidates, "main", "master", "trunk", remote)
+	} else {
+		candidates = append(candidates, "main", "master", "trunk")
+	}
+	for _, c := range candidates {
+		if _, err := run(ctx, root, "show-ref", "--verify", "--quiet", "refs/heads/"+c); err == nil {
+			return c
+		}
+		if strings.Contains(c, "/") {
+			if _, err := Resolve(ctx, root, c); err == nil {
+				return c
+			}
+		}
+	}
+	return ""
+}
+
+// MergeBase returns the best common ancestor of two commits.
+func MergeBase(ctx context.Context, root, a, b string) (string, error) {
+	for _, ref := range []string{a, b} {
+		if ref == "" || strings.HasPrefix(ref, "-") {
+			return "", errors.New("invalid Git reference")
+		}
+	}
+	out, err := run(ctx, root, "merge-base", "--end-of-options", a, b)
+	return strings.TrimSpace(string(out)), err
+}
+
 // Identity returns a location-independent repository identity derived from
 // its root commits, shared by every clone and worktree. It returns "" when the
 // directory is not a Git repository with history.

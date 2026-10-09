@@ -12,18 +12,40 @@ import (
 )
 
 // resolver maps import specifiers to repository files using each language's
-// path conventions. Results are inferred: no compiler, tsconfig path alias,
-// PYTHONPATH or Cargo workspace configuration is consulted.
+// path conventions. Results are inferred: no compiler, PYTHONPATH or Cargo
+// workspace configuration is consulted. TypeScript uses tsconfig aliases and
+// repository package names (tsresolve.go).
 type resolver struct {
-	files   map[string]bool // every non-excluded repository path
-	sources map[string]bool // indexed source files
-	byDir   map[string][]string
-	imports map[string][]languages.Import
-	goMods  map[string]string // go.mod directory -> module path
+	files             map[string]bool // every non-excluded repository path
+	sources           map[string]bool // indexed source files
+	byDir             map[string][]string
+	imports           map[string][]languages.Import
+	goMods            map[string]string           // go.mod directory -> module path
+	tsconfigs         map[string]tsConfig         // tsconfig.json/jsconfig.json path -> options
+	packages          map[string]workspacePackage // package.json name -> package
+	ambiguousPackages map[string]bool
 }
 
 func newResolver() *resolver {
-	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}}
+	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}}
+}
+
+// addManifest records build configuration consulted by import resolution.
+func (r *resolver) addManifest(p string, content []byte) {
+	switch base := path.Base(p); {
+	case base == "go.mod":
+		r.addGoModule(p, content)
+	case base == "package.json":
+		r.addPackage(p, content)
+	case base == "jsconfig.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json"):
+		r.addTSConfig(p, content)
+	}
+}
+
+// isManifest reports whether addManifest reads the path.
+func isManifest(p string) bool {
+	base := path.Base(p)
+	return base == "go.mod" || base == "package.json" || base == "jsconfig.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
 }
 
 func (r *resolver) addSource(p string, imports []languages.Import) {
@@ -107,12 +129,19 @@ var scriptExtensions = []string{".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", "
 
 func (r *resolver) script(importer, spec string) []string {
 	if spec != "." && spec != ".." && !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
-		return nil // package or alias specifier
+		return r.bareScript(importer, spec) // alias or package specifier
 	}
 	base := path.Join(path.Dir(importer), spec)
 	if !within(base) {
 		return nil
 	}
+	return r.scriptFile(base)
+}
+
+// scriptFile resolves a repository path the way TypeScript's bundler and
+// node resolution do: exact file, ESM .js naming a .ts source, added
+// extensions, then a directory index.
+func (r *resolver) scriptFile(base string) []string {
 	candidates := []string{base}
 	// ESM sources import "./x.js" while the file on disk is x.ts.
 	for _, ext := range []string{".js", ".jsx", ".mjs", ".cjs"} {

@@ -87,3 +87,19 @@ obligation is reported in `declared_contracts.obligation_changes`
 The schema change is additive: `retired`, `obligation_changes` and
 `unverified_obligations` are new optional fields, and older manifests load
 unchanged.
+
+## Mixed-source and omitted-test observations
+
+`check` pins named committed revisions before analysis. WORKTREE boundary
+fingerprints include source, runner configuration and accepted declarations,
+and are checked after test recommendations. Changed/unreadable/budget-limited
+observations invalidate passing checks even if the selected policy omits
+`source_stability`. Transient writes reverted between boundaries are not detected;
+use immutable checkpoints for authoritative repeatability.
+
+Full selection accounts for every inventoried test with executable commands or
+explicit blocking omissions. Targeted/balanced recommendations also preserve
+required unsupported candidates and pre-planning limit omissions. Optional
+fallback exclusion keeps its documented meaning. A confirmed failure remains
+failed if later observations encounter coverage/environment errors or timeouts;
+the additional gap stays visible in per-command metadata/checks.

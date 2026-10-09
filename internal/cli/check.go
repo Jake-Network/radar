@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -54,6 +55,12 @@ func checkCommand() command {
 // check never runs repository code and needs no initialized state. Coverage
 // remains explicit even when all supported comparisons produce no findings.
 func (a *app) check(o options) int {
+	return a.checkWithRecommendation(o, testselection.Recommend)
+}
+
+// The callback keeps the observation boundary testable without timing-dependent
+// concurrent writes. It is always the read-only recommender in the public CLI.
+func (a *app) checkWithRecommendation(o options, recommend func(context.Context, string, string, model.Snapshot, []string, *planning.Plan) (testselection.Proposal, error)) int {
 	policy, err := a.loadPolicy(o)
 	if err != nil {
 		return a.fail(err)
@@ -78,6 +85,7 @@ func (a *app) check(o options) int {
 	if err != nil {
 		return a.fail(err)
 	}
+	initialSource, initialSourceErr := checkSourceState(a.ctx, a.root, o.head)
 	impact, err := a.affectedReport(o)
 	if err != nil {
 		return a.fail(err)
@@ -134,11 +142,7 @@ func (a *app) check(o options) int {
 		}
 	}
 	if selectedPlan != nil {
-		s, e := a.snapshot(o.head)
-		if e != nil {
-			return a.fail(e)
-		}
-		pr := verification.VerifyWithEvidence(a.ctx, *selectedPlan, s, a.root, nil)
+		pr := verification.VerifyWithEvidence(a.ctx, *selectedPlan, initial, a.root, nil)
 		r.Plan = &pr
 		r.Findings = append(r.Findings, pr.Findings...)
 		add("plan_verification", pr.Status, model.VerifiedStatic, "Plan criteria evaluated; this read-only command supplies no observed test evidence.")
@@ -169,21 +173,8 @@ func (a *app) check(o options) int {
 			r.Status = model.StatusIncomplete
 		}
 	}
-	snapshot, e := a.snapshot(o.head)
-	if e != nil {
-		return a.fail(e)
-	}
-	r.Head = snapshot.Revision
-	if initial.Revision != snapshot.Revision {
-		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: "Working-tree source changed during analysis; rerun before using these findings."})
-		if r.Status != model.StatusFailed && r.Status != model.StatusError {
-			r.Status = model.StatusIncomplete
-		}
-	} else {
-		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Indexed source fingerprint was stable at the analysis boundaries; transient runtime changes are not observed."})
-	}
 	if o.suggestTests || o.suite != "" {
-		proposal, err := testselection.Recommend(a.ctx, a.root, o.head, snapshot, impact.Changed, selectedPlan)
+		proposal, err := recommend(a.ctx, a.root, o.head, initial, impact.Changed, selectedPlan)
 		if err != nil {
 			return a.fail(err)
 		}
@@ -196,12 +187,54 @@ func (a *app) check(o options) int {
 			r.Selection = &selection
 		}
 	}
+	// This boundary must follow every source reader, including test/configuration
+	// discovery. An index fingerprint alone omits some runner configuration.
+	snapshot, e := a.snapshot(o.head)
+	if e != nil {
+		return a.fail(e)
+	}
+	finalSource, finalSourceErr := checkSourceState(a.ctx, a.root, o.head)
+	r.Head = initial.Revision
+	sourceStable := initial.Revision == snapshot.Revision && initialSource == finalSource && initialSourceErr == nil && finalSourceErr == nil
+	if !sourceStable {
+		message := "Working-tree source changed during analysis or test recommendations; rerun before using these findings."
+		if initialSourceErr != nil || finalSourceErr != nil {
+			message = "Source stability could not be established within safe observation limits; rerun after resolving the reported coverage gap."
+			for _, err := range []error{initialSourceErr, finalSourceErr} {
+				if err != nil {
+					r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Severity: model.SeverityWarning, Message: err.Error()})
+				}
+			}
+		}
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: message})
+		if r.Status != model.StatusFailed && r.Status != model.StatusError {
+			r.Status = model.StatusIncomplete
+		}
+	} else {
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Source and configuration fingerprints were stable across analysis and test recommendation boundaries; transient changes between observations are not observed."})
+	}
+	if !sourceStable {
+		// Every passing analysis conclusion depends on the observed source, even
+		// when an explicit policy does not separately require source_stability.
+		for i := range r.Checks {
+			if r.Checks[i].Status == model.StatusPassed {
+				r.Checks[i].Status = model.StatusIncomplete
+				r.Checks[i].Evidence = model.Unknown
+				r.Checks[i].Explanation += " Source observation is unstable; this conclusion cannot satisfy a gate."
+			}
+		}
+	}
 	checks := append([]gate.Check(nil), r.Checks...)
 	noBreaking := gate.NoBreaking(r.Findings, declared.Unestablished())
-	if (manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist)) {
+	if noBreaking.Status != model.StatusFailed && ((manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist))) {
 		noBreaking.Status = model.StatusUnknown
 		noBreaking.Evidence = model.Unknown
 		noBreaking.Explanation = "Declared contract configuration could not be read; no incompatibility verdict can be established."
+	}
+	if !sourceStable && noBreaking.Status == model.StatusPassed {
+		noBreaking.Status = model.StatusIncomplete
+		noBreaking.Evidence = model.Unknown
+		noBreaking.Explanation = "Source changed during analysis; contract compatibility cannot be established from mixed observations."
 	}
 	checks = append(checks, noBreaking)
 	selected := gate.Policy{Version: 1, Name: "supported-analysis", Require: []string{"dependency_impact", "source_stability", "no_breaking_contracts"}}

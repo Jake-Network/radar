@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Reviewed User response","type":"object","properties":{"id":{"type":"integer"},"profile":{"type":"object","properties":{"email":{"type":"string"}}},"display_name":{"type":"string"}},"required":["id","profile","display_name"]}

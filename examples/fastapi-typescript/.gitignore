@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.radar/state.db*
+.radar/config.json

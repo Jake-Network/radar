@@ -75,9 +75,9 @@ func Build(ctx context.Context, repository, revision string, p Provider) (model.
 			continue
 		}
 		r.files[entry.Path] = true
-		if path.Base(entry.Path) == "go.mod" && entry.Mode == ModeRegular {
+		if isManifest(entry.Path) && entry.Mode == ModeRegular && entry.Size <= maxManifestBytes {
 			if content, err := p.Read(ctx, entry, maxManifestBytes); err == nil {
-				r.addGoModule(entry.Path, content)
+				r.addManifest(entry.Path, content)
 			}
 		}
 		adapter, ok := languages.ForPath(entry.Path)

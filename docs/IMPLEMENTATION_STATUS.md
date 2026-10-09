@@ -177,3 +177,35 @@ Confirmed and fixed fail-open defects:
 * pytest collection `ModuleNotFoundError` was counted as a test failure.
 
 Measured selection quality: [VALIDATION_SELECTION.md](VALIDATION_SELECTION.md).
+
+## Adoption milestone (0.3)
+
+Verified locally on 2026-10-09 (Go 1.26.8, linux/amd64, WSL):
+
+- `gofmt -l cmd internal` empty; `go vet ./...` and `go test -race ./...` passed.
+- New tests: `gate_test.go` covers worktree discovery with an idle worktree
+  skipped, default base, static pass without executing code, a `--run` failure
+  of two individually passing branches with an import-based lead to the
+  producer branch, conflict attribution to both branches, a discovered (no
+  manifest) contract break attributed to the API branch, invocation errors,
+  the default and `--all` help, and the bounded static `radar_gate` MCP
+  summary. `resolve_test.go` covers tsconfig `paths`/`baseUrl` with JSONC and
+  relative `extends`, jsconfig `baseUrl`, scoped and unscoped workspace
+  packages (`exports`, `main` in `dist/` mapped to `src/`) and ambiguous
+  package names.
+- `make demo-all`, `scripts/install-release-test.sh` and `scripts/smoke.sh`
+  passed; `scripts/release.sh OUT 0.3.0` produced a linux/amd64 archive whose
+  binary reports `radar 0.3.0`.
+- Not validated locally: the darwin and linux/arm64 builds, the release
+  workflow and the Homebrew formula (no macOS host or Ruby here). They are
+  validated when `.github/workflows/release.yml` runs; nothing was published.
+
+## Reliability/adoption mission qualification
+
+The current working-tree implementation extends full and required test accounting,
+snapshot boundary checks, bounded FastAPI/Pydantic/TypeScript discovery, secure PR
+feedback and native release packaging. See [exact changes and executed validation](MISSION_VALIDATION.md)
+and [concise changelog](MISSION_CHANGELOG.md). Linux runtime and Windows installer
+regressions were observed locally; hosted Actions, macOS runtime and actual
+Windows Go artifact execution remain unverified. These are distinct qualifications,
+not a general production-readiness claim.

@@ -101,3 +101,23 @@ changes, what must be repaired, and the required checks still unsatisfied. Full
 per-file provenance stays in the JSON report (`detail=true` or `--json`).
 Radar does not retry or repair; the coding agent implements repairs and reruns
 the same command.
+
+## Full inventory accounting
+
+Full mode names every inventoried Node `.js`/`.mjs`/`.cjs` test and every
+pytest file. Unittest uses per-file discovery from each file's directory so
+non-package nested directories and `_test.py` names are included. Go and Cargo
+retain native module/crate suite commands. Node TypeScript tests requiring an
+unconfigured loader and unknown JavaScript frameworks appear in `omitted` with
+`unsupported_configuration` and block required execution. Inventory read errors
+and limits also block full mode. A runner's zero recognized tests remains
+unknown; process exit zero alone is never passing test evidence.
+
+Required unsupported direct candidates also remain in `omitted` in targeted and
+balanced mode, and block required execution even when another selected test
+passes. `verification_proposal.omitted` is additive structured recommendation
+metadata: pre-planning recommendation limits never silently discard obligations.
+Inventory read/configuration diagnostics prevent selection from establishing a
+complete required inventory. Optional fallback exclusions retain their existing
+semantics. Classification remains conventional: a filename or mock import alone
+is not proof of a Python test framework or executable test case.
