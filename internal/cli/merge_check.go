@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Jake-Network/radar/internal/gate"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/pathutil"
@@ -16,10 +17,14 @@ import (
 )
 
 func mergeCheckCommand() command {
-	return command{name: "merge-check", usage: "radar merge-check --base REF --branches REF,REF [--plan PATH] [--verify --allow-execution -- COMMAND ARGS]", summary: "Preview the combined branches in private Git state and optionally verify that candidate.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "merge-check", usage: "radar merge-check --base REF --branches REF,REF [--plan PATH] [--policy PATH] [--suggest-tests] [--verify --allow-execution --suite recommended | --cwd DIR -- COMMAND ARGS]", summary: "Preview the combined branches in private Git state and optionally verify that candidate.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.base, "base", "", "baseline commit or ref")
 		fs.StringVar(&o.branches, "branches", "", "ordered comma-separated branch refs")
 		planFlag(fs, o)
+		policyFlag(fs, o)
+		fs.BoolVar(&o.suggestTests, "suggest-tests", false, "recommend relevant candidate tests without execution")
+		fs.StringVar(&o.cwd, "cwd", ".", "repository-relative directory for an explicit verification command")
+		fs.StringVar(&o.suite, "suite", "", "verification selection: recommended (requires --verify --allow-execution)")
 		fs.StringVar(&o.output, "evidence-output", "", "new path under .radar/evidence/ to save execution metadata (default JSON output only)")
 		fs.BoolVar(&o.verify, "verify", false, "execute the supplied command against the combined candidate")
 		fs.BoolVar(&o.allow, "allow-execution", false, "authorize candidate code execution with host privileges")
@@ -28,6 +33,18 @@ func mergeCheckCommand() command {
 	}, run: (*app).mergeCheck}
 }
 func (a *app) mergeCheck(o options) int {
+	if o.cwd != "." && o.cwd != "" {
+		if !o.verify || o.suite != "" {
+			return a.fail(errors.New("--cwd applies only to an explicit --verify command"))
+		}
+		if _, err := pathutil.RepoRelative(o.cwd); err != nil {
+			return a.fail(err)
+		}
+	}
+	policy, err := a.loadPolicy(o)
+	if err != nil {
+		return a.fail(err)
+	}
 	if o.output != "" {
 		clean, e := pathutil.RepoRelative(o.output)
 		if e != nil || !strings.HasPrefix(clean, ".radar/evidence/") || !o.verify {
@@ -61,26 +78,32 @@ func (a *app) mergeCheck(o options) int {
 	for i := range refs {
 		refs[i] = strings.TrimSpace(refs[i])
 	}
-	r, e := integration.Preview(a.ctx, a.root, integration.Options{Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest})
+	r, e := integration.Preview(a.ctx, a.root, integration.Options{CWD: o.cwd, SuggestTests: o.suggestTests, Suite: o.suite, Policy: policy, Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest})
 	if e != nil {
 		return a.fail(e)
 	}
-	if r.Execution != nil && o.output != "" {
+	if len(r.Executions) > 0 && o.output != "" {
 		// Only explicit artifact output may write repository files; default
 		// preview and verification leave the user worktree entirely untouched.
 		path, e := project.SafePath(a.root, o.output)
 		if e != nil {
 			return a.fail(e)
 		}
-		if e = writeNewJSON(path, r.Execution); e != nil {
+		var artifact any = r.Execution
+		if artifact == nil {
+			artifact = r.Executions
+		}
+		if e = writeNewJSON(path, artifact); e != nil {
 			return a.fail(e)
 		}
 	}
 	a.report(r, func(w io.Writer) {
-		fmt.Fprintf(w, "Integration: %s\nBase: %s\n", r.Status, r.Base)
+		fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
+		fmt.Fprintf(w, "Analysis: %s\nBase: %s\n", r.Status, r.Base)
 		if r.CandidateTree != "" {
 			fmt.Fprintf(w, "Candidate tree: %s\n", r.CandidateTree)
 		}
+		renderProposal(w, r.VerificationProposal)
 		for _, c := range r.Checks {
 			fmt.Fprintf(w, "  %-12s %s: %s\n", c.Status, c.ID, c.Explanation)
 		}
@@ -92,6 +115,12 @@ func (a *app) mergeCheck(o options) int {
 		}
 		fmt.Fprintf(w, "Changed: %d files; affected import dependents: %d\n", len(r.Changed), len(r.Affected))
 	})
+	if policy != nil {
+		return gate.Exit(r.Gate)
+	}
+	if o.strict {
+		fmt.Fprintln(a.errout, "--require-complete retains legacy whole-analysis strictness; use --policy to gate only required checks.")
+	}
 	if r.Status == model.StatusError {
 		return 2
 	}

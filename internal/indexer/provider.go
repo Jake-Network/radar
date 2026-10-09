@@ -39,6 +39,10 @@ type Provider interface {
 
 var errTooLarge = errors.New("file exceeds read limit")
 
+// NewWorktree supplies non-ignored repository entries without executing source.
+// Consumers must inspect entry modes and enforce bounded reads.
+func NewWorktree(root string) (Provider, error) { return newWorktree(root) }
+
 type worktree struct{ root string }
 
 func newWorktree(root string) (*worktree, error) {

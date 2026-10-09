@@ -17,25 +17,27 @@ import (
 )
 
 type Record struct {
-	SchemaVersion   string       `json:"schema_version"`
-	ID              string       `json:"id"`
-	Repository      string       `json:"repository"`
-	Revision        string       `json:"revision"`
-	PlanDigest      string       `json:"plan_digest"`
-	Command         []string     `json:"command"`
-	Criteria        []string     `json:"criteria"`
-	TestsRun        int          `json:"tests_run"`
-	TestsFailed     int          `json:"tests_failed,omitempty"`
-	TestsSkipped    int          `json:"tests_skipped,omitempty"`
-	Harness         string       `json:"harness,omitempty"`
-	Env             []string     `json:"env,omitempty"`
-	Phase           string       `json:"phase,omitempty"`
-	ExitCode        int          `json:"exit_code"`
-	Status          model.Status `json:"status"`
-	StartedAt       string       `json:"started_at"`
-	FinishedAt      string       `json:"finished_at"`
-	OutputDigest    string       `json:"output_digest"`
-	IntegrityDigest string       `json:"integrity_digest"`
+	CWD             string            `json:"cwd,omitempty"`
+	Candidate       *CandidateBinding `json:"candidate,omitempty"`
+	SchemaVersion   string            `json:"schema_version"`
+	ID              string            `json:"id"`
+	Repository      string            `json:"repository"`
+	Revision        string            `json:"revision"`
+	PlanDigest      string            `json:"plan_digest"`
+	Command         []string          `json:"command"`
+	Criteria        []string          `json:"criteria"`
+	TestsRun        int               `json:"tests_run"`
+	TestsFailed     int               `json:"tests_failed,omitempty"`
+	TestsSkipped    int               `json:"tests_skipped,omitempty"`
+	Harness         string            `json:"harness,omitempty"`
+	Env             []string          `json:"env,omitempty"`
+	Phase           string            `json:"phase,omitempty"`
+	ExitCode        int               `json:"exit_code"`
+	Status          model.Status      `json:"status"`
+	StartedAt       string            `json:"started_at"`
+	FinishedAt      string            `json:"finished_at"`
+	OutputDigest    string            `json:"output_digest"`
+	IntegrityDigest string            `json:"integrity_digest"`
 	// OutputTail is shown to the operator but never persisted or digested.
 	OutputTail string `json:"-"`
 }
@@ -124,6 +126,19 @@ func Validate(r Record, root, revision string, p planning.Plan, criterion string
 		if "constraint:"+c.ID == criterion && c.Rule != nil && c.Rule.Kind == "test_run" && reflect.DeepEqual(c.Rule.Command, command) {
 			declaredBy = true
 		}
+	}
+	_, spec, specErr := declared(p, command)
+	if r.Candidate != nil {
+		_, spec, specErr = declaredCandidate(p, command, r.CWD)
+	}
+	if r.Candidate != nil {
+		binding := r.Candidate
+		if !planning.Approved(p) || !binding.SourceUnchanged || binding.SourceBefore == "" || binding.SourceBefore != binding.SourceAfter || binding.Checkpoint.Revision != revision || binding.Checkpoint.Repository != r.Repository || binding.ConfigDigest != configDigest(spec, command) || binding.ReviewDigest != checksum(p.Approval) {
+			return errors.New("candidate evidence source, configuration or review mismatch")
+		}
+	}
+	if specErr != nil || normalizeCWD(r.CWD) != normalizeCWD(spec.CWD) {
+		return errors.New("evidence execution cwd mismatch")
 	}
 	if !found || !declaredBy {
 		return errors.New("evidence does not cover declared criterion")

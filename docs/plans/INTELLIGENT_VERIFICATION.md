@@ -1,0 +1,11 @@
+# Intelligent verification implementation plan
+
+Inspection starts at commit 342e482. Existing check/merge-check aggregate analysis gaps and verification outcomes into `status`; legacy strictness therefore rejects unknown runtime properties even when a selected test passes. Integration commands are ad hoc observations and do not satisfy approved plan criteria. Test inventory/recommendation is absent. Existing modular graph, harness, evidence and private Git candidate services remain the foundation.
+
+1. A: introduce gate verdict and analyzer coverage as additive report fields; simple versioned required-check policy; retain legacy status/exit behavior and require-complete semantics unless explicit policy is selected. Test missing required evidence, supported failure, independent incomplete coverage and environment errors.
+2. B: read-only ecosystem test inventory and deterministic change-aware recommendation using plan criteria, file dependencies, package boundaries and conservative fallbacks. Add opt-in recommended suite execution against the combined candidate, with separate selected/executed observations and working-directory binding.
+3. C: run exact reviewed plan commands/configuration against the combined candidate, evaluate criteria using candidate-bound records, and reject mismatches/stale source/changed design/branch evidence. Preserve ad hoc observations without fabricating approval.
+4. D: only after A–C gates pass, expand bounded local Python model imports and static TS relationships, and implement explicit inspect/review/accept with stable candidates and separate accepted-dependency provenance if feasible.
+5. E: realistic multi-module API fixture, Radar dogfooding, pinned external source validation when accessible, comparison measurements, installed-binary checks, CI and current/historical documentation reconciliation. No remote writes or release publication.
+
+Scope prioritizes complete A–C vertical slices over broad language coverage. Missing runtimes do not prevent read-only inventory. Recommendations never assert complete coverage; execution remains authorized separately. Git user source/index/branches remain unchanged. Legacy plans/manifests/evidence readers remain compatible.

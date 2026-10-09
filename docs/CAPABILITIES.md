@@ -90,7 +90,77 @@ schema-compatible.
 - `setup --agent codex|claude|both [--dry-run] [--hook]`: project-local embedded skills, MCP and optional Claude Stop hook. Existing conflicting Radar configuration is refused; unrelated settings remain. Agent trust/restart and placing radar on PATH may require manual action.
 - `check --base REF [--head REF|WORKTREE] [--plan PATH] [--require-complete]`: changed files, inferred reverse dependencies, explicit contract comparison, static discovered candidate comparison and optional plan criteria. No initialization or manifest required; absent coverage is incomplete/unknown. No code executes.
 - `discover [--ref REF]`: inspect static candidate relationships and a proposed manifest. Discovery never accepts bindings automatically and never establishes runtime compatibility.
-- `merge-check --base REF --branches REF,REF`: Git's combined candidate in private state, textual conflicts, contract and dependency analysis. `--verify --allow-execution -- COMMAND ARGS` observes only that supplied command. Missing tools/results remain environment errors/unknown, branch test results cannot establish combined success. Exact candidate evidence is separate from historical plan evidence.
+- `merge-check --base REF --branches REF,REF`: Git's combined candidate in private state, textual conflicts, contract and dependency analysis. `--verify --allow-execution -- COMMAND ARGS` observes the supplied command; `--suite recommended` explicitly selects proposed commands. Missing tools/results remain environment errors/unknown, branch test results cannot establish combined success. Exact candidate evidence is separate from historical plan evidence.
 - MCP offers read-only equivalents. Bounded agent repair guidance uses finding IDs, evidence, source locations, remediation and required revalidation. Planning warns about unordered component ownership and missing shared integration criteria; shared criteria do not establish test quality.
 
-Initial preview rejects symlink/submodule trees instead of implementing their trust and materialization semantics. Branch order is explicit; merge order can change the candidate. Analysis coverage remains incomplete even when the authorized tests pass. There is no automatic command selection, dependency installation, autonomous retries or secure execution sandbox.
+Initial preview rejects symlink/submodule trees instead of implementing their trust and materialization semantics. Branch order is explicit; merge order can change the candidate. Analysis coverage remains incomplete even when the authorized tests pass. Test command recommendations are now available as static proposals; execution remains explicitly authorized. There is no automatic dependency installation, autonomous retry loop or secure execution sandbox.
+
+
+## Selected verification gates and test recommendations
+
+`check` and `merge-check` separate `gate.verdict` from legacy aggregate `status`
+and analysis `coverage`. `--policy PATH` selects required checks; required
+unknown/incomplete evidence is blocked (or failed when `on_missing: fail`), while
+other analyzer limitations stay visible. Legacy exits and `--require-complete`
+remain compatible without policy. See [policy semantics](VERIFICATION_POLICY.md).
+
+`--suggest-tests` inventories conventional Go, Python unittest/pytest, Node test,
+Jest/Vitest and Cargo files/configuration without loading repository code or
+executing package-manager scripts. Recommendations carry argv, repository-relative
+CWD, priority, affected files and inferred/proposed reasons. Plan `test_run`
+commands rank ahead of direct/inferred dependencies and package fallbacks;
+integration-named suites may be prioritized for multiple affected package roots.
+Naming and static imports do not establish behavioral coverage. Unknown JS
+frameworks and TypeScript Node tests without a recognized transpilation path
+remain unselected. Tool availability is a PATH probe, not a dependency check.
+
+`merge-check --verify --suite recommended --allow-execution` runs selected
+commands on the actual combined candidate, recording each selection and execution
+separately with its CWD. At most 16 commands may execute, under a shared total
+`--timeout` (default two minutes, maximum 30 minutes). Larger suites are rejected
+for manual narrowing. No supported selected tests means unknown, never passed.
+Missing tools/dependencies, setup failures, or zero recognized results cannot
+become successful test evidence. Discovery is bounded to 10,000 eligible files,
+1 MiB per read and 32 MiB total; skipped inputs appear in inventory diagnostics.
+
+
+MCP `radar_check` and `radar_merge_check` accept read-only `policy`,
+`suggest_tests`, and `detail`. Default summaries include up to ten findings and
+eight recommended commands and omit inventory. `detail: true` requests the full
+report, still subject to the 40,000-byte tool cap; complete reports are available
+through CLI JSON. Execution and review arguments remain prohibited.
+
+
+Reviewed plan candidate verification accepts exact `test_run` argv/configuration
+and optional `cwd` with setup/env/JUnit, bound to the reviewed digest and ordered
+combined checkpoint. It rejects host dependency links and stale pre-existing
+JUnit reports. Candidate source mutation invalidates suite test eligibility;
+branch evidence and unrelated ad hoc observations cannot satisfy criteria.
+Policies can require `plan_verification` and `criterion:<id>`. Existing schema-1
+records remain readable; candidate metadata is additive. See
+[intelligent verification](INTELLIGENT_VERIFICATION.md) for limits and the actual
+regression report before making a deployment-readiness claim.
+
+
+Explicit combined verification supports `--cwd DIR` (default repository root).
+Nondefault CWD requires an explicit command and cannot override recommended-suite
+command directories. Candidate plan `env` declarations require the named values
+to exist, but only variable names are retained in provenance; this is not an
+environment-value reproducibility claim. Legacy ordinary test execution retains
+its optional environment pass-through behavior.
+
+
+A passing candidate criterion can coexist with an unknown full plan, for example
+when baseline/implementation contract scope is undeclared. Selecting
+`criterion:<id>` does not silently satisfy `plan_verification` or establish
+comprehensive architecture intent.
+
+
+Test recommendation also follows existing statically declared `EXPOSES` and
+`CONSUMES` contract relationships and supported contract/schema-field `DEFINES`
+links, combined with reverse imports. Producer model or schema changes can reach
+declared consumers and their tests with `declared_contract_impact` and manifest
+locations. Proposed, inferred or unknown contract links are excluded; unrelated
+contracts retain separate identity. Relevance remains inferred and runtime use
+is unproved. Repositories without bindings still receive import/package-based
+recommendations, without invented cross-language transport links.

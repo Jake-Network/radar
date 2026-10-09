@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Radar verification policy","type":"object","required":["version","require"],"properties":{"version":{"const":1},"name":{"type":"string"},"require":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"string","minLength":1}},"on_missing":{"enum":["blocked","fail"]}},"additionalProperties":false}

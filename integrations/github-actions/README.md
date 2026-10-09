@@ -12,3 +12,14 @@
 Conflicts are evaluated against the merge base of this pull request. Other pull
 requests forked from older commits may show base drift as changes; treat those
 findings as prompts to rebase or re-run, not as proof of a runtime break.
+
+
+For a selected combined-source gate, keep `--policy` separate from test execution
+consent. `radar merge-check --base BASE --branches A,B --suggest-tests --json`
+proposes commands without execution. After reviewing repository code and runner
+privileges, an explicitly authorized CI job may run
+`--verify --suite recommended --allow-execution --policy POLICY`. Read
+`gate.verdict`, per-command observations and `coverage`; unknown required evidence
+blocks the gate, while unrelated analyzer gaps stay visible. Private source
+copies are not an OS sandbox, particularly for untrusted pull requests.
+See [intelligent verification](../../docs/INTELLIGENT_VERIFICATION.md).

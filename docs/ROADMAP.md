@@ -13,4 +13,19 @@ Current acceptance evidence is maintained in IMPLEMENTATION_STATUS.md. Release r
 
 A: project setup and unified check; B: inspectable static discovery; C: private combined-branch preview and opt-in verification with the two-passing-branches demo; D: read-only MCP, bounded repair guidance and planning ownership/integration warnings; E: module path alignment, unpublished Linux artifact preparation and regression checks. See implementation status for actual current execution results.
 
-Next: broaden imported FastAPI/TypeScript client resolution with scoped symbol evidence, use plan-declared integration suites to recommend checks, and benchmark representative monorepos. Compiler semantics, runtime transport resolution, prose contradiction detection, multi-platform releases, signing and incremental caching remain deferred.
+Next: broaden imported FastAPI/TypeScript client resolution with scoped symbol evidence, expand recommendation precision with tested compiler/workspace relationships, and benchmark representative monorepos. Compiler semantics, runtime transport resolution, prose contradiction detection, multi-platform releases, signing and incremental caching remain deferred.
+
+
+## Intelligent verification milestone
+
+The current vertical slices separate selected gate evidence from analyzer
+coverage, add read-only test inventory/recommendation, and execute explicitly
+selected recommended commands on combined source. Reviewed plan criteria require
+exact candidate-bound observations; broad static discovery expansion remains a
+separate milestone and must not be implied by suite execution.
+
+Follow-up priority: measure recommendation false negatives on representative
+monorepos, improve supported import/contract resolution with inspectable evidence,
+and add reviewed candidate acceptance only when stale-source and ambiguity gates
+are tested. Secure execution isolation, automatic dependency provisioning,
+compiler semantics, signed releases and additional binary platforms remain deferred.

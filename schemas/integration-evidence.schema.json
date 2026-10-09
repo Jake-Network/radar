@@ -1,29 +1,151 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Radar combined integration execution evidence",
-  "description": "Separate from legacy plan test evidence; not accepted by radar verify as an individual-branch record.",
-  "type": "object",
-  "required": ["id", "candidate_commit", "candidate_tree", "base", "inputs", "command", "status", "exit_code", "output_digest", "started_at", "duration_ms", "source_after_execution", "observation"],
-  "properties": {
-    "id": {"type": "string"},
-    "candidate_commit": {"type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"},
-    "candidate_tree": {"type": "string", "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"},
-    "base": {"type": "string"},
-    "inputs": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-    "plan_digest": {"type": "string"},
-    "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-    "status": {"enum": ["passed", "failed", "unknown", "incomplete", "timeout", "error"]},
-    "exit_code": {"type": "integer"},
-    "output_digest": {"type": "string"},
-    "started_at": {"type": "string"},
-    "duration_ms": {"type": "integer", "minimum": 0},
-    "source_after_execution": {"enum": ["unchanged", "modified", "unknown"]},
-    "observation": {"type": "object", "required": ["status", "exit_code", "tests_run", "tests_failed", "tests_skipped", "output_digest"], "properties": {
-      "status": {"enum": ["passed", "failed", "unknown", "incomplete", "timeout", "error"]},
-      "tests_run": {"type": "integer", "minimum": 0},
-      "tests_failed": {"type": "integer", "minimum": 0},
-      "tests_skipped": {"type": "integer", "minimum": 0}
-    }}
-  },
-  "additionalProperties": false
+  "description": "Single explicit execution object, or ordered recommended suite execution array.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/execution"
+    },
+    {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/execution"
+      }
+    }
+  ],
+  "$defs": {
+    "execution": {
+      "title": "Radar combined integration execution evidence",
+      "description": "Candidate observation; optional plan_record carries exact approved criterion evidence, never individual-branch proof.",
+      "type": "object",
+      "required": [
+        "id",
+        "candidate_commit",
+        "candidate_tree",
+        "base",
+        "inputs",
+        "command",
+        "status",
+        "exit_code",
+        "output_digest",
+        "started_at",
+        "duration_ms",
+        "source_after_execution",
+        "observation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "candidate_commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "candidate_tree": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "base": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "plan_digest": {
+          "type": "string"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unknown",
+            "incomplete",
+            "timeout",
+            "error"
+          ]
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "output_digest": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_after_execution": {
+          "enum": [
+            "unchanged",
+            "modified",
+            "unknown",
+            "invalidated_by_suite"
+          ]
+        },
+        "observation": {
+          "type": "object",
+          "required": [
+            "status",
+            "exit_code",
+            "tests_run",
+            "tests_failed",
+            "tests_skipped",
+            "output_digest"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unknown",
+                "incomplete",
+                "timeout",
+                "error"
+              ]
+            },
+            "tests_run": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "tests_failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "tests_skipped": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "selection_id": {
+          "type": "string"
+        },
+        "plan_record": {
+          "$ref": "evidence.schema.json"
+        },
+        "execution_error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

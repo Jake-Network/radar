@@ -49,3 +49,18 @@ the failed checks to the agent. Unknown results, missing plans or a missing
 committed verification with `radar verify --ref SHA` as usual.
 
 The combined preview tool accepts only analysis inputs; `verify` and execution authorization are rejected by MCP. The CLI supports explicit authorized combined verification. The Stop hook returns JSON finding/task feedback on failure and skips repeated Stop-hook repair attempts; it does not run integration tests or approve a plan.
+
+
+For change-aware proposals, add `--suggest-tests` to `radar check` and
+`radar merge-check`. Review argv, CWD and inferred evidence before authorizing the
+CLI with `--verify --suite recommended --allow-execution`. A versioned
+`--policy PATH` selects required checks; inspect `gate.verdict` and `coverage`
+separately. Recommendations neither execute code nor install dependencies, and
+MCP remains read-only. See [intelligent verification](../../docs/INTELLIGENT_VERIFICATION.md).
+
+MCP `radar_check` and `radar_merge_check` accept `policy`, `suggest_tests` and
+`detail`. Default responses summarize at most ten findings and eight proposed
+commands, omitting the test inventory. Request `detail: true` when those omissions
+matter, or use CLI JSON for the complete local report; MCP output remains capped
+at 40,000 bytes. Execution and review arguments are rejected rather than silently
+ignored.

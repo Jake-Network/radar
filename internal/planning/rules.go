@@ -26,8 +26,8 @@ func validArgv(argv []string, what string) error {
 
 // ValidateRule rejects unsupported verification requests rather than executing arbitrary commands.
 func ValidateRule(r Rule) error {
-	if r.Kind != "test_run" && (len(r.Setup) > 0 || len(r.Env) > 0 || len(r.Link) > 0 || r.JUnit != "") {
-		return fmt.Errorf("setup, env, link and junit apply only to test_run rules")
+	if r.Kind != "test_run" && (r.CWD != "" || len(r.Setup) > 0 || len(r.Env) > 0 || len(r.Link) > 0 || r.JUnit != "") {
+		return fmt.Errorf("cwd, setup, env, link and junit apply only to test_run rules")
 	}
 	switch r.Kind {
 	case "file_exists", "json_property":
@@ -41,6 +41,11 @@ func ValidateRule(r Rule) error {
 			return err
 		}
 	case "test_run":
+		if r.CWD != "" {
+			if _, err := pathutil.RepoRelative(r.CWD); err != nil {
+				return fmt.Errorf("cwd: %w", err)
+			}
+		}
 		if err := validArgv(r.Command, "test_run"); err != nil {
 			return err
 		}

@@ -1,6 +1,6 @@
 # Implementation status
 
-Verified locally on 2026-10-09 with Go 1.26.8, linux/amd64 (WSL workspace). Radar 0.2.0 extends the bounded first public MVP with the agent and team workflow milestone. This is local implementation and release preparation, not a claim that all runtime architecture is understood or that a public release has been published. No remote, tag, commit or push was created.
+Verified locally on 2026-10-09 with Go 1.26.8, linux/amd64 (WSL workspace). Radar 0.2.0 extends the bounded first public MVP with the agent and team workflow milestone. This is local implementation and release preparation, not a claim that all runtime architecture is understood or that a public release has been published. This document includes historical snapshots; current local work does not publish releases or mutate remote state.
 
 ## Milestone acceptance
 
@@ -60,7 +60,7 @@ Other covered behavior: import resolution for all four languages (`TestImportRes
 - Plans distinguish proposed, inferred and verified evidence. Consequential review is a local digest-bound declaration, not authenticated approval and never permission for Git mutation. Agents cannot run `test` or `approve` through MCP.
 - Test execution requires explicit `--allow-execution`, runs declared commands against a private immutable snapshot, reuses local dependency caches offline and records bounded digest-based evidence. It is not an OS/network sandbox. Raw output is never persisted.
 - Indexing replaces full snapshots and retains commit versions; the newest ten working-tree snapshots are kept per repository. Limits: 2 MiB per source file, 64 MiB aggregate source and 10,000 source files; exceeding the budget yields one repository-wide diagnostic and a partial index.
-- Native Linux amd64 is the tested distribution target. Windows/macOS native builds, hosted CI runs and public distribution need their own execution evidence. `.github/workflows/ci.yml` has run under `act`, not yet on a hosted GitHub runner.
+- Native Linux amd64 is the tested distribution target. Windows/macOS native builds and public distribution need their own execution evidence. Historical hosted CI success is recorded separately below; it does not validate later local changes.
 
 ## Current agent-native milestone
 
@@ -77,11 +77,84 @@ merge textually yet fail combined verification, then pass after repair. A passin
 observed command does not make the entire integration report complete.
 
 Remaining scope: compiler semantics, runtime transport validation, imported
-Python response models, broad TS client patterns, automated suite recommendation,
-semantic contradiction detection in architecture prose, large-monorepo evidence,
+Python response models, broad TS client patterns, semantic contradiction detection in architecture prose, large-monorepo evidence,
 multi-platform published binaries and signing. Existing plan/manifest/evidence
 formats remain readable; combined evidence is a separate metadata format.
 
-Next: expand scoped producer/consumer resolution and recommend plan-declared
-integration suites while preserving explicit execution authorization. See
+Next: expand scoped producer/consumer resolution and measure recommendation
+precision while preserving explicit execution authorization. See
 [performance measurements](PERFORMANCE.md) before planning cache redesign.
+
+
+## Intelligent verification baseline and current work
+
+The inspected baseline is commit `342e482`. Hosted GitHub Actions run
+[`37884430377`](https://github.com/Jake-Network/radar/actions/runs/37884430377)
+succeeded for the prior baseline, as verified during the baseline audit. It is historical evidence, not a hosted validation of these later
+changes. No published GitHub Releases existed at that baseline check. Binary
+installation remains contingent on a separately reviewed published release.
+
+Current changes introduce selected `gate.verdict`/`coverage` reporting with
+versioned policies, read-only `--suggest-tests` on check and merge-check, and
+explicit recommended-suite execution with per-command CWD/evidence. The
+integration suite has a shared timeout and rejects more than 16 selections.
+Static recommendation reasons preserve inferred/proposed provenance and known
+coverage gaps. Reviewed exact candidate-plan criteria are implemented and
+regression-tested: matching argv/CWD/configuration and review digest are required;
+branch/stale evidence, source mutation, missing environment names, conflicting
+declarations, unsupported host links and stale JUnit cannot establish a pass.
+
+Broad discovery expansion, compiler-resolved selection, large-monorepo coverage,
+secure sandboxing and public multi-platform release delivery remain deferred.
+The earlier live-agent and harness matrix above has not been repeated for this
+milestone. Current full regression results are recorded below. Generated runtime
+and pinned external-source measurements are described separately in
+[the validation report](VALIDATION_INTELLIGENT.md), with their exact scope.
+
+
+### Distribution and onboarding checks for this milestone
+
+The source installer was executed with `GOCACHE=/tmp/radar-go-cache` and
+`GOFLAGS=-buildvcs=false`, producing a runnable `radar 0.2.0` binary outside the
+checkout. In a new committed temporary repository, its doctor command ran,
+`setup --agent both --dry-run` changed no files or state, and two actual setup
+runs preserved identical configuration/skill bytes. Both project MCP settings
+and embedded recommendation/MCP-detail guidance were present. No home agent
+configuration was changed.
+
+Native Linux amd64 packaging completed, the archive checksum validated, and
+the extracted executable ran `version` and a both-agent setup dry run. The
+archive contained dependency inventory/licenses, project notices, agent guides
+and the intelligent-verification example. `ldd` showed libc and its loader as
+runtime libraries. Offline release-installer regression scenarios passed for
+installation, preservation/replacement, invalid versions, checksum mismatch,
+old glibc and a symlink archive member. Public release downloads and the manual
+release-preparation workflow have not been exercised; no release was published.
+
+
+### Final intelligent-verification regression results
+
+Executed locally on 2026-10-09 for the frozen implementation:
+
+- `go test -json ./...`: **228 passing test/subtest cases across 21 tested
+  packages**, zero failures and skips.
+- `go test -race ./...`, `go vet ./...` and the final CLI build: passed.
+- The final embedded skill update additionally passed onboarding race tests.
+- Existing organization, committed-verification and combined-integration demos:
+  passed, including expected-failure assertions.
+
+A (selected gate vs coverage), B (bounded change-aware test proposal and authorized
+recommended execution) and C (reviewed exact candidate criterion evidence) are
+complete for the documented supported scope. Recommendations include tested
+explicit declared-contract impact with manifest locations; relevance remains
+inferred. Passing a criterion does not resolve undeclared overall contract scope.
+
+D discovery expansion is deferred: imported Python response models, richer
+TypeScript client resolution and reviewed candidate acceptance were audited,
+not implemented. E includes actual installer/onboarding/archive checks, the
+generated Python HTTP/Node runtime demonstration and pinned Click read-only
+selection evaluation. It does not establish production FastAPI execution,
+compiled TypeScript behavior, independently labeled recommendation precision,
+large-monorepo scalability or public multi-platform releases. The validation
+report states measured examples and limitations; no cloud or release publishing
+was performed.

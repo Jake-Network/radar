@@ -33,9 +33,10 @@ tradeoffs, tasks (`components` are entity IDs, `contracts` are binding IDs from
   `open` until investigated. Mark `resolved` (with evidence) or `accepted` (with
   who accepts the risk and why) only when that is true. Never delete an
   assumption to make verification pass.
-- `test_run` rules declare exact argv. Add `setup` steps, `env` names, `link`
+- `test_run` rules declare exact argv and optional repository-relative `cwd`. Add `setup` steps, `env` names, `link`
   paths (e.g. `node_modules`, `.venv`) or a `junit` report path when the test
-  needs them.
+  needs them. Candidate integration does not support host dependency links; use
+  reviewed setup inside private state when dependencies are needed.
 - Empty `incomplete` only when the design is actually complete.
 
 Run `radar_preflight` and follow its `next_steps` until no errors remain.
@@ -70,17 +71,38 @@ This skill does not authorize merges, rebases, resets, pushes or external messag
 
 ## Combined integration and bounded repair
 
-Start a repository without manual bindings with `radar check --base BASE --json`.
+Start a repository without manual bindings with `radar check --base BASE --suggest-tests --json`.
 Use `radar discover --json` for evidence-backed proposed relationships; review
 uncertainties before explicitly accepting any manifest. Lexical similarity is
 not runtime proof. MCP equivalents are `radar_check` and `radar_contracts_discover`.
+For `radar_check`/`radar_merge_check`, use `suggest_tests: true` and optional
+`policy` to inspect the bounded default summary. Request `detail: true` only
+when omitted findings, commands or inventory are needed; full responses are
+still capped at 40,000 bytes. Use CLI JSON when the complete local report is needed.
 
 Before integrating concurrent branches, run
-`radar merge-check --base BASE --branches A,B --json` (or `radar_merge_check`).
+`radar merge-check --base BASE --branches A,B --suggest-tests --json` (or `radar_merge_check`).
 This previews combined source using Git semantics. It does not merge user branches
 or execute tests. Independent branch tests are never evidence for the combination.
-After explicit execution authorization, use the CLI with `--verify --allow-execution`
-and a plan declaring exact test commands. Filesystem isolation is not a secure sandbox.
+Inspect `verification_proposal`: argv, CWD, priority, affected files and evidence
+reasons. `declared_contract_impact` can follow explicitly declared producer/
+consumer links into consumer imports/tests; inspect the manifest locations.
+Discovered/proposed links cannot establish that relationship, and runtime usage
+remains unproved. Recommendations are inferred/proposed and do not install dependencies
+or establish complete test coverage. Define a versioned `--policy PATH` selecting
+required checks; distinguish `gate.verdict` from aggregate status and coverage.
+Missing required evidence remains blocked; unrelated analyzer gaps stay visible.
+
+After explicit execution authorization, use the CLI:
+`radar merge-check --base BASE --branches A,B --verify --suite recommended
+--allow-execution --policy POLICY --json`. Supply a reviewed plan declaring exact
+test commands when checking acceptance criteria. Keep selected commands separate
+from executed observations; inspect every result and its CWD. At most 16 commands
+run under one shared timeout. A command observation does not automatically satisfy
+an unrelated plan criterion. Private copied files are not an OS sandbox.
+MCP is strictly read-only for proposals and preview: never pass execution flags or
+attempt to create approval through a tool call. Consult Radar CLI help and its
+intelligent-verification guide for the supported scope.
 
 Consume finding IDs, evidence classes, source locations, remediation and required
 verification. Repair only a supported invariant, then re-check the exact repaired

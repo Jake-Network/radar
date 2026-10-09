@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestMCPRejectsWrongArgumentTypes(t *testing.T) {
 	spec := toolSpec{command: "graph", params: []toolParam{p("depth", "depth", "integer", "", false), p("ref", "ref", "string", "", false), p("reverse", "reverse", "boolean", "", false)}}
@@ -36,6 +40,32 @@ func TestMCPIntegrationToolsCannotAuthorizeExecutionOrReview(t *testing.T) {
 			attempted[arg] = true
 			if _, err := tool.args(attempted); err == nil {
 				t.Fatal("consequential argument accepted", tool.name, arg)
+			}
+		}
+	}
+}
+
+func TestMCPVerificationSummaryPreservesGateAndBoundsInventory(t *testing.T) {
+	raw := `{"gate":{"verdict":"blocked"},"status":"incomplete","checks":[{"id":"integration_execution","status":"unknown"}],"coverage":[{"analyzer":"runtime","status":"unknown"}],"verification_proposal":{"status":"incomplete","commands":[],"inventory":{"tests":["large"]},"limitations":["inferred"]}}`
+	compact := compactVerification(raw)
+	if strings.Contains(compact, "inventory") && strings.Contains(compact, "\"inventory\"") {
+		t.Fatal(compact)
+	}
+	var report map[string]any
+	if err := json.Unmarshal([]byte(compact), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report["gate"].(map[string]any)["verdict"] != "blocked" || report["checks"].([]any)[0].(map[string]any)["status"] != "unknown" {
+		t.Fatal(report)
+	}
+	for _, tool := range mcpTools {
+		if tool.name == "radar_check" {
+			args, err := tool.args(map[string]any{"base": "main", "detail": true, "suggest_tests": true, "policy": ".radar/policy.json"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(strings.Join(args, " "), "__detail") {
+				t.Fatal(args)
 			}
 		}
 	}

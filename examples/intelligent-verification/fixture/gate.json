@@ -1,0 +1,1 @@
+{"version":1,"name":"checkout-integration","require":["textual_merge","no_breaking_contracts","integration_execution"],"on_missing":"blocked"}

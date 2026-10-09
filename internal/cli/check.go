@@ -9,39 +9,41 @@ import (
 
 	"github.com/Jake-Network/radar/internal/contracts"
 	"github.com/Jake-Network/radar/internal/discovery"
+	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/verification"
 )
 
-type coverageCheck struct {
-	ID          string         `json:"id"`
-	Status      model.Status   `json:"status"`
-	Evidence    model.Evidence `json:"evidence"`
-	Explanation string         `json:"explanation"`
-}
+type coverageCheck = gate.Check
 type checkReport struct {
-	Status         model.Status         `json:"status"`
-	Base           string               `json:"base"`
-	Head           string               `json:"head"`
-	Impact         affectedReport       `json:"impact"`
-	Declared       contracts.Report     `json:"declared_contracts"`
-	Discovered     discovery.Comparison `json:"discovered_contracts"`
-	Plan           *planning.Report     `json:"plan,omitempty"`
-	Checks         []coverageCheck      `json:"checks"`
-	Findings       []model.Finding      `json:"findings"`
-	Diagnostics    []model.Diagnostic   `json:"diagnostics"`
-	Limitations    []string             `json:"limitations"`
-	FeedbackDigest string               `json:"feedback_digest"`
-	RepairBudget   int                  `json:"suggested_repair_attempts"`
+	VerificationProposal *testselection.Proposal `json:"verification_proposal,omitempty"`
+	Gate                 gate.Result             `json:"gate"`
+	Coverage             []gate.Coverage         `json:"coverage"`
+	Status               model.Status            `json:"status"`
+	Base                 string                  `json:"base"`
+	Head                 string                  `json:"head"`
+	Impact               affectedReport          `json:"impact"`
+	Declared             contracts.Report        `json:"declared_contracts"`
+	Discovered           discovery.Comparison    `json:"discovered_contracts"`
+	Plan                 *planning.Report        `json:"plan,omitempty"`
+	Checks               []coverageCheck         `json:"checks"`
+	Findings             []model.Finding         `json:"findings"`
+	Diagnostics          []model.Diagnostic      `json:"diagnostics"`
+	Limitations          []string                `json:"limitations"`
+	FeedbackDigest       string                  `json:"feedback_digest"`
+	RepairBudget         int                     `json:"suggested_repair_attempts"`
 }
 
 func checkCommand() command {
-	return command{name: "check", usage: "radar check --base REF [--head REF|WORKTREE] [--plan PATH] [--require-complete]", summary: "Analyze changed files, dependency impact, declared and discovered contracts, and optional plan verification.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "check", usage: "radar check --base REF [--head REF|WORKTREE] [--plan PATH] [--policy PATH] [--suggest-tests]", summary: "Analyze changed files, dependency impact, declared and discovered contracts, and optional plan verification.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.base, "base", "", "base Git revision")
 		fs.StringVar(&o.head, "head", "WORKTREE", "head revision (default current working tree)")
 		planFlag(fs, o)
+		policyFlag(fs, o)
+		fs.BoolVar(&o.suggestTests, "suggest-tests", false, "recommend relevant tests without executing repository code")
 		fs.BoolVar(&o.strict, "require-complete", false, "exit 1 for unknown or incomplete analysis coverage")
 	}, run: (*app).check}
 }
@@ -49,6 +51,10 @@ func checkCommand() command {
 // check never runs repository code and needs no initialized state. Coverage
 // remains explicit even when all supported comparisons produce no findings.
 func (a *app) check(o options) int {
+	policy, err := a.loadPolicy(o)
+	if err != nil {
+		return a.fail(err)
+	}
 	if o.base == "" {
 		return a.fail(errors.New("--base is required"))
 	}
@@ -84,7 +90,7 @@ func (a *app) check(o options) int {
 	r := checkReport{Status: model.StatusPassed, Base: impact.Base, Head: impact.Head, Impact: impact, Declared: declared, Discovered: discovered, Findings: []model.Finding{}, Checks: []coverageCheck{}, Diagnostics: []model.Diagnostic{}, RepairBudget: 2,
 		Limitations: []string{"File dependencies are inferred from imports; compiler-resolved and runtime relationships are not established.", "Discovered producer-consumer candidates are static proposals, not authoritative runtime bindings.", "No build or tests execute in check; working-tree findings are informational. Use merge-check with explicit execution authorization for combined branches."}}
 	add := func(id string, status model.Status, evidence model.Evidence, message string) {
-		r.Checks = append(r.Checks, coverageCheck{id, status, evidence, message})
+		r.Checks = append(r.Checks, coverageCheck{ID: id, Status: status, Evidence: evidence, Explanation: message})
 	}
 	add("dependency_impact", model.StatusPassed, model.Inferred, "Changed files and reverse import dependencies analyzed in both source checkpoints.")
 	add("declared_contracts", declared.Status, model.VerifiedStatic, fmt.Sprintf("%d/%d declared bindings analyzed; absent or unreadable manifest leaves coverage incomplete.", declared.Analyzed, declared.Bindings))
@@ -98,7 +104,9 @@ func (a *app) check(o options) int {
 	// Lint distinguishes a malformed manifest from mere absence and checks stale
 	// consumer declarations even when the baseline manifest was absent.
 	lint := contracts.Lint(a.ctx, a.root, o.head)
-	if _, e := contracts.LoadManifest(a.ctx, a.root, o.head); e == nil || !errors.Is(e, os.ErrNotExist) {
+	_, manifestErr := contracts.LoadManifest(a.ctx, a.root, o.head)
+	_, baselineManifestErr := contracts.LoadManifest(a.ctx, a.root, o.base)
+	if manifestErr == nil || !errors.Is(manifestErr, os.ErrNotExist) {
 		add("manifest_lint", lint.Status, model.VerifiedStatic, "Current declared manifest lint.")
 		if lint.Error != "" {
 			r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Path: contracts.ManifestPath, Severity: model.SeverityError, Message: lint.Error})
@@ -114,6 +122,7 @@ func (a *app) check(o options) int {
 			}
 		}
 	}
+	var selectedPlan *planning.Plan
 	if o.plan != "" {
 		p, e := a.loadPlan(o.plan)
 		if e != nil {
@@ -123,6 +132,7 @@ func (a *app) check(o options) int {
 		if e != nil {
 			return a.fail(e)
 		}
+		selectedPlan = &p
 		pr := verification.VerifyWithEvidence(a.ctx, p, s, a.root, nil)
 		r.Plan = &pr
 		r.Findings = append(r.Findings, pr.Findings...)
@@ -160,21 +170,49 @@ func (a *app) check(o options) int {
 	}
 	r.Head = snapshot.Revision
 	if initial.Revision != snapshot.Revision {
-		r.Checks = append(r.Checks, coverageCheck{"source_stability", model.StatusIncomplete, model.Unknown, "Working-tree source changed during analysis; rerun before using these findings."})
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: "Working-tree source changed during analysis; rerun before using these findings."})
 		if r.Status != model.StatusFailed && r.Status != model.StatusError {
 			r.Status = model.StatusIncomplete
 		}
 	} else {
-		r.Checks = append(r.Checks, coverageCheck{"source_stability", model.StatusPassed, model.VerifiedStatic, "Indexed source fingerprint was stable at the analysis boundaries; transient runtime changes are not observed."})
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Indexed source fingerprint was stable at the analysis boundaries; transient runtime changes are not observed."})
 	}
+	if o.suggestTests {
+		proposal, err := testselection.Recommend(a.ctx, a.root, o.head, snapshot, impact.Changed, selectedPlan)
+		if err != nil {
+			return a.fail(err)
+		}
+		r.VerificationProposal = &proposal
+	}
+	checks := append([]gate.Check(nil), r.Checks...)
+	noBreaking := gate.NoBreaking(r.Findings)
+	if (manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist)) {
+		noBreaking.Status = model.StatusUnknown
+		noBreaking.Evidence = model.Unknown
+		noBreaking.Explanation = "Declared contract configuration could not be read; no incompatibility verdict can be established."
+	}
+	if noBreaking.Status == model.StatusPassed && ((declared.Bindings > 0 && declared.Analyzed < declared.Bindings) || (manifestErr == nil && lint.Status == model.StatusIncomplete)) {
+		noBreaking.Status = model.StatusUnknown
+		noBreaking.Evidence = model.Unknown
+		noBreaking.Explanation = "A declared contract input could not be analyzed; missing schema evidence cannot establish compatibility."
+	}
+	checks = append(checks, noBreaking)
+	selected := gate.Policy{Version: 1, Name: "supported-analysis", Require: []string{"dependency_impact", "source_stability", "no_breaking_contracts"}}
+	if policy != nil {
+		selected = *policy
+	}
+	r.Gate = gate.Evaluate(selected, checks)
+	r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
 	ids := []string{r.Base, r.Head}
 	for _, f := range r.Findings {
 		ids = append(ids, f.ID)
 	}
 	r.FeedbackDigest = model.StableID(ids...)
 	a.report(r, func(w io.Writer) {
-		fmt.Fprintf(w, "Check: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
+		fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
+		fmt.Fprintf(w, "Analysis: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
 		renderAffected(w, impact)
+		renderProposal(w, r.VerificationProposal)
 		for _, c := range r.Checks {
 			fmt.Fprintf(w, "%s: %s — %s\n", c.ID, c.Status, c.Explanation)
 		}
@@ -186,6 +224,12 @@ func (a *app) check(o options) int {
 		}
 		fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
 	})
+	if policy != nil {
+		return gate.Exit(r.Gate)
+	}
+	if o.strict {
+		fmt.Fprintln(a.errout, "--require-complete retains legacy whole-analysis strictness; use --policy to gate only required checks.")
+	}
 	if r.Status == model.StatusError {
 		return 2
 	}

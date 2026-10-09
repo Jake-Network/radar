@@ -19,16 +19,21 @@ import (
 	"github.com/Jake-Network/radar/internal/contracts"
 	"github.com/Jake-Network/radar/internal/discovery"
 	"github.com/Jake-Network/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/graph"
-	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/pathutil"
 	"github.com/Jake-Network/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/verification"
 )
 
 type Options struct {
+	SuggestTests           bool
+	Suite                  string
+	CWD                    string
+	Policy                 *gate.Policy
 	Plan                   *planning.Plan
 	Base                   string
 	Branches               []string
@@ -37,16 +42,15 @@ type Options struct {
 	Timeout                time.Duration
 	PlanDigest             string
 }
-type Check struct {
-	ID          string         `json:"id"`
-	Status      model.Status   `json:"status"`
-	Evidence    model.Evidence `json:"evidence"`
-	Explanation string         `json:"explanation"`
-}
+type Check = gate.Check
 
 // ExecutionEvidence binds an observation to the combined tree and ordered
 // inputs. Individual branch evidence is deliberately never consumed.
 type ExecutionEvidence struct {
+	PlanRecord           *evidence.Record              `json:"plan_record,omitempty"`
+	ExecutionError       string                        `json:"execution_error,omitempty"`
+	SelectionID          string                        `json:"selection_id,omitempty"`
+	CWD                  string                        `json:"cwd,omitempty"`
 	Observation          evidence.CandidateObservation `json:"observation"`
 	ID                   string                        `json:"id"`
 	CandidateCommit      string                        `json:"candidate_commit"`
@@ -63,20 +67,25 @@ type ExecutionEvidence struct {
 	SourceAfterExecution string                        `json:"source_after_execution"`
 }
 type Report struct {
-	Plan            *planning.Report   `json:"plan,omitempty"`
-	Status          model.Status       `json:"status"`
-	Base            string             `json:"base"`
-	Inputs          []string           `json:"inputs"`
-	CandidateCommit string             `json:"candidate_commit,omitempty"`
-	CandidateTree   string             `json:"candidate_tree,omitempty"`
-	Conflicts       []string           `json:"conflicts"`
-	Changed         []string           `json:"changed"`
-	Affected        []string           `json:"affected"`
-	Checks          []Check            `json:"checks"`
-	Findings        []model.Finding    `json:"findings"`
-	Diagnostics     []model.Diagnostic `json:"diagnostics"`
-	Execution       *ExecutionEvidence `json:"execution,omitempty"`
-	Limitations     []string           `json:"limitations"`
+	VerificationProposal *testselection.Proposal `json:"verification_proposal,omitempty"`
+	Selected             []string                `json:"selected_tests,omitempty"`
+	Executions           []ExecutionEvidence     `json:"executions,omitempty"`
+	Gate                 gate.Result             `json:"gate"`
+	Coverage             []gate.Coverage         `json:"coverage"`
+	Plan                 *planning.Report        `json:"plan,omitempty"`
+	Status               model.Status            `json:"status"`
+	Base                 string                  `json:"base"`
+	Inputs               []string                `json:"inputs"`
+	CandidateCommit      string                  `json:"candidate_commit,omitempty"`
+	CandidateTree        string                  `json:"candidate_tree,omitempty"`
+	Conflicts            []string                `json:"conflicts"`
+	Changed              []string                `json:"changed"`
+	Affected             []string                `json:"affected"`
+	Checks               []Check                 `json:"checks"`
+	Findings             []model.Finding         `json:"findings"`
+	Diagnostics          []model.Diagnostic      `json:"diagnostics"`
+	Execution            *ExecutionEvidence      `json:"execution,omitempty"`
+	Limitations          []string                `json:"limitations"`
 }
 
 func environment() []string {
@@ -143,14 +152,20 @@ func validateTree(ctx context.Context, root, sha string) error {
 }
 
 func Preview(ctx context.Context, root string, o Options) (Report, error) {
-	r := Report{Status: model.StatusIncomplete, Inputs: []string{}, Conflicts: []string{}, Changed: []string{}, Affected: []string{}, Checks: []Check{}, Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Limitations: []string{"Static imports do not prove runtime dependency compatibility.", "Only the explicitly supplied verification command is observed; no comprehensive test coverage claim.", "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges."}}
+	r := Report{Status: model.StatusIncomplete, Inputs: []string{}, Conflicts: []string{}, Changed: []string{}, Affected: []string{}, Checks: []Check{}, Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Limitations: []string{"Static imports do not prove runtime dependency compatibility.", "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.", "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges."}}
 	if len(o.Branches) < 1 {
 		return r, errors.New("at least one branch required")
 	}
-	if o.Verify && (!o.AllowExecution || len(o.Command) == 0) {
+	if o.Suite != "" && o.Suite != "recommended" {
+		return r, errors.New("unknown suite; supported selection is recommended")
+	}
+	if o.Suite != "" && len(o.Command) > 0 {
+		return r, errors.New("--suite cannot be combined with an explicit command")
+	}
+	if o.Verify && (!o.AllowExecution || (len(o.Command) == 0 && o.Suite == "")) {
 		return r, errors.New("--verify requires --allow-execution and a command after --")
 	}
-	if !o.Verify && (o.AllowExecution || len(o.Command) > 0) {
+	if !o.Verify && (o.AllowExecution || len(o.Command) > 0 || o.Suite != "") {
 		return r, errors.New("execution arguments require --verify")
 	}
 	if o.Timeout == 0 {
@@ -235,11 +250,12 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 			}
 			sort.Strings(r.Conflicts)
 			r.Status = model.StatusFailed
-			r.Checks = append(r.Checks, Check{"textual_merge", model.StatusFailed, model.VerifiedTool, "Git reported unmerged paths in the private candidate."})
+			r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusFailed, Evidence: model.VerifiedTool, Explanation: "Git reported unmerged paths in the private candidate."})
 			f := model.NewFinding("integration_textual_conflict", "Resolve overlapping edits before integration.", model.VerifiedTool)
 			f.Severity = model.SeverityError
 			f.Remediation = "Reconcile the reported paths on the feature branches and repeat merge-check."
 			r.Findings = append(r.Findings, f)
+			applyGate(&r, o)
 			return r, nil
 		}
 	}
@@ -254,18 +270,46 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	if e = validateTree(ctx, temp, r.CandidateCommit); e != nil {
 		return r, e
 	}
-	r.Checks = append(r.Checks, Check{"textual_merge", model.StatusPassed, model.VerifiedTool, "Git combined all selected commits without textual conflicts."})
+	r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusPassed, Evidence: model.VerifiedTool, Explanation: "Git combined all selected commits without textual conflicts."})
 	r.Changed, e = gitrepo.ChangedFiles(ctx, temp, r.Base, r.CandidateCommit)
 	if e != nil {
 		return r, e
 	}
+	configurationCheck := Check{ID: "declared_contract_configuration", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Declared contract configuration is absent or readable at both checkpoints."}
+	for _, ref := range []string{r.Base, r.CandidateCommit} {
+		manifest, loadErr := contracts.LoadManifest(ctx, temp, ref)
+		if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+			configurationCheck.Status = model.StatusError
+			configurationCheck.Evidence = model.Unknown
+			configurationCheck.Explanation = "Declared contract configuration cannot be read or parsed at " + ref + ": " + loadErr.Error()
+			continue
+		}
+		for _, binding := range manifest.Bindings {
+			schema, schemaErr := contracts.ReadSchema(ctx, temp, ref, binding.Schema)
+			if schemaErr == nil {
+				_, schemaErr = contracts.Analyzable(schema, binding.Pointer)
+			}
+			if schemaErr != nil && configurationCheck.Status != model.StatusError {
+				configurationCheck.Status = model.StatusIncomplete
+				configurationCheck.Evidence = model.Unknown
+				configurationCheck.Explanation = "Declared schema coverage is unavailable for " + binding.ID + " at " + ref + ": " + schemaErr.Error()
+			}
+		}
+	}
+
 	impact, e := contracts.Impact(ctx, temp, r.Base, r.CandidateCommit)
 	if e != nil {
 		return r, e
 	}
+	if configurationCheck.Status == model.StatusPassed && impact.Bindings > 0 && impact.Analyzed < impact.Bindings {
+		configurationCheck.Status = model.StatusIncomplete
+		configurationCheck.Evidence = model.Unknown
+		configurationCheck.Explanation = "Declared bindings could not all be analyzed; no-breaking-contracts is unestablished."
+	}
+	r.Checks = append(r.Checks, configurationCheck)
 	r.Findings = append(r.Findings, impact.Findings...)
 	r.Diagnostics = append(r.Diagnostics, impact.Diagnostics...)
-	r.Checks = append(r.Checks, Check{"declared_contracts", impact.Status, model.VerifiedStatic, fmt.Sprintf("Analyzed %d of %d declared bindings.", impact.Analyzed, impact.Bindings)})
+	r.Checks = append(r.Checks, Check{ID: "declared_contracts", Status: impact.Status, Evidence: model.VerifiedStatic, Explanation: fmt.Sprintf("Analyzed %d of %d declared bindings.", impact.Analyzed, impact.Bindings)})
 	discovered, e := discovery.Compare(ctx, temp, r.Base, r.CandidateCommit)
 	if e != nil {
 		return r, e
@@ -273,18 +317,13 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	r.Findings = append(r.Findings, discovered.Findings...)
 	r.Diagnostics = append(r.Diagnostics, discovered.Diagnostics...)
 	r.Limitations = append(r.Limitations, discovered.Limitations...)
-	r.Checks = append(r.Checks, Check{"discovered_contracts", discovered.Status, model.Proposed, "Compared supported discovered producer and consumer relationships; candidates remain proposed."})
+	r.Checks = append(r.Checks, Check{ID: "discovered_contracts", Status: discovered.Status, Evidence: model.Proposed, Explanation: "Compared supported discovered producer and consumer relationships; candidates remain proposed."})
 	snapshot, e := checkpoint.Index(ctx, temp, r.CandidateCommit)
 	if e != nil {
 		return r, e
 	}
 	r.Diagnostics = append(r.Diagnostics, snapshot.Diagnostics...)
-	if o.Plan != nil {
-		planReport := verification.VerifyWithEvidence(ctx, *o.Plan, snapshot, temp, nil)
-		r.Plan = &planReport
-		r.Findings = append(r.Findings, planReport.Findings...)
-		r.Checks = append(r.Checks, Check{"plan_verification", planReport.Status, model.VerifiedStatic, "Verified supported plan rules against the combined snapshot; generic command observations do not satisfy plan-declared evidence criteria."})
-	}
+
 	g, e := graph.New(snapshot)
 	if e != nil {
 		return r, e
@@ -304,32 +343,137 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 		r.Affected = append(r.Affected, p)
 	}
 	sort.Strings(r.Affected)
-	r.Checks = append(r.Checks, Check{"dependency_compatibility", model.StatusUnknown, model.Inferred, "Resolved static dependency neighborhood; runtime and build compatibility requires execution."})
-	if o.Verify {
-		ev := execute(ctx, temp, r, o)
-		r.Execution = &ev
-		r.Checks = append(r.Checks, Check{"integration_execution", ev.Status, model.ObservedTest, "Observed the supplied command against the combined candidate; output is hashed, not exposed."})
-		if ev.Status != model.StatusPassed {
-			f := model.NewFinding("integration_execution_"+string(ev.Status), fmt.Sprintf("Combined verification command %q returned %s (exit %d).", o.Command, ev.Status, ev.ExitCode), model.ObservedTest)
-			f.Severity = model.SeverityError
-			if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
-				f.Severity = model.SeverityWarning
-			}
-			f.Locations = ev.Observation.Locations
-			for i := range f.Locations {
-				f.Locations[i].Revision = r.CandidateCommit
-			}
-			if len(ev.Observation.FailedCases) > 0 {
-				f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
-			}
-			f.ID = model.StableID(r.CandidateTree, strings.Join(o.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
-			f.Remediation = "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
-			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
-			r.Findings = append(r.Findings, f)
+	r.Checks = append(r.Checks, Check{ID: "dependency_compatibility", Status: model.StatusUnknown, Evidence: model.Inferred, Explanation: "Resolved static dependency neighborhood; runtime and build compatibility requires execution."})
+	if o.SuggestTests || o.Suite != "" {
+		proposal, err := testselection.Recommend(ctx, temp, r.CandidateCommit, snapshot, r.Changed, o.Plan)
+		if err != nil {
+			return r, err
 		}
-	} else {
-		r.Checks = append(r.Checks, Check{"integration_execution", model.StatusUnknown, model.Unknown, "No combined test evidence. Supply --verify --allow-execution -- COMMAND ARGS."})
+		r.VerificationProposal = &proposal
 	}
+	if o.Verify {
+		explicitCWD := o.CWD
+		if explicitCWD == "" {
+			explicitCWD = "."
+		}
+		selections := []testselection.Command{{ID: model.StableID("verification-command", explicitCWD, strings.Join(o.Command, "\x00")), Command: o.Command, CWD: explicitCWD}}
+		if o.Suite == "recommended" {
+			selections = r.VerificationProposal.Commands
+		}
+		if len(selections) > 16 {
+			return r, errors.New("recommended suite exceeds 16 commands; review and narrow the plan or supply an explicit command")
+		}
+		executionCtx, cancelExecution := context.WithTimeout(ctx, o.Timeout)
+		defer cancelExecution()
+		executionStatus := model.StatusPassed
+		if len(selections) == 0 {
+			executionStatus = model.StatusUnknown
+		}
+		for _, selection := range selections {
+			r.Selected = append(r.Selected, selection.ID)
+		}
+		for _, selection := range selections {
+			executionOptions := o
+			executionOptions.Command = selection.Command
+			executionOptions.CWD = selection.CWD
+			ev := execute(executionCtx, temp, r, executionOptions)
+			ev.SelectionID = selection.ID
+			// Selection identity is also bound into the serialized artifact digest.
+			ev.ID = ""
+			data, _ := json.Marshal(ev)
+			ev.ID = model.StableID("integration-evidence-v1", string(data))
+			r.Executions = append(r.Executions, ev)
+			if o.Suite == "" {
+				r.Execution = &r.Executions[len(r.Executions)-1]
+			}
+			if selection.ID != "" {
+				r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.Status, Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
+			}
+			executionStatus = aggregateExecution(executionStatus, ev.Status)
+			if ev.Status != model.StatusPassed {
+				f := model.NewFinding("integration_execution_"+string(ev.Status), fmt.Sprintf("Combined verification command %q in %q returned %s (exit %d).", executionOptions.Command, executionOptions.CWD, ev.Status, ev.ExitCode), model.ObservedTest)
+				f.Severity = model.SeverityError
+				if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
+					f.Severity = model.SeverityWarning
+				}
+				f.Locations = ev.Observation.Locations
+				for i := range f.Locations {
+					f.Locations[i].Revision = r.CandidateCommit
+				}
+				if len(ev.Observation.FailedCases) > 0 {
+					f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
+				}
+				f.ID = model.StableID(r.CandidateTree, executionOptions.CWD, strings.Join(executionOptions.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
+				f.Remediation = "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
+				f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
+				r.Findings = append(r.Findings, f)
+			}
+			if ev.SourceAfterExecution != "unchanged" {
+				break
+			}
+		}
+		if len(r.Executions) < len(selections) && executionStatus == model.StatusPassed {
+			executionStatus = model.StatusIncomplete
+		}
+		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: executionStatus, Evidence: model.ObservedTest, Explanation: fmt.Sprintf("Executed %d of %d selected commands against the combined candidate; output is hashed, not exposed.", len(r.Executions), len(selections))})
+	} else {
+		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "No combined test evidence. Authorize an explicit command or --suite recommended."})
+	}
+
+	sourceUnchanged := true
+	var records []evidence.Record
+	for _, ev := range r.Executions {
+		if ev.SourceAfterExecution != "unchanged" {
+			sourceUnchanged = false
+		}
+		if ev.PlanRecord != nil {
+			records = append(records, *ev.PlanRecord)
+		}
+	}
+	if !sourceUnchanged {
+		for i := range r.Executions {
+			ev := &r.Executions[i]
+			if ev.PlanRecord != nil {
+				invalid := evidence.InvalidateCandidateRecord(*ev.PlanRecord)
+				ev.PlanRecord = &invalid
+			}
+			if ev.Status == model.StatusPassed {
+				ev.Status = model.StatusIncomplete
+			}
+			if ev.SourceAfterExecution == "unchanged" {
+				ev.SourceAfterExecution = "invalidated_by_suite"
+			}
+			if ev.Observation.Status == model.StatusPassed {
+				ev.Observation.Status = model.StatusIncomplete
+			}
+			ev.ID = ""
+			data, _ := json.Marshal(ev)
+			ev.ID = model.StableID("integration-evidence-v1", string(data))
+		}
+		if o.Suite == "" && len(r.Executions) > 0 {
+			r.Execution = &r.Executions[0]
+		}
+		for i := range r.Checks {
+			if (strings.HasPrefix(r.Checks[i].ID, "test:") || r.Checks[i].ID == "integration_execution") && r.Checks[i].Status == model.StatusPassed {
+				r.Checks[i].Status = model.StatusIncomplete
+			}
+		}
+	}
+	if o.Plan != nil {
+		identity, identityErr := evidence.RepositoryIdentity(ctx, temp)
+		if identityErr != nil {
+			return r, identityErr
+		}
+		cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
+		planReport := verification.VerifyCandidateWithEvidence(ctx, *o.Plan, snapshot, temp, cp, records, sourceUnchanged)
+		r.Plan = &planReport
+		r.Findings = append(r.Findings, planReport.Findings...)
+		r.Checks = append(r.Checks, Check{ID: "plan_verification", Status: planReport.Status, Evidence: model.VerifiedStatic, Explanation: "Reviewed exact-command criteria use only source-intact records from this combined candidate; unmatched observations remain informational."})
+		for _, criterion := range planReport.Checks {
+			r.Checks = append(r.Checks, Check{ID: "criterion:" + criterion.ID, Status: criterion.Status, Evidence: criterion.Evidence, Explanation: criterion.Explanation})
+		}
+	}
+
 	r.Status = model.StatusPassed
 	for _, c := range r.Checks {
 		if c.Status == model.StatusError || c.Status == model.StatusTimeout {
@@ -347,13 +491,39 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 			r.Status = model.StatusIncomplete
 		}
 	}
+	applyGate(&r, o)
 	return r, nil
 }
 
 func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvidence {
 	started := time.Now()
-	ev := ExecutionEvidence{CandidateCommit: r.CandidateCommit, CandidateTree: r.CandidateTree, Base: r.Base, Inputs: r.Inputs, PlanDigest: o.PlanDigest, Command: append([]string(nil), o.Command...), Status: model.StatusPassed, ExitCode: 0, StartedAt: started.UTC().Format(time.RFC3339Nano)}
-	observation, observeErr := evidence.ObserveCandidate(ctx, root, o.Command, o.Timeout)
+	ev := ExecutionEvidence{CandidateCommit: r.CandidateCommit, CandidateTree: r.CandidateTree, Base: r.Base, Inputs: r.Inputs, PlanDigest: o.PlanDigest, CWD: o.CWD, Command: append([]string(nil), o.Command...), Status: model.StatusPassed, ExitCode: 0, StartedAt: started.UTC().Format(time.RFC3339Nano)}
+
+	identity, identityErr := evidence.RepositoryIdentity(ctx, root)
+	cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
+	observation := evidence.CandidateObservation{Status: model.StatusError, ExitCode: -1}
+	var observeErr error
+	match := false
+	var declarationErr error
+	if o.Plan != nil {
+		match, declarationErr = evidence.CandidateDeclaration(*o.Plan, o.Command, o.CWD)
+	}
+	if identityErr != nil {
+		observeErr = identityErr
+	} else if declarationErr != nil {
+		observeErr = declarationErr
+	} else if match {
+		runResult, runErr := evidence.RunCandidate(ctx, root, cp, *o.Plan, o.Command, o.CWD, o.Timeout)
+		observeErr = runErr
+		if runErr == nil {
+			observation = runResult.Observation
+		}
+		if runErr == nil {
+			ev.PlanRecord = &runResult.Record
+		}
+	} else {
+		observation, observeErr = evidence.ObserveCandidateAt(ctx, root, o.CWD, o.Command, o.Timeout)
+	}
 	ev.Observation = observation
 	ev.Status = observation.Status
 	ev.ExitCode = observation.ExitCode
@@ -361,24 +531,19 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	if observeErr != nil {
 		ev.Status = model.StatusError
 		ev.ExitCode = -1
+		ev.ExecutionError = observeErr.Error()
+		ev.Observation.Status = model.StatusError
+		ev.Observation.ExitCode = -1
 	}
 	ev.DurationMS = time.Since(started).Milliseconds()
-	// Capture whether the command changed tracked source. A passing command that
-	// rewrites the candidate cannot establish the original candidate's behavior.
-	after, err := run(context.WithoutCancel(ctx), root, "status", "--porcelain", "--untracked-files=no")
-	untracked, untrackedErr := run(context.WithoutCancel(ctx), root, "ls-files", "--others", "-z")
-	if untrackedErr != nil {
-		err = untrackedErr
-	}
-	for _, p := range strings.Split(untracked, "\x00") {
-		if p != "" && !indexer.ExcludedPath(p) {
-			after += "untracked candidate input: " + p
-		}
-	}
-	if err != nil {
+	sourceCtx, sourceCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer sourceCancel()
+	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, evidence.CandidateArtifacts(o.Plan))
+	if sourceErr != nil {
 		ev.SourceAfterExecution = "unknown"
 		ev.Status = model.StatusError
-	} else if head, headErr := gitrepo.Resolve(context.WithoutCancel(ctx), root, "HEAD"); headErr != nil || head != r.CandidateCommit || after != "" {
+		ev.ExecutionError = sourceErr.Error()
+	} else if !after.Matches {
 		ev.SourceAfterExecution = "modified"
 		if ev.Status == model.StatusPassed {
 			ev.Status = model.StatusIncomplete
@@ -386,7 +551,38 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	} else {
 		ev.SourceAfterExecution = "unchanged"
 	}
+
 	data, _ := json.Marshal(ev)
 	ev.ID = model.StableID("integration-evidence-v1", string(data))
 	return ev
+}
+
+func applyGate(r *Report, o Options) {
+	checks := append([]gate.Check(nil), r.Checks...)
+	noBreaking := gate.NoBreaking(r.Findings)
+	for _, c := range r.Checks {
+		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed {
+			noBreaking.Status = c.Status
+			noBreaking.Evidence = model.Unknown
+			noBreaking.Explanation = c.Explanation
+		}
+	}
+	checks = append(checks, noBreaking)
+	p := gate.Policy{Version: 1, Name: "supported-integration", Require: []string{"textual_merge", "no_breaking_contracts"}}
+	if o.Verify {
+		p.Require = append(p.Require, "integration_execution")
+	}
+	if o.Policy != nil {
+		p = *o.Policy
+	}
+	r.Gate = gate.Evaluate(p, checks)
+	r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
+}
+
+func aggregateExecution(current, next model.Status) model.Status {
+	rank := map[model.Status]int{model.StatusPassed: 0, model.StatusUnknown: 1, model.StatusIncomplete: 1, model.StatusWarning: 1, model.StatusFailed: 2, model.StatusTimeout: 3, model.StatusError: 3}
+	if rank[next] > rank[current] {
+		return next
+	}
+	return current
 }

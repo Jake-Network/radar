@@ -27,3 +27,18 @@ or authorize arbitrary scripts. See [verification demo](../../docs/DEMO.md) for
 an executable workflow and [security](../../docs/SECURITY.md) for execution limits.
 
 For concurrent work, start with `radar check --base main --json`, inspect `radar discover --json`, and use `radar merge-check --base main --branches backend,frontend --json` before integration. MCP exposes these read-only tools; it cannot enable execution or record human approval. If the user authorizes tests, run the CLI with `--verify --allow-execution -- COMMAND ARGS`. Treat failed finding IDs as repair inputs and revalidate the combined source after repair; avoid repeating identical feedback indefinitely.
+
+
+For change-aware proposals, add `--suggest-tests` to `radar check` and
+`radar merge-check`. Review argv, CWD and inferred evidence before authorizing the
+CLI with `--verify --suite recommended --allow-execution`. A versioned
+`--policy PATH` selects required checks; inspect `gate.verdict` and `coverage`
+separately. Recommendations neither execute code nor install dependencies, and
+MCP remains read-only. See [intelligent verification](../../docs/INTELLIGENT_VERIFICATION.md).
+
+MCP `radar_check` and `radar_merge_check` accept `policy`, `suggest_tests` and
+`detail`. Default responses summarize at most ten findings and eight proposed
+commands, omitting the test inventory. Request `detail: true` when those omissions
+matter, or use CLI JSON for the complete local report; MCP output remains capped
+at 40,000 bytes. Execution and review arguments are rejected rather than silently
+ignored.

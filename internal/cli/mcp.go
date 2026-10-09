@@ -37,8 +37,8 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
-	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "fail when coverage is incomplete", false)}},
-	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true)}},
+	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
+	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
 	{"radar_doctor", "doctor", "Report Radar capabilities, repository identity and state location.", nil},
 	{"radar_init", "init", "Create .radar state in the repository (required by legacy stateful tools).", nil},
@@ -90,6 +90,9 @@ func (t toolSpec) args(arguments map[string]any) ([]string, error) {
 		case bool:
 			if param.kind != "boolean" {
 				return nil, fmt.Errorf("argument %s must be a %s", param.name, param.kind)
+			}
+			if param.flag == "__detail" {
+				continue
 			}
 			if v {
 				args = append(args, "--"+param.flag)
@@ -241,6 +244,9 @@ func (a *app) callTool(name string, arguments map[string]any) map[string]any {
 	var stdout, stderr bytes.Buffer
 	code := Run(a.ctx, args, &stdout, &stderr)
 	text := stdout.String()
+	if (spec.command == "check" || spec.command == "merge-check") && arguments["detail"] != true {
+		text = compactVerification(text)
+	}
 	if len(text) > maxToolOutput {
 		text = text[:maxToolOutput] + fmt.Sprintf("\n... output truncated at %d of %d bytes; narrow the query (kind, name, from, depth, limit) or run the CLI with --json.", maxToolOutput, stdout.Len())
 	}
@@ -249,7 +255,7 @@ func (a *app) callTool(name string, arguments map[string]any) map[string]any {
 		content = append(content, map[string]any{"type": "text", "text": "stderr: " + text})
 	}
 	if code == 1 {
-		content = append(content, map[string]any{"type": "text", "text": "radar exit code 1: a supported check failed; read status, findings and next_steps."})
+		content = append(content, map[string]any{"type": "text", "text": "radar exit code 1: a check failed or required evidence is missing; inspect gate, findings and next steps."})
 	}
 	return map[string]any{"content": content, "isError": code == 2}
 }
@@ -261,4 +267,68 @@ func indexOf(list []string, value string) int {
 		}
 	}
 	return -1
+}
+
+// compactVerification preserves verdict/evidence distinctions while bounding
+// agent context. Full details remain available with detail=true or CLI --json.
+func compactVerification(raw string) string {
+	var full map[string]any
+	if json.Unmarshal([]byte(raw), &full) != nil {
+		return raw
+	}
+	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
+	for _, key := range []string{"gate", "status", "base", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations"} {
+		if v, ok := full[key]; ok {
+			out[key] = v
+		}
+	}
+	for _, key := range []string{"findings", "diagnostics", "changed", "affected"} {
+		if values, ok := full[key].([]any); ok {
+			out[key+"_count"] = len(values)
+			if len(values) > 10 {
+				values = values[:10]
+			}
+			out[key] = values
+		}
+	}
+	if impact, ok := full["impact"].(map[string]any); ok {
+		for _, key := range []string{"changed", "affected"} {
+			if values, ok := impact[key].([]any); ok {
+				out[key+"_count"] = len(values)
+			}
+		}
+	}
+	if p, ok := full["verification_proposal"].(map[string]any); ok {
+		proposal := map[string]any{"status": p["status"], "limitations": p["limitations"]}
+		if commands, ok := p["commands"].([]any); ok {
+			proposal["recommended_count"] = len(commands)
+			if len(commands) > 8 {
+				commands = commands[:8]
+			}
+			proposal["commands"] = commands
+		}
+		out["verification_proposal"] = proposal
+	}
+	for key, limit := range map[string]int{"checks": 20, "coverage": 12, "limitations": 10} {
+		if values, ok := out[key].([]any); ok && len(values) > limit {
+			out[key+"_count"] = len(values)
+			out[key] = values[:limit]
+		}
+	}
+	if original, ok := out["gate"].(map[string]any); ok {
+		gateSummary := map[string]any{}
+		for k, v := range original {
+			gateSummary[k] = v
+		}
+		if required, ok := gateSummary["required_checks"].([]any); ok && len(required) > 20 {
+			gateSummary["required_check_count"] = len(required)
+			gateSummary["required_checks"] = required[:20]
+		}
+		out["gate"] = gateSummary
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return raw
+	}
+	return string(data)
 }

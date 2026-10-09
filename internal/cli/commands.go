@@ -10,11 +10,11 @@ import (
 )
 
 type options struct {
-	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence, agent string
-	reverse, allow, projected, strict, summary, dryRun, hook, verify                                   bool
-	depth, limit                                                                                       int
-	timeout                                                                                            time.Duration
-	args                                                                                               []string
+	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence, agent, policy, suite, cwd string
+	reverse, allow, projected, strict, summary, dryRun, hook, verify, suggestTests                                         bool
+	depth, limit                                                                                                           int
+	timeout                                                                                                                time.Duration
+	args                                                                                                                   []string
 }
 
 // command describes one subcommand: only its own flags are accepted.

@@ -118,8 +118,72 @@
     },
     "phase": {
       "enum": [
-        "setup"
+        "setup",
+        "test"
       ]
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint",
+        "source_before",
+        "source_after",
+        "source_unchanged",
+        "config_digest",
+        "review_digest"
+      ],
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "base",
+            "revision",
+            "tree",
+            "inputs"
+          ],
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "base": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "tree": {
+              "type": "string"
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "source_before": {
+          "type": "string"
+        },
+        "source_after": {
+          "type": "string"
+        },
+        "source_unchanged": {
+          "type": "boolean"
+        },
+        "config_digest": {
+          "type": "string"
+        },
+        "review_digest": {
+          "type": "string"
+        }
+      }
     }
   },
   "allOf": [

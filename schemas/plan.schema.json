@@ -321,6 +321,9 @@
         "junit": {
           "type": "string",
           "description": "test_run only: snapshot-relative JUnit XML report written by command."
+        },
+        "cwd": {
+          "type": "string"
         }
       },
       "required": [

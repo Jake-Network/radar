@@ -27,6 +27,7 @@ type Constraint struct {
 	Rule   *Rule  `json:"rule,omitempty"`
 }
 type Rule struct {
+	CWD        string   `json:"cwd,omitempty"`
 	Kind       string   `json:"kind"`
 	Command    []string `json:"command,omitempty"`
 	EvidenceID string   `json:"evidence_id,omitempty"`

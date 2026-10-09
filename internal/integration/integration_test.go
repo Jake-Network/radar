@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"github.com/Jake-Network/radar/internal/gate"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/planning"
 	"os"
@@ -325,5 +326,177 @@ func TestCommittedAndUntrackedMutationCannotProveOriginalCandidate(t *testing.T)
 		if r.Execution.SourceAfterExecution != "modified" {
 			t.Fatal("clean git status hid candidate mutation")
 		}
+	}
+}
+
+func reviewedIntegrationPlan(t *testing.T, root string, argv []string) planning.Plan {
+	t.Helper()
+	p := planning.Plan{SchemaVersion: "1", FeatureID: "checkout", Intent: "verify combined checkout", BaseRevision: gitTest(t, root, "rev-parse", "baseline"), Requirements: []planning.Requirement{{ID: "budget", Intent: "stay within budget"}}, Acceptance: []planning.Criterion{{ID: "budget-test", Requirement: "budget", Intent: "observe real checkout test", Rule: &planning.Rule{Kind: "test_run", Command: argv}}}, Tasks: []planning.Task{{ID: "checkout-task", Intent: "adjust checkout", Requirements: []string{"budget"}, Components: []string{"file:backend.py", "file:frontend.ts"}, Acceptance: []string{"budget-test"}}}}
+	p.Approval = &planning.Approval{Reviewer: "human-reviewer", ReviewedAt: "2026-10-09T00:00:00Z", Checkpoint: p.BaseRevision, PlanDigest: planning.Digest(p)}
+	return p
+}
+
+func TestReviewedPlanCandidateCriteriaPassWithoutBranchEvidence(t *testing.T) {
+	root := fixture(t)
+	put(t, root, ".radar/contracts.json", `{"version":1,"bindings":[]}`)
+	gitTest(t, root, "add", ".radar/contracts.json")
+	gitTest(t, root, "commit", "-qm", "explicit empty contract scope")
+	o := opts("backend", "repaired")
+	p := reviewedIntegrationPlan(t, root, o.Command)
+	o.Plan = &p
+	o.Policy = &gate.Policy{Version: 1, Require: []string{"textual_merge", "integration_execution", "plan_verification", "criterion:budget-test"}}
+	r, e := Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checkStatus(t, r, "criterion:budget-test", model.StatusPassed)
+	checkStatus(t, r, "plan_verification", model.StatusPassed)
+	if r.Gate.Verdict != gate.Pass || r.Execution.PlanRecord == nil || r.Execution.PlanRecord.Candidate == nil || !r.Plan.Authoritative {
+		t.Fatalf("candidate not verified: %+v", r)
+	}
+	originalTree := r.CandidateTree
+	o.Branches = []string{"backend", "frontend"}
+	broken, brokenErr := Preview(context.Background(), root, o)
+	if brokenErr != nil {
+		t.Fatal(brokenErr)
+	}
+	checkStatus(t, broken, "criterion:budget-test", model.StatusFailed)
+	if broken.Gate.Verdict != gate.Fail || broken.Execution.PlanRecord == nil || len(broken.Execution.Observation.FailedCases) == 0 || len(broken.Execution.Observation.Locations) == 0 || broken.CandidateTree == originalTree {
+		t.Fatal("approved failure lacked candidate-bound repair evidence")
+	}
+	o.Branches = []string{"backend", "repaired"}
+	o.Command = []string{"python3", "-m", "unittest", "-v", "integration_test"}
+	r, e = Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checkStatus(t, r, "integration_execution", model.StatusPassed)
+	checkStatus(t, r, "criterion:budget-test", model.StatusUnknown)
+	if r.Execution.PlanRecord != nil || r.Gate.Verdict == gate.Pass {
+		t.Fatal("mismatched command fabricated criterion pass")
+	}
+}
+
+func TestReviewedPlanMissingEnvironmentAndConflictingDeclarationDoNotExecuteGeneric(t *testing.T) {
+	root := fixture(t)
+	o := opts("backend")
+	p := reviewedIntegrationPlan(t, root, o.Command)
+	p.Acceptance[0].Rule.Env = []string{"RADAR_CANDIDATE_REQUIRED_MISSING_ENV"}
+	p.Approval.PlanDigest = planning.Digest(p)
+	o.Plan = &p
+	_ = os.Unsetenv("RADAR_CANDIDATE_REQUIRED_MISSING_ENV")
+	r, e := Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checkStatus(t, r, "integration_execution", model.StatusError)
+	checkStatus(t, r, "criterion:budget-test", model.StatusUnknown)
+	p.Acceptance = append(p.Acceptance, planning.Criterion{ID: "conflict-test", Requirement: "budget", Intent: "conflicting execution declaration", Rule: &planning.Rule{Kind: "test_run", Command: o.Command}})
+	p.Approval.PlanDigest = planning.Digest(p)
+	r, e = Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checkStatus(t, r, "integration_execution", model.StatusError)
+	if r.Execution.Observation.TestsRun > 0 {
+		t.Fatal("conflict fell back to generic execution")
+	}
+}
+
+func TestMissingAndMalformedContractsCannotPassDefaultIntegrationGate(t *testing.T) {
+	for _, test := range []struct {
+		name, manifest string
+		want           gate.Verdict
+	}{{"missing-schema", `{"version":1,"bindings":[{"id":"missing","schema":"missing.json","fields":["total"],"direction":"response"}]}`, gate.Blocked}, {"malformed", `{"version":`, gate.Error}} {
+		t.Run(test.name, func(t *testing.T) {
+			root := fixture(t)
+			gitTest(t, root, "checkout", "baseline")
+			put(t, root, ".radar/contracts.json", test.manifest)
+			gitTest(t, root, "add", ".radar/contracts.json")
+			gitTest(t, root, "commit", "-qm", "contract configuration")
+			base := gitTest(t, root, "rev-parse", "HEAD")
+			r, e := Preview(context.Background(), root, Options{Base: base, Branches: []string{base}})
+			if e != nil {
+				t.Fatal(e)
+			}
+			if r.Gate.Verdict != test.want {
+				t.Fatalf("false gate %s: %+v", r.Gate.Verdict, r.Gate)
+			}
+		})
+	}
+}
+
+func TestReviewedPlanMultiCWDAndLaterMutationInvalidatesSuite(t *testing.T) {
+	if _, e := exec.LookPath("python3"); e != nil {
+		t.Skip(e)
+	}
+	root := t.TempDir()
+	gitTest(t, root, "init", "-q")
+	put(t, root, ".radar/contracts.json", `{"version":1,"bindings":[]}`)
+	pass := "import unittest\nclass Checks(unittest.TestCase):\n def test_invariant(self): self.assertEqual(1,1)\n"
+	put(t, root, "backend/checks.py", pass)
+	put(t, root, "frontend/checks.py", pass)
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "base")
+	gitTest(t, root, "branch", "baseline")
+	argv := []string{"python3", "-m", "unittest", "checks"}
+	p := reviewedIntegrationPlan(t, root, argv)
+	p.Tasks[0].Components = []string{"file:backend/checks.py", "file:frontend/checks.py"}
+	p.Tasks[0].Acceptance = []string{"backend-test", "frontend-test"}
+	p.Acceptance = []planning.Criterion{{ID: "backend-test", Requirement: "budget", Intent: "backend verified", Rule: &planning.Rule{Kind: "test_run", Command: argv, CWD: "backend"}}, {ID: "frontend-test", Requirement: "budget", Intent: "frontend verified", Rule: &planning.Rule{Kind: "test_run", Command: argv, CWD: "frontend"}}}
+	p.Approval.PlanDigest = planning.Digest(p)
+	o := Options{Base: "baseline", Branches: []string{"baseline"}, Suite: "recommended", Verify: true, AllowExecution: true, Plan: &p, Timeout: 10 * time.Second, Policy: &gate.Policy{Version: 1, Require: []string{"integration_execution", "criterion:backend-test", "criterion:frontend-test"}}}
+	r, e := Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	checkStatus(t, r, "criterion:backend-test", model.StatusPassed)
+	checkStatus(t, r, "criterion:frontend-test", model.StatusPassed)
+	if r.Gate.Verdict != gate.Pass || len(r.Executions) != 2 {
+		t.Fatalf("multi-cwd suite: %+v", r)
+	}
+	// Mutate whichever package's stable command ID sorts last, after the first
+	// genuine passing observation. Selection order is derived, not hardcoded.
+	later := r.Executions[1].CWD
+	put(t, root, later+"/checks.py", "import unittest\nfrom pathlib import Path\nclass Checks(unittest.TestCase):\n def test_mutation(self): Path('checks.py').write_text('# rewritten source')\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "mutating suite test")
+	gitTest(t, root, "branch", "-f", "baseline", "HEAD")
+	p.BaseRevision = gitTest(t, root, "rev-parse", "baseline")
+	p.Approval.Checkpoint = p.BaseRevision
+	p.Approval.PlanDigest = planning.Digest(p)
+	r, e = Preview(context.Background(), root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(r.Selected) != 2 || len(r.Executions) != 2 {
+		t.Fatalf("selection/execution accounting: %+v", r)
+	}
+	if r.Gate.Verdict == gate.Pass {
+		t.Fatal("mutating suite passed gate")
+	}
+	checkStatus(t, r, "criterion:backend-test", model.StatusUnknown)
+	checkStatus(t, r, "criterion:frontend-test", model.StatusUnknown)
+	for _, ev := range r.Executions {
+		if ev.Status == model.StatusPassed || ev.PlanRecord == nil || ev.PlanRecord.Candidate.SourceUnchanged {
+			t.Fatal("earlier candidate record survived later mutation")
+		}
+	}
+}
+
+func TestMalformedBaselineCannotBecomeNoBreakingPassAfterManifestRepair(t *testing.T) {
+	root := fixture(t)
+	put(t, root, ".radar/contracts.json", `{"version":`)
+	gitTest(t, root, "add", ".radar/contracts.json")
+	gitTest(t, root, "commit", "-qm", "malformed base")
+	base := gitTest(t, root, "rev-parse", "HEAD")
+	put(t, root, ".radar/contracts.json", `{"version":1,"bindings":[]}`)
+	gitTest(t, root, "commit", "-qam", "valid current manifest")
+	r, e := Preview(context.Background(), root, Options{Base: base, Branches: []string{"HEAD"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if r.Gate.Verdict != gate.Error {
+		t.Fatalf("malformed baseline passed gate: %+v", r.Gate)
 	}
 }

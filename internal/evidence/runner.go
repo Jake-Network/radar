@@ -23,6 +23,7 @@ import (
 
 // execution is the part of a test_run rule that shapes how the command runs.
 type execution struct {
+	CWD   string
 	Setup [][]string
 	Env   []string
 	Link  []string
@@ -41,9 +42,18 @@ func declared(p planning.Plan, argv []string) ([]string, execution, error) {
 		if err := planning.ValidateRule(*rule); err != nil {
 			return fmt.Errorf("criterion %s: %w", id, err)
 		}
-		e := execution{Setup: rule.Setup, Env: rule.Env, Link: rule.Link, JUnit: rule.JUnit}
+		e := execution{CWD: normalizeCWD(rule.CWD), Setup: rule.Setup, Env: rule.Env, Link: rule.Link, JUnit: rule.JUnit}
+		if len(e.Setup) == 0 {
+			e.Setup = nil
+		}
+		if len(e.Env) == 0 {
+			e.Env = nil
+		}
+		if len(e.Link) == 0 {
+			e.Link = nil
+		}
 		if spec != nil && !reflect.DeepEqual(*spec, e) {
-			return errors.New("criteria declaring this command disagree on setup, env, link or junit")
+			return errors.New("criteria declaring this command disagree on cwd, setup, env, link or junit")
 		}
 		spec = &e
 		criteria = append(criteria, id)
@@ -126,6 +136,11 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	}
 	defer os.RemoveAll(privateHome)
 	env := environment(privateHome, spec.Env)
+	testDir, err := executionDirectory(dest, spec.CWD)
+	if err != nil {
+		return r, err
+	}
+	r.CWD = spec.CWD
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -136,7 +151,7 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	r.StartedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	var setupOut output
 	for _, step := range spec.Setup {
-		state, err := execute(runCtx, step, dest, env, &setupOut)
+		state, err := execute(runCtx, step, testDir, env, &setupOut)
 		if err != nil {
 			return Record{}, fmt.Errorf("could not start setup command %v: %w", step, err)
 		}
@@ -156,7 +171,7 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 		}
 	}
 	var out output
-	state, err := execute(runCtx, argv, dest, env, &out)
+	state, err := execute(runCtx, argv, testDir, env, &out)
 	if err != nil {
 		return Record{}, fmt.Errorf("could not start verification command: %w", err)
 	}
@@ -167,7 +182,7 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	r.OutputTail = string(append(setupOut.tailBytes(), out.tailBytes()...))
 	result := harnessCounts(argv, content)
 	if spec.JUnit != "" {
-		if junit, err := readJUnit(dest, spec.JUnit); err == nil {
+		if junit, err := readJUnit(testDir, spec.JUnit); err == nil {
 			result = junit
 		}
 	}

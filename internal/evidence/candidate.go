@@ -37,7 +37,24 @@ var pythonLocation = regexp.MustCompile(`File "([^"]+)", line ([0-9]+)`)
 // ObserveCandidate requires explicit caller authorization and an already
 // isolated candidate. It never consumes preexisting branch evidence.
 func ObserveCandidate(ctx context.Context, dir string, argv []string, timeout time.Duration) (CandidateObservation, error) {
+	return ObserveCandidateAt(ctx, dir, ".", argv, timeout)
+}
+
+// ObserveCandidateAt executes only inside a validated candidate subdirectory.
+func ObserveCandidateAt(ctx context.Context, root, cwd string, argv []string, timeout time.Duration) (CandidateObservation, error) {
 	r := CandidateObservation{Status: model.StatusError, ExitCode: -1}
+	dir := root
+	if cwd != "" && cwd != "." {
+		var err error
+		dir, err = pathutil.ResolveInside(root, cwd)
+		if err != nil {
+			return r, err
+		}
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return r, errors.New("verification working directory is unavailable")
+	}
 	if e := checkExecutable(argv); e != nil {
 		return r, e
 	}
@@ -64,8 +81,14 @@ func ObserveCandidate(ctx context.Context, dir string, argv []string, timeout ti
 	r.TestsSkipped = result.Skipped
 	r.Harness = result.Harness
 	r.Status = outcome(runCtx.Err() != nil, r.ExitCode, result, out.exceeded, argv, out.b.Bytes())
+	decorateCandidateObservation(&r, argv, out.b.Bytes(), root, dir, cwd)
+	return r, nil
+}
+
+func decorateCandidateObservation(r *CandidateObservation, argv []string, data []byte, root, dir, cwd string) {
+	var e error
 	if r.TestsFailed > 0 && isUnittest(argv) {
-		text := string(out.b.Bytes())
+		text := string(data)
 		for _, match := range failedCase.FindAllStringSubmatch(text, -1) {
 			name := match[2]
 			if !strings.HasSuffix(name, "."+match[1]) {
@@ -85,11 +108,14 @@ func ObserveCandidate(ctx context.Context, dir string, argv []string, timeout ti
 					continue
 				}
 			}
+			if cwd != "" && cwd != "." {
+				p = filepath.Join(cwd, p)
+			}
 			p = filepath.ToSlash(p)
 			if _, e = pathutil.RepoRelative(p); e != nil {
 				continue
 			}
-			if _, e = pathutil.ResolveInside(dir, p); e != nil {
+			if _, e = pathutil.ResolveInside(root, p); e != nil {
 				continue
 			}
 			line, _ := strconv.Atoi(match[2])
@@ -106,8 +132,7 @@ func ObserveCandidate(ctx context.Context, dir string, argv []string, timeout ti
 	}
 	// Harness-like text printed by arbitrary programs is not an authentication
 	// boundary. These are observations of explicitly trusted execution.
-	if isUnittest(argv) && dependencyError.Match(out.b.Bytes()) {
+	if isUnittest(argv) && dependencyError.Match(data) {
 		r.Status = model.StatusError
 	}
-	return r, nil
 }

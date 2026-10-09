@@ -29,16 +29,44 @@ Inside a Git repository with at least one commit:
 ```sh
 radar setup --agent codex                  # or claude, both
 radar setup --agent both --dry-run         # inspect changes first
-radar check --base main                    # current working tree; no tests execute
+radar check --base main --suggest-tests    # current source and test proposals; no execution
 radar discover --json                     # inspect proposed contract candidates
-radar merge-check --base main --branches feature/backend,feature/frontend
+radar merge-check --base main --branches feature/backend,feature/frontend --suggest-tests
+# After reviewing the proposed commands and authorizing repository-code execution:
 radar merge-check --base main --branches feature/backend,feature/frontend \
-  --verify --allow-execution -- python3 -m unittest test_integration
+  --verify --suite recommended --allow-execution
 ```
 
 Setup installs project-local skills and MCP configuration, preserves unrelated settings, and refuses conflicting Radar entries. Agent trust/restart may need manual action. `--agent claude --hook` adds the optional bounded Stop hook; Bash is required for that hook. No LLM credentials, telemetry or uploads are required.
 
-`check`, `discover` and `merge-check` do not require prior initialization. Reports distinguish passed, failed, warning, unknown, incomplete and environment errors. Missing manifest, missing plan or unexecuted tests remain explicit coverage gaps; exit 0 does not mean comprehensive verification. Use `--require-complete` to enforce coverage, or inspect per-check status in JSON. Discovered links remain proposals until reviewed and explicitly accepted; lexical names never prove runtime use. [Supported patterns](docs/DISCOVERY.md).
+`check`, `discover` and `merge-check` do not require prior initialization. Reports distinguish passed, failed, warning, unknown, incomplete and environment errors. Missing manifest, missing plan or unexecuted tests remain explicit coverage gaps; exit 0 does not mean comprehensive verification. Inspect `gate.verdict`, `coverage` and individual checks separately. An explicit `--policy PATH` requires selected evidence without treating every unavailable analyzer as a CI failure. `--require-complete` retains its stricter whole-analysis behavior. Discovered links remain proposals until reviewed and explicitly accepted; lexical names never prove runtime use. [Supported patterns](docs/DISCOVERY.md).
+
+## Choose evidence for your integration gate
+
+Review suggested commands, their working directories, affected files and evidence
+reasons before executing them. Recommendations follow declared plan commands,
+inferred imports, package boundaries and conservative integration-test naming;
+they do not establish complete coverage or install dependencies.
+
+A practical integration policy can require a clean Git combination, absence of
+supported breaking-contract findings and observed combined tests:
+
+```json
+{"version":1,"name":"integration","require":["textual_merge","no_breaking_contracts","integration_execution"],"on_missing":"blocked"}
+```
+
+Save it as `.radar/integration-policy.json`, then pass
+`--policy .radar/integration-policy.json` to `merge-check`. `gate.verdict` reports
+`pass`, `fail`, `blocked` or `error`; coverage gaps remain visible even when your
+selected gate passes. Missing evidence blocks a required check, while an
+execution or environment error exits 2. Policy pass exits 0; fail/blocked exits 1.
+No policy means legacy command exit behavior remains compatible.
+
+See [verification policy](docs/VERIFICATION_POLICY.md) and
+[intelligent verification](docs/INTELLIGENT_VERIFICATION.md). Combined tests run
+repository code with your host permissions in private copied source; this is
+**not an operating-system sandbox**. MCP can propose analysis and tests, and
+cannot execute them or create a human review declaration.
 
 ## Quickstart
 

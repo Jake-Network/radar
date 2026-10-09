@@ -78,3 +78,52 @@ not launch agents, send external messages or modify user branches.
 `integration` resolves ordered input commits, transfers objects into a private Git repository, applies Git merge semantics there and analyzes the exact combined candidate. It rejects unsafe paths, symlinks and submodules. Repository hooks and external Git configuration are disabled. Execution is explicit opt-in with host permissions, not an OS sandbox. Integration evidence records input revisions, candidate commit/tree, command and optional plan digest, with output digests rather than raw output. Branch evidence is never consumed as integrated evidence. Temporary candidate state is removed on return. Default preview and verification write no files into the original repository; `--evidence-output .radar/evidence/candidate.json` explicitly saves structured metadata to a new path.
 
 `check` composes affected-file analysis, explicit and discovered contract comparison, manifest lint and optional plan verification. Each coverage check retains its own status. Unknown architecture, semantic or execution properties cannot be promoted by a successful Git merge or empty finding list. Read-only MCP exposes check/discovery/merge preview and excludes execution authorization and review declarations.
+
+
+## Selected evidence and test inventory
+
+`internal/gate` evaluates required named checks independently of analyzer coverage.
+Policies are versioned data and cannot authorize execution. CLI presentation keeps
+the existing aggregate status for compatibility and adds selected gate verdicts
+and structured coverage; explicit policy chooses the corresponding CI exit.
+
+`internal/testselection` reads bounded source-state providers for conventional
+tests and ecosystem manifests without importing code or evaluating configuration.
+The same inventory path serves working-tree and committed source. Selection
+combines plan-declared argv, reverse inferred import reachability, package-local
+companions and conservative package/integration fallbacks. Reasons retain their
+inferred/proposed classification. It does not claim test completeness.
+
+The integration layer observes each recommended command in its declared CWD and
+binds its selection ID, argv, result and source state into candidate evidence.
+A shared execution deadline and a maximum of 16 commands bound each invocation;
+no retry controller or dependency installation is introduced. Recommendation,
+execution authorization and observed results are distinct operations.
+
+
+Candidate plan observations use additive fields on existing schema-1 evidence:
+`candidate` checkpoints bind repository/base, ordered inputs, candidate commit/tree,
+source hashes, reviewed execution configuration and review digest. Exact reviewed
+argv/CWD run with declared setup/env/JUnit inside private source; host dependency
+links and pre-existing JUnit reports are rejected. The integration layer evaluates
+plan rules after execution and accepts only exact unchanged-source candidate
+records, never branch records or ad hoc observations. `plan_verification` and
+`criterion:<id>` may be selected gate requirements. Integration evidence output
+preserves single-command objects and adds ordered suite arrays with optional
+`plan_record`; neither format authenticates its owner or malicious repository code.
+
+
+The explicit-command CLI `--cwd` is validated as a candidate-relative directory;
+recommended suites retain each selected CWD. Candidate plan environment names
+must exist, and evidence retains only those names rather than their values.
+Source/configuration integrity does not authenticate environment values or
+establish hermetic execution. Legacy ordinary evidence behavior remains compatible.
+
+
+`testselection` combines reverse import impact with `verified_static` explicit
+`EXPOSES`/`CONSUMES` edges and supported contract/schema-field `DEFINES` plus
+schema source provenance. Contract identity is retained across traversal so
+unrelated declarations do not join through lexical similarity. Selection reasons
+carry `declared_contract_impact` and manifest locations, but relevance remains
+inferred. Discovered/proposed/unknown contract links are deliberately excluded;
+manifest-free selection does not establish cross-language runtime transport.

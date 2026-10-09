@@ -11,6 +11,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Formatting
         run: test -z "$(gofmt -l cmd internal)"
       - run: go vet ./...
@@ -22,6 +25,8 @@ jobs:
         run: bash examples/verification/demo.sh /tmp/radar
       - name: Combined integration demo
         run: bash examples/integration/demo.sh /tmp/radar
+      - name: Intelligent verification demo
+        run: bash examples/intelligent-verification/demo.sh /tmp/radar
       - name: Offline binary installer checks
         run: bash scripts/install-release-test.sh
       - name: Native release packaging

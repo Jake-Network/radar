@@ -1,0 +1,4 @@
+[project]
+name = "backend"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
