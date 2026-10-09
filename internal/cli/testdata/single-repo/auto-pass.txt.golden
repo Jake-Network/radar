@@ -1,0 +1,19 @@
+exit 0
+--- stdout
+Radar gate: PASS (static) — 2 branch(es) onto main @ 84d71f0816ed
+
+  agent-backend   a83463cb9da1  1 file(s) changed
+  agent-frontend  2ca59cad7425  1 file(s) changed
+  skipped: agent-idle (no commits beyond main)
+
+  Policy: supported-integration; requires textual_merge, no_breaking_contracts
+  ✓  branches merge without conflicts
+  ✓  no breaking contract change found
+  ?  combined tree not tested yet (add --run)
+
+  Suggested tests (static relationships; not run):
+    python3 -m unittest discover -s . … (+2 paths)  (in .)
+
+Next: radar gate --run
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+--- stderr

@@ -1,0 +1,4 @@
+exit 2
+--- stdout
+--- stderr
+radar: git rev-parse: exit status 128: fatal: Needed a single revision

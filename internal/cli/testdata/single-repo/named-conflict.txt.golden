@@ -1,0 +1,19 @@
+exit 1
+--- stdout
+Radar gate: FAIL — 2 branch(es) onto main @ 84d71f0816ed
+
+  agent-b  63707b6694a0  1 file(s) changed
+  agent-a  e55503739389  1 file(s) changed
+
+  Policy: supported-integration; requires textual_merge, no_breaking_contracts
+  ✗  branches conflict
+  ?  no_breaking_contracts unknown: Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts
+
+  ✗ integration_textual_conflict: Resolve overlapping edits before integration.
+    look at: agent-b (backend.py); agent-a (backend.py)
+    paths: backend.py
+    fix: Reconcile the reported paths on the feature branches and repeat merge-check.
+
+Next: repair on the branches above, commit, then rerun: radar gate agent-b agent-a
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+--- stderr
