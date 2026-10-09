@@ -96,6 +96,28 @@ passes and the combined test fails. Nothing is merged into your checkout.
 | `1` | A check failed (conflict, breaking contract, failing tests) or required evidence is missing |
 | `2` | Radar could not run (bad ref, unreadable configuration, environment error) |
 
+## Several repositories
+
+When agents change a frontend and a backend, or any group of repositories,
+register them once as a workspace. `radar gate` in any of them, or in any of
+their worktrees, then checks all of them:
+
+```sh
+radar workspace add ../payments   # this repository + payments; paths only, no network
+radar gate                         # every worktree branch of every workspace repository
+radar gate orders:agent/api payments:agent/client   # only these; other repos take part at their base
+radar gate --again --run           # same selection on the latest commits, with tests
+```
+
+Each repository is combined and checked on its own, in its own private Git
+state. Links between repositories are not checked yet, and the headline says
+so: `per-repo checks only · 0 cross-repo links checked`. `--with PATH` adds a
+repository for one run, and `radar workspace show` lists what `radar gate` would
+check. The registry lives in your user configuration directory and run records
+in your user cache, never in a repository. A repository outside any workspace
+keeps the single-repository behavior above. Design and later stages:
+[MULTI_REPO](docs/MULTI_REPO.md).
+
 ## What it checks
 
 - **Merge:** Radar merges all branches in a private object database. Your

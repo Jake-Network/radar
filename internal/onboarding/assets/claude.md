@@ -23,6 +23,14 @@ combined tree) executes repository code, so ask the user before running it.
 Repair findings on the branch named in `attribution`, commit, and rerun the
 gate; results for individual branches never prove the combination works.
 
+In a workspace (`radar workspace add PATH` groups repositories on this
+machine), the same call checks every workspace repository, each combined on
+its own. Pass `targets` (for example `orders:agent/api,payments:agent/client`)
+to name branches in several repositories; unnamed repositories take part at
+their base. Links between repositories are not checked yet (`cross_repo` says
+so), so never present per-repository passes as proof that the repositories
+work together.
+
 ## 1. Ground the design
 
 1. `radar_doctor` (or `radar doctor`). If `initialized` is false, run `radar_init` once.

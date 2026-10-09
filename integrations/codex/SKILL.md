@@ -17,6 +17,14 @@ finding points at. It never runs repository code. Follow its `next` field;
 user first. Repair on the attributed branch, commit and rerun; results for
 individual branches never prove the combination works.
 
+In a workspace (`radar workspace add PATH` groups repositories on this
+machine), the same command checks every workspace repository, each combined on
+its own. Name branches in several repositories as `radar gate
+orders:agent/api payments:agent/client`; unnamed repositories take part at
+their base. Links between repositories are not checked yet (`cross_repo` says
+so), so never present per-repository passes as proof that the repositories
+work together.
+
 For feature design and verification:
 
 1. Select a committed baseline. Run `radar doctor`, `radar index --ref <SHA> --json`,
