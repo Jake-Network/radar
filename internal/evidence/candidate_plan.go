@@ -287,7 +287,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 	treeCtx, treeCancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer treeCancel()
 	treeCommand := exec.CommandContext(treeCtx, "git", "-C", root, "rev-parse", "--verify", "--end-of-options", c.Revision+"^{tree}")
-	treeCommand.Env = []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_NO_REPLACE_OBJECTS=1", "GIT_NO_LAZY_FETCH=1"}
+	treeCommand.Env = []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + gitrepo.NullPath, "GIT_NO_REPLACE_OBJECTS=1", "GIT_NO_LAZY_FETCH=1"}
 	treeOutput, treeErr := treeCommand.Output()
 	if treeErr != nil || strings.TrimSpace(string(treeOutput)) != c.Tree {
 		return result, errors.New("candidate tree differs from checkpoint")

@@ -11,6 +11,17 @@ import (
 	"testing"
 )
 
+// realTempDir resolves t.TempDir symlinks (macOS /var is /private/var) so
+// paths compare equal to the canonical roots Radar and Git report.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func worktreeGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
@@ -24,7 +35,7 @@ func worktreeRepo(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip(err)
 	}
-	root := t.TempDir()
+	root := realTempDir(t)
 	worktreeGit(t, root, "init", "-q")
 	worktreeGit(t, root, "config", "user.name", "Radar")
 	worktreeGit(t, root, "config", "user.email", "radar@example.invalid")
@@ -38,9 +49,9 @@ func worktreeRepo(t *testing.T) string {
 
 func TestInspectWorktreesSkipsBareRepository(t *testing.T) {
 	root := worktreeRepo(t)
-	bare := filepath.Join(t.TempDir(), "bare.git")
+	bare := filepath.Join(realTempDir(t), "bare.git")
 	worktreeGit(t, root, "clone", "--bare", "--quiet", root, bare)
-	linked := filepath.Join(t.TempDir(), "linked")
+	linked := filepath.Join(realTempDir(t), "linked")
 	worktreeGit(t, bare, "worktree", "add", "--detach", linked, "HEAD")
 	got, err := InspectWorktrees(context.Background(), linked)
 	if err != nil {
@@ -53,7 +64,7 @@ func TestInspectWorktreesSkipsBareRepository(t *testing.T) {
 
 func TestInspectWorktreesHonorsGlobalIgnoresWithoutExecutingConfig(t *testing.T) {
 	root := worktreeRepo(t)
-	global := t.TempDir()
+	global := realTempDir(t)
 	ignore := filepath.Join(global, "global ignore")
 	if err := os.WriteFile(ignore, []byte(".serena/\n.DS_Store\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -67,7 +78,7 @@ func TestInspectWorktreesHonorsGlobalIgnoresWithoutExecutingConfig(t *testing.T)
 	// git config creates portable quoting for spaces and Windows paths.
 	t.Setenv("GIT_CONFIG_GLOBAL", config)
 	worktreeGit(t, root, "config", "--global", "core.excludesFile", ignore)
-	linked := filepath.Join(t.TempDir(), "linked")
+	linked := filepath.Join(realTempDir(t), "linked")
 	worktreeGit(t, root, "worktree", "add", "--detach", linked, "HEAD")
 	for _, path := range []string{root, linked} {
 		if err := os.Mkdir(filepath.Join(path, ".serena"), 0700); err != nil {
@@ -118,7 +129,7 @@ func TestInspectWorktreesRetainsListingOrderAndDirtyCategories(t *testing.T) {
 	root := worktreeRepo(t)
 	paths := []string{root}
 	for i := 0; i < 5; i++ {
-		linked := filepath.Join(t.TempDir(), "linked")
+		linked := filepath.Join(realTempDir(t), "linked")
 		worktreeGit(t, root, "worktree", "add", "--detach", linked, "HEAD")
 		paths = append(paths, linked)
 	}
@@ -174,7 +185,7 @@ func TestInspectWorktreesReportsLegacyListingUnavailable(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("legacy command shim requires POSIX shell")
 	}
-	bin := t.TempDir()
+	bin := realTempDir(t)
 	shim := "#!/bin/sh\ncase \" $* \" in\n  *' worktree list --porcelain -z '*) echo \"error: unknown switch z\" >&2; exit 129;;\nesac\nexec \"$RADAR_WORKTREE_REAL_GIT\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(shim), 0700); err != nil {
 		t.Fatal(err)
@@ -189,14 +200,14 @@ func TestInspectWorktreesReportsLegacyListingUnavailable(t *testing.T) {
 
 func TestInspectWorktreesHonorsGlobalIncludesPerWorktree(t *testing.T) {
 	root := worktreeRepo(t)
-	linked := filepath.Join(t.TempDir(), "linked")
+	linked := filepath.Join(realTempDir(t), "linked")
 	worktreeGit(t, root, "worktree", "add", "--detach", linked, "HEAD")
 	gitdirBytes, err := exec.Command("git", "-C", linked, "rev-parse", "--absolute-git-dir").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	gitdir := filepath.ToSlash(strings.TrimSpace(string(gitdirBytes)))
-	settings := t.TempDir()
+	settings := realTempDir(t)
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(settings, "global-config"))
 	include := filepath.Join(settings, "included config")
 	conditional := filepath.Join(settings, "conditional-config")

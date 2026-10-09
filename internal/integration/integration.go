@@ -108,10 +108,10 @@ func environment() []string {
 			env = append(env, e)
 		}
 	}
-	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0", "GIT_ATTR_NOSYSTEM=1", "GIT_NO_LAZY_FETCH=1", "GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2000-01-01T00:00:00Z")
+	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+gitrepo.NullPath, "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0", "GIT_ATTR_NOSYSTEM=1", "GIT_NO_LAZY_FETCH=1", "GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2000-01-01T00:00:00Z")
 }
 func command(ctx context.Context, root string, args ...string) *exec.Cmd {
-	prefix := []string{"-C", root, "--no-pager", "-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + os.DevNull, "-c", "commit.gpgSign=false", "-c", "protocol.allow=never", "-c", "user.name=Radar preview", "-c", "user.email=preview@radar.invalid"}
+	prefix := []string{"-C", root, "--no-pager", "-c", "core.hooksPath=" + gitrepo.NullPath, "-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + gitrepo.NullPath, "-c", "commit.gpgSign=false", "-c", "protocol.allow=never", "-c", "user.name=Radar preview", "-c", "user.email=preview@radar.invalid"}
 	c := exec.CommandContext(ctx, "git", append(prefix, args...)...)
 	c.Env = environment()
 	return c
