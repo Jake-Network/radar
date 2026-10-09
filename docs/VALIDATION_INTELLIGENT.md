@@ -112,6 +112,9 @@ was true for every command; pytest dependency availability and passing tests wer
 not established. Raw reports were kept locally under `/tmp`, with no external
 source changes.
 
+The 0.3 selection work repeats this comparison and adds a labeled mutation
+evaluation on Click; see [VALIDATION_SELECTION.md](VALIDATION_SELECTION.md).
+
 ## Radar dogfood
 
 A committed-source read-only check compared Radar's previous commit

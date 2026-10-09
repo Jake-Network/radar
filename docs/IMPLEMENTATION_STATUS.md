@@ -158,3 +158,22 @@ compiled TypeScript behavior, independently labeled recommendation precision,
 large-monorepo scalability or public multi-platform releases. The validation
 report states measured examples and limitations; no cloud or release publishing
 was performed.
+
+## Verification trustworthiness milestone
+
+Confirmed and fixed fail-open defects:
+
+* Deleting `.radar/contracts.json`, emptying `bindings`, removing or narrowing
+  a binding, clearing its consumer, or moving it to an invalid pointer while
+  removing a consumed field let `no_breaking_contracts` pass. Reproduced with
+  real Git fixtures through `check` and `merge-check`.
+  Regression: `internal/cli/obligation_test.go` (19 scenarios × 4 command
+  variants, cross-branch scan), `internal/contracts/obligation_test.go`.
+* `merge-check` with textual conflicts reported `no_breaking_contracts` as
+  passed without analysis (`TestConflictingMergeCannotPassContractRequirement`).
+* `merge-check` let an incomplete contract configuration overwrite a confirmed
+  contract failure (`fail` reported as `blocked`).
+* `--suite recommended` refused suites over 16 commands (all 43 Click files).
+* pytest collection `ModuleNotFoundError` was counted as a test failure.
+
+Measured selection quality: [VALIDATION_SELECTION.md](VALIDATION_SELECTION.md).

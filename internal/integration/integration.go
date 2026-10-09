@@ -41,6 +41,8 @@ type Options struct {
 	Command                []string
 	Timeout                time.Duration
 	PlanDigest             string
+	// MaxCommands bounds a selected suite after grouping (default 16).
+	MaxCommands int
 }
 type Check = gate.Check
 
@@ -68,24 +70,31 @@ type ExecutionEvidence struct {
 }
 type Report struct {
 	VerificationProposal *testselection.Proposal `json:"verification_proposal,omitempty"`
-	Selected             []string                `json:"selected_tests,omitempty"`
-	Executions           []ExecutionEvidence     `json:"executions,omitempty"`
-	Gate                 gate.Result             `json:"gate"`
-	Coverage             []gate.Coverage         `json:"coverage"`
-	Plan                 *planning.Report        `json:"plan,omitempty"`
-	Status               model.Status            `json:"status"`
-	Base                 string                  `json:"base"`
-	Inputs               []string                `json:"inputs"`
-	CandidateCommit      string                  `json:"candidate_commit,omitempty"`
-	CandidateTree        string                  `json:"candidate_tree,omitempty"`
-	Conflicts            []string                `json:"conflicts"`
-	Changed              []string                `json:"changed"`
-	Affected             []string                `json:"affected"`
-	Checks               []Check                 `json:"checks"`
-	Findings             []model.Finding         `json:"findings"`
-	Diagnostics          []model.Diagnostic      `json:"diagnostics"`
-	Execution            *ExecutionEvidence      `json:"execution,omitempty"`
-	Limitations          []string                `json:"limitations"`
+	// Selection is the bounded execution plan for a --suite mode, including
+	// omitted commands and the reasons a required command did not run.
+	Selection       *testselection.Selection `json:"selection,omitempty"`
+	Selected        []string                 `json:"selected_tests,omitempty"`
+	Executions      []ExecutionEvidence      `json:"executions,omitempty"`
+	Gate            gate.Result              `json:"gate"`
+	Coverage        []gate.Coverage          `json:"coverage"`
+	Plan            *planning.Report         `json:"plan,omitempty"`
+	Status          model.Status             `json:"status"`
+	Base            string                   `json:"base"`
+	Inputs          []string                 `json:"inputs"`
+	CandidateCommit string                   `json:"candidate_commit,omitempty"`
+	CandidateTree   string                   `json:"candidate_tree,omitempty"`
+	Conflicts       []string                 `json:"conflicts"`
+	Changed         []string                 `json:"changed"`
+	Affected        []string                 `json:"affected"`
+	Checks          []Check                  `json:"checks"`
+	Findings        []model.Finding          `json:"findings"`
+	Diagnostics     []model.Diagnostic       `json:"diagnostics"`
+	Execution       *ExecutionEvidence       `json:"execution,omitempty"`
+	Limitations     []string                 `json:"limitations"`
+	// ContractObligations lists base contract declarations the candidate
+	// removed, narrowed, moved or retired; see contracts.ObligationChange.
+	ContractObligations []contracts.ObligationChange `json:"contract_obligations,omitempty"`
+	contractUnverified  []string
 }
 
 func environment() []string {
@@ -156,8 +165,13 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	if len(o.Branches) < 1 {
 		return r, errors.New("at least one branch required")
 	}
-	if o.Suite != "" && o.Suite != "recommended" {
-		return r, errors.New("unknown suite; supported selection is recommended")
+	if o.Suite != "" {
+		if _, e := testselection.NormalizeMode(o.Suite); e != nil {
+			return r, e
+		}
+	}
+	if o.MaxCommands < 0 || o.MaxCommands > 256 {
+		return r, errors.New("max commands must be between 1 and 256")
 	}
 	if o.Suite != "" && len(o.Command) > 0 {
 		return r, errors.New("--suite cannot be combined with an explicit command")
@@ -255,6 +269,8 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 			f.Severity = model.SeverityError
 			f.Remediation = "Reconcile the reported paths on the feature branches and repeat merge-check."
 			r.Findings = append(r.Findings, f)
+			// No candidate exists, so no contract obligation was analyzed.
+			r.contractUnverified = []string{"combined candidate could not be built because of textual conflicts"}
 			applyGate(&r, o)
 			return r, nil
 		}
@@ -297,15 +313,17 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 		}
 	}
 
-	impact, e := contracts.Impact(ctx, temp, r.Base, r.CandidateCommit)
+	impact, e := contracts.Impact(ctx, temp, r.Base, r.CandidateCommit, verification.ApprovedRetirements(o.Plan)...)
 	if e != nil {
 		return r, e
 	}
-	if configurationCheck.Status == model.StatusPassed && impact.Bindings > 0 && impact.Analyzed < impact.Bindings {
+	if unestablished := impact.Unestablished(); configurationCheck.Status == model.StatusPassed && len(unestablished) > 0 {
 		configurationCheck.Status = model.StatusIncomplete
 		configurationCheck.Evidence = model.Unknown
-		configurationCheck.Explanation = "Declared bindings could not all be analyzed; no-breaking-contracts is unestablished."
+		configurationCheck.Explanation = "Declared contract obligations are unverified: " + strings.Join(unestablished, "; ")
 	}
+	r.contractUnverified = impact.Unestablished()
+	r.ContractObligations = impact.Obligations
 	r.Checks = append(r.Checks, configurationCheck)
 	r.Findings = append(r.Findings, impact.Findings...)
 	r.Diagnostics = append(r.Diagnostics, impact.Diagnostics...)
@@ -356,12 +374,14 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 		if explicitCWD == "" {
 			explicitCWD = "."
 		}
-		selections := []testselection.Command{{ID: model.StableID("verification-command", explicitCWD, strings.Join(o.Command, "\x00")), Command: o.Command, CWD: explicitCWD}}
-		if o.Suite == "recommended" {
-			selections = r.VerificationProposal.Commands
-		}
-		if len(selections) > 16 {
-			return r, errors.New("recommended suite exceeds 16 commands; review and narrow the plan or supply an explicit command")
+		selections := []testselection.Command{{ID: model.StableID("verification-command", explicitCWD, strings.Join(o.Command, "\x00")), Command: o.Command, CWD: explicitCWD, Tier: testselection.TierRequired}}
+		if o.Suite != "" {
+			selection, err := testselection.Plan(*r.VerificationProposal, r.Changed, o.Suite, o.MaxCommands)
+			if err != nil {
+				return r, err
+			}
+			r.Selection = &selection
+			selections = selection.Commands
 		}
 		executionCtx, cancelExecution := context.WithTimeout(ctx, o.Timeout)
 		defer cancelExecution()
@@ -372,10 +392,40 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 		for _, selection := range selections {
 			r.Selected = append(r.Selected, selection.ID)
 		}
+		// skipped records a selected command that did not run. A required one
+		// blocks the gate; it is a coverage gap, never a test failure or pass.
+		requiredSkipped := 0
+		skipped := func(selection testselection.Command, reason, explanation string) {
+			if r.Selection != nil {
+				r.Selection.Omitted = append(r.Selection.Omitted, testselection.Omission{ID: selection.ID, Command: selection.Command, CWD: selection.CWD, TestFiles: selection.TestFiles, Tier: selection.Tier, Reason: reason, Explanation: explanation})
+			}
+			status := model.StatusBlocked
+			if selection.Tier == testselection.TierRequired || o.Suite == "" {
+				requiredSkipped++
+				if r.Selection != nil {
+					r.Selection.Blocking = append(r.Selection.Blocking, reason+": "+strings.Join(selection.Command, " "))
+				}
+			} else {
+				status = model.StatusWarning
+			}
+			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: status, Evidence: model.Unknown, Explanation: "Not executed (" + reason + "): " + explanation})
+		}
 		for _, selection := range selections {
+			if executionCtx.Err() != nil {
+				skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
+				continue
+			}
+			// Explicit commands keep their observed execution-error semantics.
+			if why := unavailable(temp, selection); o.Suite != "" && why != "" {
+				skipped(selection, "environment_unavailable", why+"; Radar does not install dependencies. Prepare the environment or declare a reviewed plan test_run rule (with link for untracked dependency directories).")
+				continue
+			}
 			executionOptions := o
 			executionOptions.Command = selection.Command
 			executionOptions.CWD = selection.CWD
+			if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
+				executionOptions.Timeout = time.Until(deadline)
+			}
 			ev := execute(executionCtx, temp, r, executionOptions)
 			ev.SelectionID = selection.ID
 			// Selection identity is also bound into the serialized artifact digest.
@@ -415,7 +465,31 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 		if len(r.Executions) < len(selections) && executionStatus == model.StatusPassed {
 			executionStatus = model.StatusIncomplete
 		}
-		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: executionStatus, Evidence: model.ObservedTest, Explanation: fmt.Sprintf("Executed %d of %d selected commands against the combined candidate; output is hashed, not exposed.", len(r.Executions), len(selections))})
+		if r.Selection != nil {
+			for _, omitted := range r.Selection.Omitted {
+				if omitted.Reason == "budget_exceeded" && omitted.Tier == testselection.TierRequired {
+					requiredSkipped++
+				}
+			}
+			if len(r.Selection.Blocking) > 0 && executionStatus == model.StatusPassed {
+				executionStatus = model.StatusIncomplete
+			}
+		}
+		if requiredSkipped > 0 && executionStatus == model.StatusPassed {
+			executionStatus = model.StatusIncomplete
+		}
+		explanation := fmt.Sprintf("Executed %d of %d selected commands against the combined candidate; output is hashed, not exposed.", len(r.Executions), len(selections))
+		if requiredSkipped > 0 {
+			explanation += fmt.Sprintf(" %d required command(s) were omitted or not executed; required verification is incomplete.", requiredSkipped)
+		}
+		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: executionStatus, Evidence: model.ObservedTest, Explanation: explanation})
+		if r.Selection != nil {
+			status, message := model.StatusPassed, r.Selection.Explanation
+			if len(r.Selection.Blocking) > 0 || len(r.Selection.Uncovered) > 0 {
+				status = model.StatusIncomplete
+			}
+			r.Checks = append(r.Checks, Check{ID: "test_selection", Status: status, Evidence: model.Inferred, Explanation: fmt.Sprintf("Mode %s selected %d of %d candidate commands (%d omitted, %d uncovered changed files). %s", r.Selection.Mode, len(r.Selection.Commands), r.Selection.Candidates, len(r.Selection.Omitted), len(r.Selection.Uncovered), message)})
+		}
 	} else {
 		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "No combined test evidence. Authorize an explicit command or --suite recommended."})
 	}
@@ -559,9 +633,11 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 
 func applyGate(r *Report, o Options) {
 	checks := append([]gate.Check(nil), r.Checks...)
-	noBreaking := gate.NoBreaking(r.Findings)
+	noBreaking := gate.NoBreaking(r.Findings, r.contractUnverified)
 	for _, c := range r.Checks {
-		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed {
+		// Configuration gaps never mask a confirmed incompatibility, except an
+		// unreadable configuration, which is an execution-grade error.
+		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed && (noBreaking.Status == model.StatusPassed || c.Status == model.StatusError) {
 			noBreaking.Status = c.Status
 			noBreaking.Evidence = model.Unknown
 			noBreaking.Explanation = c.Explanation
@@ -577,6 +653,39 @@ func applyGate(r *Report, o Options) {
 	}
 	r.Gate = gate.Evaluate(p, checks)
 	r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
+}
+
+// unavailable reports why a selected runner cannot start in the candidate,
+// using only static checks: no repository code or package script runs.
+func unavailable(root string, c testselection.Command) string {
+	if len(c.Command) == 0 {
+		return "empty command"
+	}
+	dir, err := pathutil.ResolveInside(root, c.CWD)
+	if c.CWD == "" || c.CWD == "." {
+		dir, err = root, nil
+	}
+	if err != nil {
+		return "working directory " + c.CWD + " is outside the candidate"
+	}
+	if info, e := os.Stat(dir); e != nil || !info.IsDir() {
+		return "working directory " + c.CWD + " does not exist in the candidate"
+	}
+	tool := c.Command[0]
+	if strings.Contains(tool, "/") {
+		path, e := pathutil.ResolveInside(dir, tool)
+		if e != nil {
+			return "runner " + tool + " is outside the candidate"
+		}
+		if info, e := os.Stat(path); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
+			return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
+		}
+		return ""
+	}
+	if _, e := exec.LookPath(tool); e != nil {
+		return "runner " + tool + " is not on PATH"
+	}
+	return ""
 }
 
 func aggregateExecution(current, next model.Status) model.Status {

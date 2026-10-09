@@ -96,8 +96,9 @@ inferred/proposed classification. It does not claim test completeness.
 
 The integration layer observes each recommended command in its declared CWD and
 binds its selection ID, argv, result and source state into candidate evidence.
-A shared execution deadline and a maximum of 16 commands bound each invocation;
-no retry controller or dependency installation is introduced. Recommendation,
+A shared execution deadline and a command budget (default 16, after grouping;
+see [TEST_SELECTION.md](TEST_SELECTION.md)) bound each invocation; omitted
+required commands are reported and block the gate. There is no retry controller or dependency installation is introduced. Recommendation,
 execution authorization and observed results are distinct operations.
 
 

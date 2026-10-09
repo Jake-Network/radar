@@ -116,9 +116,11 @@ remain unselected. Tool availability is a PATH probe, not a dependency check.
 
 `merge-check --verify --suite recommended --allow-execution` runs selected
 commands on the actual combined candidate, recording each selection and execution
-separately with its CWD. At most 16 commands may execute, under a shared total
-`--timeout` (default two minutes, maximum 30 minutes). Larger suites are rejected
-for manual narrowing. No supported selected tests means unknown, never passed.
+separately with its CWD. `--suite targeted|balanced|full` selects a mode
+(`recommended` is `balanced`). Per-file commands are grouped, then bounded by
+`--max-commands` (default 16) under a shared total `--timeout` (default two
+minutes, maximum 30 minutes). Omitted, unrunnable or unstarted required commands
+are listed with reasons and block the gate; see [TEST_SELECTION.md](TEST_SELECTION.md). No supported selected tests means unknown, never passed.
 Missing tools/dependencies, setup failures, or zero recognized results cannot
 become successful test evidence. Discovery is bounded to 10,000 eligible files,
 1 MiB per read and 32 MiB total; skipped inputs appear in inventory diagnostics.

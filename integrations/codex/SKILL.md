@@ -76,13 +76,25 @@ remains unproved. Recommendations are inferred/proposed and do not install depen
 or establish complete test coverage. Define a versioned `--policy PATH` selecting
 required checks; distinguish `gate.verdict` from aggregate status and coverage.
 Missing required evidence remains blocked; unrelated analyzer gaps stay visible.
+The base `.radar/contracts.json` defines contract obligations: deleting the
+manifest, a binding or a consumed field declaration never makes
+`no_breaking_contracts` pass. Retire an obligation only with a reviewed
+`"retired": [{"id", "fields", "reason"}]` entry (or an approved plan removal
+delta); never remove declarations to silence a finding.
 
 After explicit execution authorization, use the CLI:
-`radar merge-check --base BASE --branches A,B --verify --suite recommended
---allow-execution --policy POLICY --json`. Supply a reviewed plan declaring exact
-test commands when checking acceptance criteria. Keep selected commands separate
-from executed observations; inspect every result and its CWD. At most 16 commands
-run under one shared timeout. A command observation does not automatically satisfy
+`radar merge-check --base BASE --branches A,B --verify --suite targeted
+--allow-execution --policy POLICY --json`. Modes: `targeted` (direct static
+relationships), `balanced` (alias `recommended`; adds package fallbacks) and
+`full` (whole discovered suites). Preview any mode read-only with
+`radar check --suite MODE`. Supply a reviewed plan declaring exact test commands
+when checking acceptance criteria. Keep selected commands separate from executed
+observations; inspect every result and its CWD. Same-directory per-file commands
+are grouped; `--max-commands` (default 16) and `--timeout` bound one run. Read
+`selection.omitted`, `uncovered_changes` and `blocking`: an omitted, unrunnable or
+unexecuted required command blocks the gate and is never a pass or a test failure.
+Radar never installs dependencies; an `environment_unavailable` result needs a
+prepared environment or a reviewed plan `test_run` rule with `link`. A command observation does not automatically satisfy
 an unrelated plan criterion. Private copied files are not an OS sandbox.
 MCP is strictly read-only for proposals and preview: never pass execution flags or
 attempt to create approval through a tool call. Consult Radar CLI help and its

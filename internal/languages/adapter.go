@@ -299,6 +299,22 @@ func importNames(n *sitter.Node, source []byte, language string) []string {
 		if s := n.ChildByFieldName("source"); s != nil {
 			return []string{unquote(s.Utf8Text(source))}
 		}
+	case "call_expression":
+		// CommonJS require('x') and dynamic import('x') with one literal
+		// specifier. Computed specifiers stay unknown rather than guessed.
+		if language != "typescript" && language != "javascript" {
+			return nil
+		}
+		fn, args := n.ChildByFieldName("function"), n.ChildByFieldName("arguments")
+		if fn == nil || args == nil || args.NamedChildCount() != 1 {
+			return nil
+		}
+		if name := fn.Utf8Text(source); fn.Kind() != "import" && !(fn.Kind() == "identifier" && name == "require") {
+			return nil
+		}
+		if arg := args.NamedChild(0); arg.Kind() == "string" {
+			return []string{unquote(arg.Utf8Text(source))}
+		}
 	case "import_from_statement":
 		if s := n.ChildByFieldName("module_name"); s != nil {
 			return []string{s.Utf8Text(source)}

@@ -43,3 +43,47 @@ error. Without policy, existing exit behavior and aggregate `status` are kept.
 `--require-complete` retains its legacy whole-analysis interpretation and prints
 migration guidance; it is not silently redefined. It cannot be combined with
 `--policy`. Use explicit required checks for practical CI gates.
+
+## Contract obligations cannot disappear silently
+
+The **base** `.radar/contracts.json` defines the contract obligations under
+review. A head (or combined candidate) may add obligations, but it cannot
+remove them by deleting the manifest, emptying `bindings`, dropping a binding,
+narrowing a binding's consumed `fields`, clearing its `consumer` reference or
+moving it to another schema/pointer. Radar evaluates every incompatible schema
+change against the base declaration as well as the head declaration:
+
+| Head state of a base binding | Schema change used by the base declaration | `no_breaking_contracts` |
+| --- | --- | --- |
+| unchanged | incompatible | `fail` (`contract_<kind>`) |
+| removed, narrowed or moved, consumer file still present | incompatible | `fail` (`contract_obligation_removed`) |
+| removed, consumer file still present | none | `blocked` (unverified obligation) |
+| removed together with its consumer file | any | passes; listed as `consumer_removed` |
+| explicitly retired (see below) | incompatible | passes with a `contract_obligation_retired` warning |
+| head manifest unparsable, retirement without reason | any | `blocked` (check) / `error` (merge-check) |
+| moved to an unanalyzable schema or pointer, unsupported construct in a used field, declared consumer file missing | any | `blocked` |
+
+`gate.NoBreaking` now receives the analysis's `unverified_obligations` in
+addition to findings: the absence of error findings alone never passes.
+Repositories that never had a manifest are unaffected and keep manifest-free
+analysis.
+
+Retire an obligation with a reviewable manifest entry introduced by the change
+(a retirement already present at base never applies again):
+
+```json
+{"version": 1, "bindings": [],
+ "retired": [{"id": "order-summary", "fields": ["currency"],
+              "reason": "storefront reads currency_code from release 4.2"}]}
+```
+
+Omit `fields` to retire the whole binding. A digest-bound approved plan whose
+`contract_deltas` contain `{"operation": "remove", "contract": ID}` retires
+that binding too. Radar records but cannot verify who reviewed a retirement;
+protect `.radar/` with code ownership if that matters. Every change to an
+obligation is reported in `declared_contracts.obligation_changes`
+(`check`) or `contract_obligations` (`merge-check`).
+
+The schema change is additive: `retired`, `obligation_changes` and
+`unverified_obligations` are new optional fields, and older manifests load
+unchanged.

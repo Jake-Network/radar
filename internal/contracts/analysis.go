@@ -3,6 +3,8 @@ package contracts
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
 	"reflect"
 	"strings"
 
@@ -10,11 +12,14 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 )
 
-func Impact(ctx context.Context, root, base, head string) (Report, error) {
-	return analyze(ctx, root, base, []string{head}, false)
+// Impact compares declared obligations at base with head. approved lists
+// retirements reviewed outside the manifest (an approved plan's removal delta);
+// they apply in addition to "retired" entries the head manifest introduces.
+func Impact(ctx context.Context, root, base, head string, approved ...Retirement) (Report, error) {
+	return analyze(ctx, root, base, []string{head}, false, approved)
 }
 func Scan(ctx context.Context, root, base string, branches []string) (Report, error) {
-	return analyze(ctx, root, base, branches, true)
+	return analyze(ctx, root, base, branches, true, nil)
 }
 
 // FieldOverlaps reports whether a declared consumer field depends on a changed
@@ -30,8 +35,8 @@ type manifestAt struct {
 	err      error
 }
 
-func analyze(ctx context.Context, root, base string, heads []string, cross bool) (Report, error) {
-	r := Report{Base: base, Heads: heads, Checkpoint: "authoritative", Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}}
+func analyze(ctx context.Context, root, base string, heads []string, cross bool, approved []Retirement) (Report, error) {
+	r := Report{Base: base, Heads: heads, Checkpoint: "authoritative", Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Obligations: []ObligationChange{}, Unverified: []string{}}
 	baseSHA, err := gitrepo.Resolve(ctx, root, base)
 	if err != nil {
 		return r, err
@@ -53,9 +58,22 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 	warn := func(path, message string) {
 		r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Path: path, Message: message, Severity: model.SeverityWarning})
 	}
+	unverified := func(message string) {
+		for _, m := range r.Unverified {
+			if m == message {
+				return
+			}
+		}
+		r.Unverified = append(r.Unverified, message)
+	}
 	manifest, err := LoadManifest(ctx, root, baseSHA)
 	if err != nil {
 		warn("", err.Error())
+		// A repository without a manifest keeps manifest-free analysis; a
+		// manifest that exists but cannot be read leaves obligations unknown.
+		if !errors.Is(err, os.ErrNotExist) {
+			unverified("base contract manifest is unusable: " + err.Error())
+		}
 		r.Status = model.StatusIncomplete
 		return r, nil
 	}
@@ -68,6 +86,60 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 		m, err := LoadManifest(ctx, root, ref)
 		manifests[ref] = manifestAt{m, err}
 		return m, err
+	}
+	exists := func(ref, path string) bool {
+		_, err := gitrepo.ReadFile(ctx, root, ref, path)
+		return err == nil
+	}
+	// The base manifest defines the obligations under review. A head may add
+	// obligations or explicitly retire them; it cannot silently drop them.
+	declaration := func(head string, b Binding) (Binding, string, error) {
+		m, err := manifestFor(head)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return Binding{}, "removed", nil
+			}
+			return Binding{}, "invalid", err
+		}
+		for _, hb := range m.Bindings {
+			if hb.ID == b.ID {
+				if hb.Schema != b.Schema || hb.Pointer != b.Pointer {
+					return hb, "moved", nil
+				}
+				return hb, "present", nil
+			}
+		}
+		return Binding{}, "removed", nil
+	}
+	// retiredFor finds a retirement introduced at head (not already present at
+	// base) that covers the changed field of a binding.
+	retiredFor := func(head, id, field string) *Retirement {
+		var candidates []Retirement
+		if m, err := manifestFor(head); err == nil {
+			for _, ret := range m.Retired {
+				if !containsRetirement(manifest.Retired, ret) {
+					candidates = append(candidates, ret)
+				}
+			}
+		}
+		candidates = append(candidates, approved...)
+		for i, ret := range candidates {
+			if ret.ID != id {
+				continue
+			}
+			if len(ret.Fields) == 0 {
+				return &candidates[i]
+			}
+			for _, f := range ret.Fields {
+				if field != "" && FieldOverlaps(f, field) {
+					return &candidates[i]
+				}
+			}
+		}
+		return nil
+	}
+	obligation := func(b Binding, head, kind, explanation string) {
+		r.Obligations = append(r.Obligations, ObligationChange{Binding: b.ID, Head: head, Kind: kind, Explanation: explanation})
 	}
 	seen := map[string]bool{}
 	baseBindings := map[string]Binding{}
@@ -93,6 +165,54 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 		return changed
 	}
 	for _, binding := range manifest.Bindings {
+		complete := true
+		// Record how each head changed this obligation, whether or not the
+		// schema changed: a vanished declaration is itself unverified coverage.
+		for _, head := range heads {
+			hb, state, err := declaration(head, binding)
+			switch state {
+			case "invalid":
+				unverified(head + ": contract manifest is unusable, so binding " + binding.ID + " is unverified: " + err.Error())
+				obligation(binding, head, "invalid", err.Error())
+				complete = false
+			case "moved":
+				doc, err := ReadSchema(ctx, root, head, hb.Schema)
+				if err == nil {
+					_, err = Analyzable(doc, hb.Pointer)
+				}
+				if err != nil {
+					unverified(head + ": binding " + binding.ID + " now references an unanalyzable schema: " + err.Error())
+					obligation(binding, head, "invalid", "moved declaration is not analyzable: "+err.Error())
+					complete = false
+				} else {
+					obligation(binding, head, "moved", "schema or pointer changed; the base location remains the reviewed obligation")
+				}
+			case "present":
+				var dropped []string
+				for _, f := range binding.Fields {
+					kept := false
+					for _, g := range hb.Fields {
+						kept = kept || g == f
+					}
+					if !kept {
+						dropped = append(dropped, f)
+					}
+				}
+				if len(dropped) > 0 {
+					obligation(binding, head, "narrowed", "consumer fields no longer declared: "+strings.Join(dropped, ", "))
+				}
+			case "removed":
+				switch {
+				case retiredFor(head, binding.ID, "") != nil:
+					obligation(binding, head, "retired", retiredFor(head, binding.ID, "").Reason)
+				case binding.Consumer != "" && !exists(head, binding.Consumer):
+					obligation(binding, head, "consumer_removed", "binding removed together with its declared consumer "+binding.Consumer)
+				default:
+					obligation(binding, head, "removed", "binding removed without a retirement record while its consumer remains")
+					unverified(head + ": binding " + binding.ID + " was removed without an explicit retirement record in " + ManifestPath)
+				}
+			}
+		}
 		before, err := ReadSchema(ctx, root, baseSHA, binding.Schema)
 		if err == nil {
 			_, err = Analyzable(before, binding.Pointer)
@@ -101,7 +221,6 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 			warn(binding.Schema, "binding "+binding.ID+" at base: "+err.Error())
 			continue
 		}
-		complete := true
 		for _, producerHead := range heads {
 			changes, err := headChanges(ctx, root, binding, before, producerHead)
 			if err != nil {
@@ -119,35 +238,16 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 					continue
 				}
 				for _, consumerHead := range consumers {
-					m, err := manifestFor(consumerHead)
-					if err != nil {
-						warn(ManifestPath, consumerHead+": "+err.Error())
+					consumerBinding, state, _ := declaration(consumerHead, binding)
+					if state == "invalid" {
 						continue
 					}
-					consumerBinding, found := Binding{}, false
-					for _, b := range m.Bindings {
-						if b.ID == binding.ID {
-							consumerBinding, found = b, true
-							break
-						}
-					}
-					if !found {
+					if cross && consumerHead != producerHead && state == "present" && !consumerChanged(consumerHead, consumerBinding) {
 						continue
 					}
-					if cross && consumerHead != producerHead && !consumerChanged(consumerHead, consumerBinding) {
-						continue
-					}
-					if consumerBinding.Schema != binding.Schema || consumerBinding.Pointer != binding.Pointer {
-						warn(ManifestPath, consumerHead+": binding "+binding.ID+" moved; association with the changed schema is not verified")
-						continue
-					}
-					used := change.Kind == "required_added"
-					for _, field := range consumerBinding.Fields {
-						if FieldOverlaps(field, change.Field) {
-							used = true
-						}
-					}
-					if !used {
+					usedBase := change.Kind == "required_added" || overlapsAny(binding.Fields, change.Field)
+					usedHead := state == "present" && (change.Kind == "required_added" || overlapsAny(consumerBinding.Fields, change.Field))
+					if !usedBase && !usedHead {
 						continue
 					}
 					if classification == "unanalyzed" {
@@ -159,18 +259,44 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 						complete = false
 						continue
 					}
-					if consumerBinding.Consumer != "" {
-						if _, err := gitrepo.ReadFile(ctx, root, consumerHead, consumerBinding.Consumer); err != nil {
-							warn(consumerBinding.Consumer, err.Error())
+					if usedHead {
+						if consumerBinding.Consumer != "" && !exists(consumerHead, consumerBinding.Consumer) {
+							warn(consumerBinding.Consumer, consumerHead+": declared consumer of "+binding.ID+" is missing; affected usage cannot be verified")
+							unverified(consumerHead + ": declared consumer " + consumerBinding.Consumer + " of binding " + binding.ID + " is missing")
+							complete = false
 							continue
 						}
+						id := model.StableID(root, "contract", binding.ID, change.Kind, change.Field, producerHead, consumerHead)
+						if seen[id] {
+							continue
+						}
+						seen[id] = true
+						r.Findings = append(r.Findings, finding(id, binding, consumerBinding, change, classification, producerHead, consumerHead, r.Checkpoint, root))
+						continue
 					}
-					id := model.StableID(root, "contract", binding.ID, change.Kind, change.Field, producerHead, consumerHead)
+					// The base declaration still depends on this change, but the
+					// head declaration no longer covers it (binding removed, moved,
+					// narrowed or the manifest deleted).
+					if binding.Consumer != "" && !exists(consumerHead, binding.Consumer) {
+						continue
+					}
+					id := model.StableID(root, "contract-obligation", binding.ID, change.Kind, change.Field, producerHead, consumerHead)
 					if seen[id] {
 						continue
 					}
 					seen[id] = true
-					r.Findings = append(r.Findings, finding(id, binding, consumerBinding, change, classification, producerHead, consumerHead, r.Checkpoint, root))
+					f := finding(id, binding, binding, change, classification, producerHead, consumerHead, r.Checkpoint, root)
+					if ret := retiredFor(consumerHead, binding.ID, change.Field); ret != nil {
+						f.Code = "contract_obligation_retired"
+						f.Severity = model.SeverityWarning
+						f.Explanation = change.Explanation + "; the base declaration depended on it and " + ManifestPath + " retires that obligation: " + ret.Reason
+						f.Remediation = "Confirm the retirement was reviewed and the consumer no longer depends on this field."
+					} else {
+						f.Code = "contract_obligation_removed"
+						f.Explanation = change.Explanation + "; the base declaration of " + binding.ID + " depends on it, and the change also removes or narrows that declaration (" + state + ") without a retirement record"
+						f.Remediation = "Restore the binding, or add a reviewed entry to \"retired\" in " + ManifestPath + " with the binding id, affected fields and a reason."
+					}
+					r.Findings = append(r.Findings, f)
 				}
 			}
 		}
@@ -180,6 +306,24 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool)
 	}
 	r.Status = reportStatus(r)
 	return r, nil
+}
+
+func overlapsAny(fields []string, changed string) bool {
+	for _, field := range fields {
+		if FieldOverlaps(field, changed) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsRetirement(list []Retirement, r Retirement) bool {
+	for _, x := range list {
+		if reflect.DeepEqual(x, r) {
+			return true
+		}
+	}
+	return false
 }
 
 // headChanges compares a binding's base schema with its state at head,
@@ -242,7 +386,7 @@ func reportStatus(r Report) model.Status {
 	if len(r.Findings) > 0 {
 		return model.StatusWarning
 	}
-	if r.Analyzed < r.Bindings || len(r.Diagnostics) > 0 {
+	if r.Analyzed < r.Bindings || len(r.Diagnostics) > 0 || len(r.Unverified) > 0 {
 		return model.StatusIncomplete
 	}
 	return model.StatusPassed

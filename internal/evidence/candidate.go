@@ -132,7 +132,7 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 	}
 	// Harness-like text printed by arbitrary programs is not an authentication
 	// boundary. These are observations of explicitly trusted execution.
-	if isUnittest(argv) && dependencyError.Match(data) {
+	if environmentFailure(argv, data) {
 		r.Status = model.StatusError
 	}
 }

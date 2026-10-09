@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "total", "currency", "items"],
+  "properties": {
+    "id": {"type": "string"},
+    "total": {"type": "integer"},
+    "currency": {"type": "string"},
+    "items": {"type": "integer"}
+  }
+}

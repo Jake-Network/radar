@@ -1,0 +1,625 @@
+{
+  "rows": [
+    {
+      "id": "py-discount-rounding",
+      "category": "python-backend",
+      "ground_truth": "observed",
+      "failing": [
+        "services/api/tests/test_pricing.py"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.46,
+      "targeted": {
+        "selected": [
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.25,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.404,
+        "selected_test_seconds": 0.281,
+        "commands": 3,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "services/api/tests/test_inventory.py",
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "services/api/tests/test_serializers.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 6,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.16666666666666666,
+        "reduction": 0.5384615384615384,
+        "selection_seconds": 0.383,
+        "selected_test_seconds": 0.375,
+        "commands": 5,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "py-line-total",
+      "category": "python-backend",
+      "ground_truth": "observed",
+      "failing": [
+        "services/api/tests/test_orders.py",
+        "services/api/tests/test_pricing.py"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.36,
+      "targeted": {
+        "selected": [
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.5,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.384,
+        "selected_test_seconds": 0.262,
+        "commands": 3,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "services/api/tests/test_inventory.py",
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "services/api/tests/test_serializers.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 6,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.3333333333333333,
+        "reduction": 0.5384615384615384,
+        "selection_seconds": 0.384,
+        "selected_test_seconds": 0.351,
+        "commands": 5,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "py-inventory-leak",
+      "category": "python-backend",
+      "ground_truth": "observed",
+      "failing": [
+        "services/api/tests/test_inventory.py"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.355,
+      "targeted": {
+        "selected": [
+          "services/api/tests/test_inventory.py"
+        ],
+        "selected_count": 1,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.9230769230769231,
+        "selection_seconds": 0.391,
+        "selected_test_seconds": 0.046,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "services/api/tests/test_inventory.py",
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "services/api/tests/test_serializers.py"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.25,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.382,
+        "selected_test_seconds": 0.182,
+        "commands": 4,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "py-serializer-order",
+      "category": "python-backend",
+      "ground_truth": "observed",
+      "failing": [
+        "services/api/tests/test_serializers.py"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.334,
+      "targeted": {
+        "selected": [
+          "services/api/tests/test_serializers.py"
+        ],
+        "selected_count": 1,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.9230769230769231,
+        "selection_seconds": 0.385,
+        "selected_test_seconds": 0.049,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "services/api/tests/test_inventory.py",
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "services/api/tests/test_serializers.py"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.25,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.384,
+        "selected_test_seconds": 0.191,
+        "commands": 4,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "api-currency-rename",
+      "category": "shared-api-schema",
+      "ground_truth": "observed",
+      "failing": [
+        "services/api/tests/test_orders.py",
+        "web/test/contract.integration.test.js"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.351,
+      "targeted": {
+        "selected": [
+          "integration/test_order_contract.py",
+          "services/api/tests/test_orders.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.5,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.387,
+        "selected_test_seconds": 0.281,
+        "commands": 3,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": [
+          "contract_field_removed",
+          "manifest_lint"
+        ]
+      },
+      "balanced": {
+        "selected": [
+          "integration/test_order_contract.py",
+          "services/api/tests/test_inventory.py",
+          "services/api/tests/test_orders.py",
+          "services/api/tests/test_pricing.py",
+          "services/api/tests/test_serializers.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 7,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.2857142857142857,
+        "reduction": 0.46153846153846156,
+        "selection_seconds": 0.389,
+        "selected_test_seconds": 0.418,
+        "commands": 6,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": [
+          "contract_field_removed",
+          "manifest_lint"
+        ]
+      }
+    },
+    {
+      "id": "schema-items-type",
+      "category": "shared-api-schema",
+      "ground_truth": "observed",
+      "failing": [
+        "integration/test_order_contract.py"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.387,
+      "targeted": {
+        "selected": [
+          "integration/test_order_contract.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 3,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.3333333333333333,
+        "reduction": 0.7692307692307692,
+        "selection_seconds": 0.411,
+        "selected_test_seconds": 0.231,
+        "commands": 2,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "integration/test_order_contract.py",
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 3,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.3333333333333333,
+        "reduction": 0.7692307692307692,
+        "selection_seconds": 0.436,
+        "selected_test_seconds": 0.231,
+        "commands": 2,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "js-format-padding",
+      "category": "typescript-frontend",
+      "ground_truth": "observed",
+      "failing": [
+        "web/test/contract.integration.test.js",
+        "web/test/format.test.js"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.352,
+      "targeted": {
+        "selected": [
+          "web/test/cart.test.js",
+          "web/test/contract.integration.test.js",
+          "web/test/format.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 4,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.5,
+        "reduction": 0.6923076923076923,
+        "selection_seconds": 0.39,
+        "selected_test_seconds": 0.352,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "web/test/cart.test.js",
+          "web/test/contract.integration.test.js",
+          "web/test/format.test.js",
+          "web/test/summary.test.js",
+          "web/test/theme.test.js"
+        ],
+        "selected_count": 5,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.4,
+        "reduction": 0.6153846153846154,
+        "selection_seconds": 0.376,
+        "selected_test_seconds": 0.438,
+        "commands": 2,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "js-summary-field",
+      "category": "cross-language",
+      "ground_truth": "observed",
+      "failing": [
+        "web/test/contract.integration.test.js",
+        "web/test/summary.test.js"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.328,
+      "targeted": {
+        "selected": [
+          "web/test/contract.integration.test.js",
+          "web/test/summary.test.js"
+        ],
+        "selected_count": 2,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.8461538461538461,
+        "selection_seconds": 0.426,
+        "selected_test_seconds": 0.179,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": [
+          "manifest_lint"
+        ]
+      },
+      "balanced": {
+        "selected": [
+          "web/test/cart.test.js",
+          "web/test/contract.integration.test.js",
+          "web/test/format.test.js",
+          "web/test/summary.test.js",
+          "web/test/theme.test.js"
+        ],
+        "selected_count": 5,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.4,
+        "reduction": 0.6153846153846154,
+        "selection_seconds": 0.412,
+        "selected_test_seconds": 0.436,
+        "commands": 2,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": [
+          "manifest_lint"
+        ]
+      }
+    },
+    {
+      "id": "js-theme-contrast",
+      "category": "typescript-frontend",
+      "ground_truth": "observed",
+      "failing": [
+        "web/test/theme.test.js"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.559,
+      "targeted": {
+        "selected": [
+          "web/test/theme.test.js"
+        ],
+        "selected_count": 1,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.9230769230769231,
+        "selection_seconds": 0.444,
+        "selected_test_seconds": 0.104,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "web/test/cart.test.js",
+          "web/test/contract.integration.test.js",
+          "web/test/format.test.js",
+          "web/test/summary.test.js",
+          "web/test/theme.test.js"
+        ],
+        "selected_count": 5,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 0.2,
+        "reduction": 0.6153846153846154,
+        "selection_seconds": 0.392,
+        "selected_test_seconds": 0.487,
+        "commands": 2,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "go-clock-advance",
+      "category": "go-package",
+      "ground_truth": "observed",
+      "failing": [
+        "gosvc/clock/clock_test.go",
+        "gosvc/ratelimit/limiter_test.go"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.453,
+      "targeted": {
+        "selected": [
+          "gosvc/clock/clock_test.go",
+          "gosvc/ratelimit/limiter_test.go"
+        ],
+        "selected_count": 2,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.8461538461538461,
+        "selection_seconds": 0.389,
+        "selected_test_seconds": 0.531,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "gosvc/clock/clock_test.go",
+          "gosvc/ratelimit/limiter_test.go"
+        ],
+        "selected_count": 2,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.8461538461538461,
+        "selection_seconds": 0.424,
+        "selected_test_seconds": 0.531,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "go-health-threshold",
+      "category": "go-package",
+      "ground_truth": "observed",
+      "failing": [
+        "gosvc/health/health_test.go"
+      ],
+      "inventory": 13,
+      "full_suite_seconds": 1.464,
+      "targeted": {
+        "selected": [
+          "gosvc/health/health_test.go"
+        ],
+        "selected_count": 1,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.9230769230769231,
+        "selection_seconds": 0.439,
+        "selected_test_seconds": 0.25,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [
+          "gosvc/health/health_test.go"
+        ],
+        "selected_count": 1,
+        "missed": [],
+        "recall": 1.0,
+        "precision": 1.0,
+        "reduction": 0.9230769230769231,
+        "selection_seconds": 0.459,
+        "selected_test_seconds": 0.25,
+        "commands": 1,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    },
+    {
+      "id": "docs-only",
+      "category": "unrelated",
+      "ground_truth": "observed",
+      "failing": [],
+      "inventory": 13,
+      "full_suite_seconds": 1.595,
+      "targeted": {
+        "selected": [],
+        "selected_count": 0,
+        "missed": [],
+        "recall": null,
+        "precision": null,
+        "reduction": 1.0,
+        "selection_seconds": 0.396,
+        "selected_test_seconds": 0,
+        "commands": 0,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      },
+      "balanced": {
+        "selected": [],
+        "selected_count": 0,
+        "missed": [],
+        "recall": null,
+        "precision": null,
+        "reduction": 1.0,
+        "selection_seconds": 0.4,
+        "selected_test_seconds": 0,
+        "commands": 0,
+        "blocking": [],
+        "uncovered": [],
+        "fallback_needed": false,
+        "contract_findings": []
+      }
+    }
+  ],
+  "summary": {
+    "ground_truth_unavailable": [],
+    "targeted": {
+      "mutations": 12,
+      "mutations_with_failures": 11,
+      "mutations_fully_detected": 11,
+      "failing_file_recall": 1.0,
+      "selected_files": 27,
+      "selected_failing_files": 16,
+      "precision": 0.593,
+      "execution_reduction": 0.827,
+      "false_negative_mutations": [],
+      "selections_without_observed_failure": [],
+      "fallback_flagged": [],
+      "median_selection_seconds": 0.396
+    },
+    "balanced": {
+      "mutations": 12,
+      "mutations_with_failures": 11,
+      "mutations_fully_detected": 11,
+      "failing_file_recall": 1.0,
+      "selected_files": 48,
+      "selected_failing_files": 16,
+      "precision": 0.333,
+      "execution_reduction": 0.692,
+      "false_negative_mutations": [],
+      "selections_without_observed_failure": [],
+      "fallback_flagged": [],
+      "median_selection_seconds": 0.392
+    }
+  }
+}

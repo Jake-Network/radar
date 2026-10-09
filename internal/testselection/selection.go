@@ -29,6 +29,9 @@ type Test struct {
 	Framework   string           `json:"framework"`
 	PackageRoot string           `json:"package_root"`
 	Evidence    model.Provenance `json:"evidence"`
+	// text is the bounded test source, kept in memory for lexical file
+	// references; it is never serialized.
+	text string
 }
 type Inventory struct {
 	Revision    string             `json:"revision"`
@@ -53,6 +56,10 @@ type Command struct {
 	EvidenceReasons []Reason `json:"evidence_reasons"`
 	Priority        int      `json:"priority"`
 	ToolAvailable   bool     `json:"tool_available"`
+	// Tier is required or optional; set by Plan, empty in raw proposals.
+	Tier string `json:"tier,omitempty"`
+	// GroupedFrom lists the per-file candidate IDs merged into this command.
+	GroupedFrom []string `json:"grouped_from,omitempty"`
 }
 type Proposal struct {
 	Status      model.Status `json:"status"`
@@ -185,7 +192,7 @@ func DiscoverProvider(ctx context.Context, p indexer.Provider, revision string) 
 		}
 		root := packageRoot(entry.Path, ecosystem, contents)
 		provenance := model.Provenance{Revision: revision, Path: entry.Path, Method: "static_test_convention:" + framework, Evidence: model.Inferred}
-		inv.Tests = append(inv.Tests, Test{ID: model.StableID("test", entry.Path, framework), Path: entry.Path, Framework: framework, PackageRoot: root, Evidence: provenance})
+		inv.Tests = append(inv.Tests, Test{ID: model.StableID("test", entry.Path, framework), Path: entry.Path, Framework: framework, PackageRoot: root, Evidence: provenance, text: content})
 	}
 	return inv, nil
 }
@@ -339,7 +346,7 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 	}
 	groups := map[string]*Command{}
 	add := func(c Command) {
-		c.ID = model.StableID("verification-command", c.CWD, strings.Join(c.Command, "\x00"))
+		c.ID = commandID(c)
 		key := c.ID
 		if existing, ok := groups[key]; ok {
 			existing.TestFiles = unique(append(existing.TestFiles, c.TestFiles...))
@@ -376,7 +383,17 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 	}
 	roots := map[string]bool{}
 	owners := map[string]string{}
+	isTest := map[string]bool{}
+	for _, test := range inv.Tests {
+		isTest[test.Path] = true
+	}
 	for file := range changedSet {
+		// A changed test file is selected directly and cannot affect its
+		// siblings; shared fixtures (conftest.py, helpers) are not test files
+		// and still fall back to their package root.
+		if documentation(file) || isTest[file] {
+			continue
+		}
 		best := ""
 		for _, test := range inv.Tests {
 			if inside(test.PackageRoot, file) && (best == "" || rootDepth(test.PackageRoot) > rootDepth(best)) {
@@ -420,6 +437,17 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			}
 			files = append(files, source)
 		}
+		// A test naming a changed data, schema or configuration file reads it
+		// at runtime more often than not; the match is lexical, not proof.
+		if priority == 0 {
+			for file := range changedSet {
+				if referenced(test, file) {
+					priority = 75
+					reason = "file_reference"
+					files = append(files, file)
+				}
+			}
+		}
 		if test.Framework == "go" && priority == 0 {
 			for file := range changedSet {
 				if strings.HasSuffix(file, ".go") && path.Dir(file) == path.Dir(test.Path) {
@@ -462,7 +490,7 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			result.Limitations = append(result.Limitations, "No safely recognized runner for "+test.Path+"; inspect test configuration manually.")
 			continue
 		}
-		description := map[string]string{"changed_test": "Changed conventional test file.", "dependency_impact": "Test imports a changed file through recorded inferred dependency paths.", "declared_contract_impact": "Test imports a consumer reached through explicit producer/schema and declared contract dependencies; runtime usage remains unproven.", "go_package_companion": "Go test shares a package directory with changed Go source.", "package_fallback": "Conservative package-root fallback; a direct dependency was not established.", "cross_component_integration": "Integration-named suite prioritized because changes span multiple test package roots; naming is not semantic proof."}[reason]
+		description := map[string]string{"changed_test": "Changed conventional test file.", "dependency_impact": "Test imports a changed file through recorded inferred dependency paths.", "declared_contract_impact": "Test imports a consumer reached through explicit producer/schema and declared contract dependencies; runtime usage remains unproven.", "go_package_companion": "Go test shares a package directory with changed Go source.", "package_fallback": "Conservative package-root fallback; a direct dependency was not established.", "file_reference": "Test source names a changed non-code file (for example a schema or fixture); lexical reference, runtime use unproven.", "cross_component_integration": "Integration-named suite prioritized because changes span multiple test package roots; naming is not semantic proof."}[reason]
 		locations := []model.Provenance{test.Evidence}
 		if reason == "dependency_impact" || reason == "declared_contract_impact" {
 			locations = append(locations, routes[test.Path]...)
@@ -562,4 +590,27 @@ func rootDepth(root string) int {
 		return 0
 	}
 	return strings.Count(root, "/") + 1
+}
+
+// documentation reports changes that cannot affect test outcomes on their own.
+func documentation(p string) bool {
+	switch strings.ToLower(path.Ext(p)) {
+	case ".md", ".rst", ".adoc", ".png", ".jpg", ".jpeg", ".gif", ".svg":
+		return true
+	}
+	base := path.Base(p)
+	return base == "LICENSE" || base == "CHANGES" || base == "AUTHORS"
+}
+
+// referenced reports whether a test names a changed non-code file by its
+// base name. Short or generic names are ignored to bound false positives.
+func referenced(t Test, file string) bool {
+	if t.text == "" || relevant(file) || documentation(file) || t.Path == file {
+		return false
+	}
+	base := path.Base(file)
+	if len(base) < 8 || !strings.Contains(base, ".") {
+		return false
+	}
+	return strings.Contains(t.text, base)
 }

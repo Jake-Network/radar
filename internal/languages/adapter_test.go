@@ -15,6 +15,8 @@ func TestLanguages(t *testing.T) {
 		{"a.ts", "import { b } from './b'; export interface Order { total: number }; export function total(o: Order) { return o.total; }", "Order", "interface", 1},
 		{"a.tsx", "export function View() { return <div />; }", "View", "function", 0},
 		{"a.js", "import {b} from './b.js'; export const run = () => b();", "run", "function", 1},
+		{"c.js", "const b = require('./b'); const p = require(path); export const run = async () => (await import('./lazy')).go(b);", "run", "function", 2},
+		{"c.ts", "export const load = (name: string) => import(name);", "load", "function", 0},
 		{"a.py", "from models import Order\nclass Service:\n    def run(self):\n        return 1\n", "Service", "class", 1},
 		{"a.go", "package main\nimport \"fmt\"\ntype Service struct {}\nfunc main() { fmt.Println(1) }\n", "Service", "type", 1},
 		{"a.rs", "use std::fmt;\npub struct Service {}\nimpl Service { pub fn run(&self) {} }", "Service", "type", 1},

@@ -37,7 +37,7 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
-	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
+	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("suite", "suite", "string", "preview a bounded selection without execution: targeted, balanced or full", false), p("max_commands", "max-commands", "integer", "command budget for the suite preview", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
 	{"radar_doctor", "doctor", "Report Radar capabilities, repository identity and state location.", nil},
@@ -305,10 +305,15 @@ func compactVerification(raw string) string {
 			if len(commands) > 8 {
 				commands = commands[:8]
 			}
-			proposal["commands"] = commands
+			compact := []any{}
+			for _, c := range commands {
+				compact = append(compact, compactCommand(c))
+			}
+			proposal["commands"] = compact
 		}
 		out["verification_proposal"] = proposal
 	}
+	out["agent_brief"] = agentBrief(full)
 	for key, limit := range map[string]int{"checks": 20, "coverage": 12, "limitations": 10} {
 		if values, ok := out[key].([]any); ok && len(values) > limit {
 			out[key+"_count"] = len(values)
@@ -331,4 +336,144 @@ func compactVerification(raw string) string {
 		return raw
 	}
 	return string(data)
+}
+
+// compactCommand keeps the identity, argv, reason and size of a command but
+// drops per-file provenance, which remains in the full report.
+func compactCommand(raw any) map[string]any {
+	c, _ := raw.(map[string]any)
+	out := map[string]any{"id": c["id"], "cwd": c["cwd"], "framework": c["framework"], "tool_available": c["tool_available"]}
+	if tier, ok := c["tier"]; ok {
+		out["tier"] = tier
+	}
+	if argv, ok := c["command"].([]any); ok {
+		out["argument_count"] = len(argv)
+		if len(argv) > 8 {
+			argv = append(append([]any{}, argv[:8]...), "…")
+		}
+		out["command"] = argv
+	}
+	if files, ok := c["test_files"].([]any); ok {
+		out["test_file_count"] = len(files)
+	}
+	if reasons, ok := c["evidence_reasons"].([]any); ok && len(reasons) > 0 {
+		codes := map[string]bool{}
+		why := []any{}
+		for _, r := range reasons {
+			reason, _ := r.(map[string]any)
+			code, _ := reason["code"].(string)
+			if !codes[code] {
+				codes[code] = true
+				why = append(why, map[string]any{"code": code, "explanation": reason["explanation"]})
+			}
+		}
+		out["why"] = why
+	}
+	return out
+}
+
+// agentBrief answers, in bounded form, what changed, what must be verified,
+// what was verified and what the agent must repair. It never decides repairs
+// or retries; Radar only reports deterministic evidence and policy state.
+func agentBrief(full map[string]any) map[string]any {
+	list := func(v any) []any { l, _ := v.([]any); return l }
+	bound := func(l []any, n int) []any {
+		if len(l) > n {
+			return l[:n]
+		}
+		return l
+	}
+	brief := map[string]any{}
+	changed := list(full["changed"])
+	if impact, ok := full["impact"].(map[string]any); ok {
+		changed = list(impact["changed"])
+	}
+	brief["changed_files"] = bound(changed, 15)
+	brief["changed_file_count"] = len(changed)
+
+	contracts := []any{}
+	repair := []any{}
+	for _, raw := range list(full["findings"]) {
+		f, _ := raw.(map[string]any)
+		if f["contract"] != nil && f["contract"] != "" {
+			contracts = append(contracts, map[string]any{"contract": f["contract"], "code": f["code"], "severity": f["severity"], "producer": f["producer"], "consumer": f["consumer"]})
+		}
+		if f["severity"] == "error" {
+			repair = append(repair, map[string]any{"code": f["code"], "explanation": f["explanation"], "remediation": f["remediation"], "verification": f["verification"]})
+		}
+	}
+	brief["contract_impact"] = bound(contracts, 10)
+	obligations := list(full["contract_obligations"])
+	if declared, ok := full["declared_contracts"].(map[string]any); ok {
+		obligations = list(declared["obligation_changes"])
+		if u := list(declared["unverified_obligations"]); len(u) > 0 {
+			brief["unverified_contract_obligations"] = bound(u, 10)
+		}
+	}
+	if len(obligations) > 0 {
+		brief["contract_obligation_changes"] = bound(obligations, 10)
+	}
+	brief["must_repair"] = bound(repair, 10)
+	brief["must_repair_count"] = len(repair)
+
+	executed, failed, blocked := []any{}, []any{}, []any{}
+	for _, raw := range list(full["checks"]) {
+		c, _ := raw.(map[string]any)
+		id, _ := c["id"].(string)
+		status, _ := c["status"].(string)
+		if strings.HasPrefix(id, "test:") {
+			entry := map[string]any{"id": strings.TrimPrefix(id, "test:"), "status": status}
+			switch status {
+			case "passed":
+				executed = append(executed, entry)
+			case "failed", "error", "timeout":
+				executed = append(executed, entry)
+				failed = append(failed, entry)
+			default:
+				blocked = append(blocked, map[string]any{"id": entry["id"], "status": status, "explanation": c["explanation"]})
+			}
+		}
+	}
+	tests := map[string]any{"executed": bound(executed, 16), "executed_count": len(executed), "failed": bound(failed, 10), "not_run": bound(blocked, 10)}
+	if s, ok := full["selection"].(map[string]any); ok {
+		essential, optional := []any{}, []any{}
+		for _, raw := range list(s["commands"]) {
+			c := compactCommand(raw)
+			if c["tier"] == "optional" {
+				optional = append(optional, c)
+			} else {
+				essential = append(essential, c)
+			}
+		}
+		omitted := []any{}
+		for _, raw := range list(s["omitted"]) {
+			o, _ := raw.(map[string]any)
+			omitted = append(omitted, map[string]any{"id": o["id"], "tier": o["tier"], "reason": o["reason"], "test_file_count": len(list(o["test_files"]))})
+		}
+		tests["mode"] = s["mode"]
+		tests["essential"] = bound(essential, 8)
+		tests["essential_count"] = len(essential)
+		tests["optional"] = bound(optional, 4)
+		tests["optional_count"] = len(optional)
+		tests["omitted"] = bound(omitted, 10)
+		tests["omitted_count"] = len(omitted)
+		tests["uncovered_changes"] = bound(list(s["uncovered_changes"]), 10)
+		tests["blocking"] = bound(list(s["blocking"]), 10)
+	}
+	brief["tests"] = tests
+
+	next := []any{}
+	if g, ok := full["gate"].(map[string]any); ok {
+		for _, raw := range list(g["required_checks"]) {
+			c, _ := raw.(map[string]any)
+			if c["status"] != "passed" {
+				next = append(next, fmt.Sprintf("required check %v is %v: %v", c["id"], c["status"], c["explanation"]))
+			}
+		}
+	}
+	if len(repair) > 0 {
+		next = append(next, "After repairing, rerun the same Radar command on the new commits; prior evidence does not transfer to a new candidate.")
+	}
+	brief["verify_next"] = bound(next, 8)
+	return brief
 }

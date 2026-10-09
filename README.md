@@ -31,11 +31,17 @@ radar setup --agent codex                  # or claude, both
 radar setup --agent both --dry-run         # inspect changes first
 radar check --base main --suggest-tests    # current source and test proposals; no execution
 radar discover --json                     # inspect proposed contract candidates
+radar check --base main --suite targeted  # bounded selection preview; no execution
 radar merge-check --base main --branches feature/backend,feature/frontend --suggest-tests
 # After reviewing the proposed commands and authorizing repository-code execution:
 radar merge-check --base main --branches feature/backend,feature/frontend \
-  --verify --suite recommended --allow-execution
+  --verify --suite targeted --allow-execution   # or balanced (= recommended), full
 ```
+
+Selection modes, budgets and grouping: [docs/TEST_SELECTION.md](docs/TEST_SELECTION.md).
+Measured recall and cost on labeled mutations: [docs/VALIDATION_SELECTION.md](docs/VALIDATION_SELECTION.md).
+Contract obligations in `.radar/contracts.json` cannot be removed silently; retire them explicitly
+([docs/VERIFICATION_POLICY.md](docs/VERIFICATION_POLICY.md#contract-obligations-cannot-disappear-silently)).
 
 Setup installs project-local skills and MCP configuration, preserves unrelated settings, and refuses conflicting Radar entries. Agent trust/restart may need manual action. `--agent claude --hook` adds the optional bounded Stop hook; Bash is required for that hook. No LLM credentials, telemetry or uploads are required.
 

@@ -1,0 +1,18 @@
+[
+  {"id": "click-intrange-clamp", "category": "python-library", "description": "IntRange clamps open bounds in the wrong direction (types.py).",
+   "edits": [{"path": "src/click/types.py", "find": "return bound + dir", "replace": "return bound - dir"}]},
+  {"id": "click-normalize-opt", "category": "python-library", "description": "Option token normalization ignored (parser.py).",
+   "edits": [{"path": "src/click/parser.py", "find": "return f\"{prefix}{ctx.token_normalize_func(opt)}\"", "replace": "return f\"{prefix}{opt}\""}]},
+  {"id": "click-confirm-y", "category": "python-library", "description": "confirm() no longer accepts y (termui.py); hangs the suite in an endless prompt loop.",
+   "edits": [{"path": "src/click/termui.py", "find": "if value in (\"y\", \"yes\"):", "replace": "if value in (\"yes\",):"}]},
+  {"id": "click-term-len", "category": "python-library", "description": "Terminal width counts ANSI escapes (_compat.py).",
+   "edits": [{"path": "src/click/_compat.py", "find": "return len(strip_ansi(x))", "replace": "return len(x)"}]},
+  {"id": "click-auto-envvar", "category": "python-library", "description": "Automatic envvar name is no longer upper-cased (core.py).",
+   "edits": [{"path": "src/click/core.py", "find": "envvar = f\"{ctx.auto_envvar_prefix}_{self.name.upper()}\"", "replace": "envvar = f\"{ctx.auto_envvar_prefix}_{self.name}\"", "all": true}]},
+  {"id": "click-split-args", "category": "python-library", "description": "Shell completion stops splitting on whitespace (shell_completion.py).",
+   "edits": [{"path": "src/click/shell_completion.py", "find": "lex.whitespace_split = True", "replace": "lex.whitespace_split = False"}]},
+  {"id": "click-test-only", "category": "test-change", "description": "A test assertion is changed incorrectly.",
+   "edits": [{"path": "tests/test_basic.py", "find": "assert \"Hello World!\" in result.output", "replace": "assert \"Goodbye World!\" in result.output"}]},
+  {"id": "click-docs-only", "category": "unrelated", "description": "Documentation-only change.",
+   "edits": [{"path": "README.md", "find": "Click", "replace": "Click (evaluation note)"}]}
+]

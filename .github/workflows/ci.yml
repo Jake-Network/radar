@@ -27,6 +27,8 @@ jobs:
         run: bash examples/integration/demo.sh /tmp/radar
       - name: Intelligent verification demo
         run: bash examples/intelligent-verification/demo.sh /tmp/radar
+      - name: Gate safety and bounded selection demo
+        run: bash examples/selection-eval/demo.sh /tmp/radar
       - name: Offline binary installer checks
         run: bash scripts/install-release-test.sh
       - name: Native release packaging

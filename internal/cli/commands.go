@@ -14,6 +14,7 @@ type options struct {
 	reverse, allow, projected, strict, summary, dryRun, hook, verify, suggestTests                                         bool
 	depth, limit                                                                                                           int
 	timeout                                                                                                                time.Duration
+	maxCommands                                                                                                            int
 	args                                                                                                                   []string
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/jsonptr"
@@ -40,6 +41,14 @@ func LoadManifest(ctx context.Context, root, ref string) (Manifest, error) {
 			return m, fmt.Errorf("binding direction must be request or response")
 		}
 		ids[binding.ID] = true
+	}
+	retired := map[string]bool{}
+	for _, ret := range m.Retired {
+		key := ret.ID + "\x00" + strings.Join(ret.Fields, "\x00")
+		if ret.ID == "" || strings.TrimSpace(ret.Reason) == "" || retired[key] {
+			return m, fmt.Errorf("retired entries require a unique id and a nonempty reason")
+		}
+		retired[key] = true
 	}
 	return m, nil
 }

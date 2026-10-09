@@ -173,3 +173,18 @@ func TestContractPresenceAndReferenceDrift(t *testing.T) {
 		})
 	}
 }
+
+func TestOnlyApprovedPlansRetireContracts(t *testing.T) {
+	p := planning.Plan{SchemaVersion: "1", FeatureID: "f", Intent: "i", BaseRevision: "base", ContractDeltas: []planning.ContractDelta{{Contract: "api", Operation: "remove", Description: "retire api"}, {Contract: "kept", Operation: "modify", Description: "m"}}}
+	if got := ApprovedRetirements(&p); got != nil {
+		t.Fatal("unapproved plan retired obligations", got)
+	}
+	p.Approval = &planning.Approval{Reviewer: "human-reviewer", ReviewedAt: "2026-10-09T00:00:00Z", Checkpoint: p.BaseRevision, PlanDigest: planning.Digest(p)}
+	got := ApprovedRetirements(&p)
+	if len(got) != 1 || got[0].ID != "api" || got[0].Reason == "" {
+		t.Fatal(got)
+	}
+	if ApprovedRetirements(nil) != nil {
+		t.Fatal("nil plan")
+	}
+}

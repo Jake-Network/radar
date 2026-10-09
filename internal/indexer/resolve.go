@@ -129,6 +129,8 @@ func (r *resolver) script(importer, spec string) []string {
 	return r.first(candidates...)
 }
 
+var pythonProjectMarkers = []string{"pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "pytest.ini", "tox.ini"}
+
 func (r *resolver) python(importer, module string, names []string) []string {
 	dots := len(module) - len(strings.TrimLeft(module, "."))
 	rest := strings.ReplaceAll(module[dots:], ".", "/")
@@ -140,8 +142,18 @@ func (r *resolver) python(importer, module string, names []string) []string {
 		}
 		roots = []string{dir}
 	} else {
-		// Script-relative, repository-root and src-layout imports.
+		// Script-relative, repository-root and src-layout imports, then each
+		// enclosing Python project root (and its src layout): test runners
+		// started there place it on sys.path. Nearest project roots win.
 		roots = []string{path.Dir(importer), ".", "src"}
+		for dir := path.Dir(importer); dir != "." && dir != "/" && dir != ""; dir = path.Dir(dir) {
+			for _, marker := range pythonProjectMarkers {
+				if r.files[path.Join(dir, marker)] {
+					roots = append(roots, dir, path.Join(dir, "src"))
+					break
+				}
+			}
+		}
 	}
 	for _, root := range roots {
 		if !within(root) {
