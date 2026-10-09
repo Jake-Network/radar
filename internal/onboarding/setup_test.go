@@ -9,9 +9,20 @@ import (
 	"testing"
 )
 
+// realTempDir resolves t.TempDir symlinks (macOS /var is /private/var) so
+// paths compare equal to the canonical roots Radar and Git report.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func fixtureRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := realTempDir(t)
 	if b, e := exec.Command("git", "init", "-q", root).CombinedOutput(); e != nil {
 		t.Fatalf("git init: %v %s", e, b)
 	}
@@ -82,7 +93,7 @@ func TestDryRunAndConflictDoNotWrite(t *testing.T) {
 }
 func TestRejectSymlinkAndModifiedSkill(t *testing.T) {
 	r := fixtureRoot(t)
-	if e := os.Symlink(t.TempDir(), filepath.Join(r, ".agents")); e != nil {
+	if e := os.Symlink(realTempDir(t), filepath.Join(r, ".agents")); e != nil {
 		t.Skip(e)
 	}
 	if _, e := Setup(context.Background(), r, Options{Agent: "codex"}); e == nil {
@@ -123,14 +134,14 @@ func TestMCPAndHookConflictMerging(t *testing.T) {
 }
 func TestInvalidInputs(t *testing.T) {
 	for _, o := range []Options{{Agent: "unknown"}, {Agent: "codex", Hook: true}} {
-		if _, e := Setup(context.Background(), t.TempDir(), o); e == nil {
+		if _, e := Setup(context.Background(), realTempDir(t), o); e == nil {
 			t.Fatal(o)
 		}
 	}
 }
 
 func TestMalformedAncestorGitMarkerDoesNotRedirectSetup(t *testing.T) {
-	parent := t.TempDir()
+	parent := realTempDir(t)
 	if e := os.Mkdir(filepath.Join(parent, ".git"), 0700); e != nil {
 		t.Fatal(e)
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 func TestSetupCLI(t *testing.T) {
-	root := t.TempDir()
+	root := realTempDir(t)
 	gitTest(t, root, "init", "-q")
 	sub := filepath.Join(root, "nested")
 	if e := os.Mkdir(sub, 0700); e != nil {

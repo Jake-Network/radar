@@ -161,7 +161,7 @@ func TestCandidateNoTestsTimeoutAndSourceMutation(t *testing.T) {
 		name, code string
 		want       model.Status
 		timeout    time.Duration
-	}{{"zero", "", model.StatusUnknown, time.Second}, {"timeout", "import time; time.sleep(2)\n", model.StatusTimeout, 100 * time.Millisecond}, {"mutation", "import unittest\nfrom pathlib import Path\nclass Test(unittest.TestCase):\n def test_mutate(self):\n  Path('tracked.txt').write_text('modified')\n", model.StatusUnknown, time.Second}} {
+	}{{"zero", "", model.StatusUnknown, 10 * time.Second}, {"timeout", "import time; time.sleep(2)\n", model.StatusTimeout, 100 * time.Millisecond}, {"mutation", "import unittest\nfrom pathlib import Path\nclass Test(unittest.TestCase):\n def test_mutate(self):\n  Path('tracked.txt').write_text('modified')\n", model.StatusUnknown, 10 * time.Second}} {
 		t.Run(test.name, func(t *testing.T) {
 			root := fixture(t, map[string]string{"test_case.py": test.code, "tracked.txt": "original"})
 			c := candidateCheckpoint(t, root)

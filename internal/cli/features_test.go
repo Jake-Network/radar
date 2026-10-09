@@ -19,12 +19,23 @@ func run(t *testing.T, root string, args ...string) (int, string, string) {
 	return code, out.String(), errs.String()
 }
 
+// realTempDir resolves t.TempDir symlinks (macOS /var is /private/var) so
+// paths compare equal to the canonical roots Radar and Git report.
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	if _, e := exec.LookPath("git"); e != nil {
 		t.Skip(e)
 	}
-	root := t.TempDir()
+	root := realTempDir(t)
 	gitTest(t, root, "init", "-q")
 	gitTest(t, root, "config", "user.email", "radar@example.invalid")
 	gitTest(t, root, "config", "user.name", "Radar test")

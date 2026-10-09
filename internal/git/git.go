@@ -52,6 +52,10 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 // command binds every operation to the explicit root and object database.
+// NullPath is the empty config/attributes path for Git. os.DevNull is "NUL" on
+// Windows, which Git for Windows rejects; it maps "/dev/null" itself.
+const NullPath = "/dev/null"
+
 // Caller Git overrides could otherwise redirect reads, inject config, or
 // replace objects.
 func command(ctx context.Context, root string, args ...string) *exec.Cmd {
@@ -62,7 +66,7 @@ func command(ctx context.Context, root string, args ...string) *exec.Cmd {
 			cmd.Env = append(cmd.Env, entry)
 		}
 	}
-	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_NO_LAZY_FETCH=1")
+	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+NullPath, "GIT_NO_LAZY_FETCH=1")
 	return cmd
 }
 
