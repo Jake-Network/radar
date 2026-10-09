@@ -12,13 +12,18 @@ report that fact; do not fabricate Radar output.
    and `radar plan "feature intent" --ref <SHA>`.
    Read the generated context and diagnostics. Investigate source locations for
    the feature before proposing architecture. Structural indexing is not proof
-   of runtime behavior or authorization.
+   of runtime behavior or authorization. `radar resolve QUERY` turns names or
+   `path#Qualified.Name` into entity IDs; `radar affected --base <SHA>` and
+   `radar graph --from file:<path> --edge DEPENDS_ON --reverse` show dependents
+   through inferred import paths.
 2. Fill the generated versioned plan: requirements, alternatives and tradeoffs,
    constraints, proposed contract/graph deltas, proof-carrying tasks, dependencies,
-   acceptance rules, and unresolved assumptions. Keep uncertain claims proposed
-   or unknown. Use `.radar/contracts.json` only for legitimate declared links.
+   acceptance rules, and assumptions (`{"id","text","status","resolution"}`;
+   keep them `open` until investigated, never delete them to pass checks).
+   Keep uncertain claims proposed or unknown. Use `.radar/contracts.json` only
+   for legitimate declared links; `radar contracts` flags stale declarations.
 3. Run `radar preflight --plan <path> --ref <baseline SHA> --json` and `radar tasks --plan <path>`.
-   Correct grounded inconsistencies. Present unresolved consequential design
+   Follow `next_steps` and correct grounded inconsistencies. Present unresolved consequential design
    decisions for review; obey the current user's existing authorization.
 4. After actual review, use `radar approve --plan <path> --reviewer <identity>
    --output <new approved path> --json` to record the local declaration. Never
@@ -27,13 +32,17 @@ report that fact; do not fabricate Radar output.
    merges, rebases, resets, pushes, or external messages.
 5. At committed checkpoints run `radar impact --base <ref> --head <ref>` or
    `radar scan --base <ref> --branches <ref1>,<ref2>`. Working-tree observations
-   are informational, not final failures. Update declared consumer dependencies
+   are informational, not final failures. A report status of `incomplete`
+   means some bindings were not analyzed; it is not a pass. Update declared consumer dependencies
    only after the corresponding migration, not to hide a finding.
 6. For behavioral criteria declare exact argv in `rule.kind: test_run` and
-   `rule.command`. Review repository code before opting in with
+   `rule.command` (plus `setup`, `env`, `link` or `junit` when needed). Review
+   repository code before opting in with
    `radar test --plan <approved path> --ref <implementation SHA> --allow-execution
    --timeout 60s --json -- <declared command argv>`. Private snapshots protect the
    checkout but are not a security sandbox. Collect the returned evidence IDs.
+   Status `error` means the command failed before any test ran (dependency,
+   build or setup problem), not a test failure.
 7. Run `radar verify --plan <approved path> --ref <implementation SHA>
    --evidence <ID,ID> --json`. Read drift findings, per-task status and feedback.
    Report passed, failed, warning and unknown evidence accurately. A successful

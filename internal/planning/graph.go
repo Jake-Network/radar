@@ -31,7 +31,7 @@ func IntentGraph(p Plan, s model.Snapshot, projected bool) (model.Snapshot, erro
 		}
 	}
 	entity := func(kind, id, name string, props map[string]string) string {
-		key := model.StableID(s.Repository, "plan", p.FeatureID, kind, id)
+		key := "plan:" + p.FeatureID + ":" + kind + ":" + id
 		if !refs[key] {
 			refs[key] = true
 			s.Nodes = append(s.Nodes, model.Node{ID: key, Kind: kind, Name: name, Properties: props, Provenance: provenance})

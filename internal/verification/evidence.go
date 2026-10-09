@@ -13,7 +13,7 @@ func evaluateWithEvidence(ctx context.Context, id string, rule *planning.Rule, s
 	if rule == nil || rule.Kind != "test_run" {
 		return evaluate(ctx, id, rule, s, root)
 	}
-	c := planning.Check{ID: id, Status: "unknown", Evidence: model.Unknown, Explanation: "No matching observed test evidence for this plan, commit, criterion and command."}
+	c := planning.Check{ID: id, Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "No matching observed test evidence for this plan, commit, criterion and command."}
 	if e := ctx.Err(); e != nil {
 		c.Explanation = e.Error()
 		return c
@@ -46,15 +46,17 @@ func evaluateWithEvidence(ctx context.Context, id string, rule *planning.Rule, s
 	c.Location = &model.Provenance{Repository: chosen.Repository, Revision: chosen.Revision, Method: "observed_test:" + chosen.ID, Evidence: model.ObservedTest, Timestamp: chosen.FinishedAt}
 	c.Evidence = model.ObservedTest
 	switch chosen.Status {
-	case "passed":
-		c.Status = "passed"
+	case model.StatusPassed:
+		c.Status = model.StatusPassed
 		c.Explanation = fmt.Sprintf("%d executed test cases passed at the exact implementation checkpoint (evidence %s).", chosen.TestsRun, chosen.ID)
-	case "failed":
-		c.Status = "failed"
+	case model.StatusFailed:
+		c.Status = model.StatusFailed
 		c.Explanation = fmt.Sprintf("Declared test command failed with exit code %d (evidence %s).", chosen.ExitCode, chosen.ID)
-	case "timeout":
+	case model.StatusTimeout:
 		c.Explanation = "Test execution timed out; criterion is not verified."
-	case "unknown":
+	case model.StatusError:
+		c.Explanation = fmt.Sprintf("Declared command failed (exit %d) before any recognized test result: a build, setup or environment error, not a test outcome (evidence %s).", chosen.ExitCode, chosen.ID)
+	default:
 		c.Explanation = "Test runner did not establish successful execution of non-skipped test cases."
 	}
 	return c

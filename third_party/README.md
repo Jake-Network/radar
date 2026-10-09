@@ -1,8 +1,8 @@
 # Third-party notices
 
 Radar is MIT licensed. Bundled copies in `licenses/` preserve notices for the
-direct Tree-sitter grammars/runtime and modernc SQLite dependencies selected
-for the initial build. They were copied from the exact module versions in
+direct Tree-sitter grammars/runtime, modernc SQLite and gopkg.in/yaml.v3
+(MIT and Apache-2.0, used to read YAML OpenAPI documents) dependencies. They were copied from the exact module versions in
 `go.mod`. SQLite's underlying public-domain notice is also included.
 
 `go.mod` and `go.sum` are the dependency inventory. Release packaging must

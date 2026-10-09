@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/radar-engine/radar/internal/graph"
 	"github.com/radar-engine/radar/internal/model"
-	"time"
 )
+
+// KeepWorkingTreeSnapshots bounds informational working-tree snapshots per
+// repository. Commit snapshots are retained because plans pin them.
+const KeepWorkingTreeSnapshots = 10
 
 func (s *Store) SaveSnapshot(ctx context.Context, snap model.Snapshot) error {
 	if _, err := graph.New(snap); err != nil {
@@ -26,31 +31,11 @@ func (s *Store) SaveSnapshot(ctx context.Context, snap model.Snapshot) error {
 	}
 	defer tx.Rollback()
 	// Same-revision reindex is replaced within one transaction; other versions remain.
-	for _, q := range []string{`DELETE FROM edges WHERE repository=? AND revision=?`, `DELETE FROM nodes WHERE repository=? AND revision=?`, `DELETE FROM snapshots WHERE repository=? AND revision=?`} {
-		if _, err = tx.ExecContext(ctx, q, snap.Repository, snap.Revision); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO snapshots VALUES(?,?,?,?)`, snap.Repository, snap.Revision, time.Now().UTC().Format(time.RFC3339Nano), raw); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO snapshots VALUES(?,?,?,?) ON CONFLICT(repository,revision) DO UPDATE SET indexed_at=excluded.indexed_at,payload=excluded.payload`, snap.Repository, snap.Revision, time.Now().UTC().Format(time.RFC3339Nano), raw); err != nil {
 		return err
 	}
-	for _, n := range snap.Nodes {
-		b, e := json.Marshal(n)
-		if e != nil {
-			return e
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO nodes VALUES(?,?,?,?,?,?)`, snap.Repository, snap.Revision, n.ID, n.Kind, n.Name, b); err != nil {
-			return err
-		}
-	}
-	for _, e := range snap.Edges {
-		b, x := json.Marshal(e)
-		if x != nil {
-			return x
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO edges VALUES(?,?,?,?,?,?,?)`, snap.Repository, snap.Revision, e.ID, e.From, e.To, e.Kind, b); err != nil {
-			return err
-		}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM snapshots WHERE repository=? AND revision LIKE 'WORKTREE%' AND revision NOT IN (SELECT revision FROM snapshots WHERE repository=? AND revision LIKE 'WORKTREE%' ORDER BY indexed_at DESC LIMIT ?)`, snap.Repository, snap.Repository, KeepWorkingTreeSnapshots); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

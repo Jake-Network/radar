@@ -62,7 +62,8 @@ func TestCommittedContractProjection(t *testing.T) {
 		{"unexpected removal", renamed, "", "", "failed", false},
 		{"compatible addition still drift", added, "", "", "failed", false},
 		{"unchanged", original, "", "", "passed", false},
-		{"unsupported expected", `{"type":"object","additionalProperties":false}`, `{"type":"object","additionalProperties":false}`, "modify", "unknown", true},
+		{"malformed expected", `{"type":"object","properties":{"x":false}}`, `{"type":"object","properties":{"x":false}}`, "modify", "unknown", true},
+		{"constraint keywords compare exactly", `{"type":"object","additionalProperties":false}`, `{"type":"object","additionalProperties":false}`, "modify", "passed", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -81,7 +82,7 @@ func TestCommittedContractProjection(t *testing.T) {
 			}
 			p = approveDrift(p)
 			checks := VerifyContracts(context.Background(), root, p, model.Snapshot{Repository: root, Revision: head})
-			if len(checks) != 1 || checks[0].Status != tc.want {
+			if len(checks) != 1 || string(checks[0].Status) != tc.want {
 				t.Fatalf("%+v", checks)
 			}
 			if tc.declared {
@@ -101,7 +102,7 @@ func TestTaskCompletionEvidence(t *testing.T) {
 	ApplyTaskResults(p, &r)
 	status := map[string]string{}
 	for _, task := range r.Tasks {
-		status[task.ID] = task.Status
+		status[task.ID] = string(task.Status)
 	}
 	if status["a"] != "unknown" || status["b"] != "blocked" || status["c"] != "unknown" {
 		t.Fatal(r.Tasks)
@@ -160,7 +161,7 @@ func TestContractPresenceAndReferenceDrift(t *testing.T) {
 			}
 			p = approveDrift(p)
 			checks := VerifyContracts(context.Background(), root, p, model.Snapshot{Revision: head})
-			if len(checks) != 1 || checks[0].Status != tc.want {
+			if len(checks) != 1 || string(checks[0].Status) != tc.want {
 				t.Fatalf("%+v", checks)
 			}
 			if tc.op != "" {

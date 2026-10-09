@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/radar-engine/radar/internal/model"
 )
 
 func doc(t *testing.T, s string) map[string]any {
@@ -25,9 +27,16 @@ func TestCompare(t *testing.T) {
 	if e != nil || len(changes) != 1 || changes[0].Field != "total" || changes[0].Kind != "field_removed" {
 		t.Fatalf("%+v %v", changes, e)
 	}
-	for _, bad := range []string{`{"properties":[]}`, `{"type":17}`, `{"required":[1]}`, `{"properties":{"x":false}}`, `{"properties":{"x":{"minimum":1}}}`, `{"$ref":"https://example.com/schema"}`, `{"$ref":"#"}`} {
+	for _, bad := range []string{`{"properties":[]}`, `{"type":17}`, `{"required":[1]}`, `{"properties":{"x":false}}`, `{"$ref":"#/missing"}`, `{"enum":"x"}`} {
 		if _, e := Compare(a, doc(t, bad), ""); e == nil {
-			t.Errorf("accepted unsupported/malformed %s", bad)
+			t.Errorf("accepted malformed %s", bad)
+		}
+	}
+	// Unsupported but valid constructs are compared locally, not rejected.
+	for _, unsupported := range []string{`{"$ref":"https://example.com/schema"}`, `{"$ref":"#"}`, `{"not":{"type":"string"}}`} {
+		cs, e := Compare(a, doc(t, unsupported), "")
+		if e != nil || len(cs) != 1 || cs[0].Kind != "unanalyzed" {
+			t.Errorf("%s: %+v %v", unsupported, cs, e)
 		}
 	}
 	if _, e := DecodeDocument([]byte(`[]`)); e == nil {
@@ -153,10 +162,10 @@ func TestDeletedAndUnsupportedContract(t *testing.T) {
 		t.Fatalf("deleted contract: %+v %v", r, e)
 	}
 	gitRun(t, root, "checkout", "--detach", base)
-	write(t, root, "openapi.json", `{"components":{"schemas":{"Export":{"oneOf":[{"type":"object"}]}}}}`)
+	write(t, root, "openapi.json", `{"components":{"schemas":{"Export":{"oneOf":[{"type":"object","properties":{"total":{"type":"integer"}}},{"type":"object","properties":{"count":{"type":"integer"}}}]}}}}`)
 	commit(t, root, "unsupported union")
 	r, e = Impact(context.Background(), root, base, "HEAD")
-	if e != nil || len(r.Findings) != 0 || len(r.Diagnostics) == 0 {
+	if e != nil || len(r.Findings) != 0 || len(r.Diagnostics) == 0 || r.Status != model.StatusIncomplete || r.Analyzed != 0 {
 		t.Fatalf("unsupported falsely passed: %+v %v", r, e)
 	}
 	if _, e = Impact(context.Background(), root, base, "missing-reference"); e == nil {
@@ -183,13 +192,117 @@ func TestRequiredAdditionDirection(t *testing.T) {
 			if e != nil || len(r.Findings) != 1 {
 				t.Fatalf("%+v %v", r, e)
 			}
-			severity := "warning"
+			severity := model.SeverityWarning
 			if direction == "request" {
-				severity = "error"
+				severity = model.SeverityError
 			}
 			if r.Findings[0].Severity != severity {
 				t.Fatalf("incorrect direction severity: %+v", r)
 			}
 		})
+	}
+}
+
+func TestAnnotationsDoNotDisableComparison(t *testing.T) {
+	root, base := fixture(t)
+	// Regression: an unrelated format keyword used to skip the whole binding.
+	write(t, root, "openapi.json", `{"components":{"schemas":{"Export":{"type":"object","properties":{"id":{"type":"string","format":"uuid","maxLength":36}}}}}}`)
+	commit(t, root, "remove total, add annotated id")
+	r, e := Impact(context.Background(), root, base, "HEAD")
+	if e != nil || r.Status != model.StatusFailed || len(r.Findings) != 1 || r.Findings[0].Code != "contract_field_removed" {
+		t.Fatalf("annotation hid a breaking removal: %+v %v", r, e)
+	}
+}
+func TestNullableAndEnumDirection(t *testing.T) {
+	base := doc(t, `{"type":"object","properties":{"total":{"type":"integer"},"state":{"type":"string","enum":["a","b"]}}}`)
+	nullable := doc(t, `{"type":"object","properties":{"total":{"anyOf":[{"type":"integer"},{"type":"null"}]},"state":{"type":"string","enum":["a","b"]}}}`)
+	cs, e := Compare(base, nullable, "")
+	if e != nil || len(cs) != 1 || cs[0].Kind != "type_changed" || cs[0].AfterType != "integer|null" {
+		t.Fatalf("%+v %v", cs, e)
+	}
+	if classify(cs[0], "response") != "breaking" || classify(cs[0], "request") != "compatible" {
+		t.Fatal("nullable direction wrong")
+	}
+	oas30 := doc(t, `{"type":"object","properties":{"total":{"type":"integer","nullable":true},"state":{"type":"string","enum":["a","b"]}}}`)
+	if cs2, _ := Compare(nullable, oas30, ""); len(cs2) != 0 {
+		t.Fatalf("OAS 3.0 nullable differs from 3.1 form: %+v", cs2)
+	}
+	widened := doc(t, `{"type":"object","properties":{"total":{"type":"integer"},"state":{"type":"string","enum":["a","b","c"]}}}`)
+	cs, _ = Compare(base, widened, "")
+	if len(cs) != 1 || cs[0].Kind != "enum_value_added" || classify(cs[0], "response") != "risk" || classify(cs[0], "request") != "compatible" {
+		t.Fatalf("%+v", cs)
+	}
+}
+func TestRefsAllOfAndRecursion(t *testing.T) {
+	a := doc(t, `{"$defs":{"Base":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]},"Node":{"type":"object","properties":{"children":{"type":"array","items":{"$ref":"#/$defs/Node"}}}}},"allOf":[{"$ref":"#/$defs/Base"},{"properties":{"tree":{"$ref":"#/$defs/Node"}}}]}`)
+	b := doc(t, `{"$defs":{"Base":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]},"Node":{"type":"object","properties":{"children":{"type":"array","items":{"$ref":"#/$defs/Node"}}}}},"allOf":[{"$ref":"#/$defs/Base"},{"properties":{"tree":{"$ref":"#/$defs/Node"}}}]}`)
+	cs, e := Compare(a, b, "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	kinds := map[string]bool{}
+	for _, c := range cs {
+		kinds[c.Kind+":"+c.Field] = true
+	}
+	// required_removed for id is subsumed by field_removed.
+	if !kinds["field_removed:id"] || !kinds["required_added:key"] || len(cs) != 2 {
+		t.Fatalf("%+v", cs)
+	}
+}
+func TestYAMLAndNestedConsumerFields(t *testing.T) {
+	d, e := DecodeDocumentAt("api.yaml", []byte("components:\n  schemas:\n    S:\n      type: object\n      properties:\n        a:\n          type: object\n          properties:\n            b: {type: integer}\n"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	s, e := Analyzable(d, "/components/schemas/S")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, ok := s.Field("a.b"); !ok {
+		t.Fatal("nested YAML field missing")
+	}
+	if !FieldOverlaps("a", "a.b") || !FieldOverlaps("a.b", "a") || !FieldOverlaps("items[].id", "items.id") || FieldOverlaps("ab", "a") {
+		t.Fatal("field overlap rules")
+	}
+	if missing := MissingConsumerFields([]byte("const x = s.total;"), []string{"total", "summary.currency"}); len(missing) != 1 || missing[0] != "summary.currency" {
+		t.Fatal(missing)
+	}
+}
+func TestLint(t *testing.T) {
+	root, base := fixture(t)
+	r := Lint(context.Background(), root, base)
+	if r.Status != model.StatusPassed || len(r.Bindings) != 1 {
+		t.Fatalf("%+v", r)
+	}
+	write(t, root, ".radar/contracts.json", `{"version":1,"bindings":[{"id":"export","schema":"openapi.json","pointer":"/components/schemas/Export","producer":"backend.py","consumer":"consumer.ts","fields":["total","currency"]}]}`)
+	r = Lint(context.Background(), root, "WORKTREE")
+	if r.Status != model.StatusWarning || len(r.Bindings[0].Issues) != 2 {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestScanIgnoresBranchesThatLeaveConsumersUntouched(t *testing.T) {
+	root, base := fixture(t)
+	gitRun(t, root, "checkout", "-qb", "producer")
+	write(t, root, "openapi.json", `{"components":{"schemas":{"Export":{"type":"object","properties":{"total_cents":{"type":"integer"}}}}}}`)
+	commit(t, root, "rename")
+	producer := gitRun(t, root, "rev-parse", "HEAD")
+	gitRun(t, root, "checkout", "-qb", "unrelated", base)
+	write(t, root, "backend.py", "class Export: pass\n# docs\n")
+	commit(t, root, "unrelated producer-side docs")
+	gitRun(t, root, "checkout", "-qb", "consumer", base)
+	write(t, root, "consumer.ts", "export const shown = (x: {total: number}) => x.total.toFixed(0);\n")
+	commit(t, root, "consumer edit")
+	r, e := Scan(context.Background(), root, base, []string{"producer", "unrelated", "consumer"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	pairs := map[string]bool{}
+	for _, f := range r.Findings {
+		pairs[f.Branches[0]+">"+f.Branches[1]] = true
+	}
+	consumer := r.Heads[2]
+	if !pairs[producer+">"+producer] || !pairs[producer+">"+consumer] || pairs[producer+">"+r.Heads[1]] || len(r.Findings) != 2 {
+		t.Fatalf("expected self and consumer-branch findings only: %+v", r.Findings)
 	}
 }

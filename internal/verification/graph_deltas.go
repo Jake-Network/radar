@@ -7,10 +7,14 @@ import (
 )
 
 // incompleteFor ignores informational capability notices. Warning and error
-// diagnostics indicate source excluded from the structural observations.
+// diagnostics indicate source excluded from the structural observations:
+// repository-wide ones (no path) affect every path, others only their file.
 func incompleteFor(s model.Snapshot, path string) bool {
 	for _, d := range s.Diagnostics {
-		if (d.Severity == "warning" || d.Severity == "error") && (path == "" || d.Path == "" || d.Path == path) {
+		if d.Severity != model.SeverityWarning && d.Severity != model.SeverityError {
+			continue
+		}
+		if d.Path == "" || d.Path == path || path == "" {
 			return true
 		}
 	}
@@ -18,7 +22,7 @@ func incompleteFor(s model.Snapshot, path string) bool {
 }
 func verified(e model.Evidence) bool { return e == model.VerifiedStatic || e == model.VerifiedTool }
 func evaluateDelta(d planning.Delta, s model.Snapshot) planning.Check {
-	c := planning.Check{ID: "delta", Status: "unknown", Explanation: "Graph delta is malformed or unsupported.", Evidence: model.Unknown}
+	c := planning.Check{ID: "delta", Status: model.StatusUnknown, Explanation: "Graph delta is malformed or unsupported.", Evidence: model.Unknown}
 	if (d.Node == nil) == (d.Edge == nil) || (d.Operation != "add" && d.Operation != "modify" && d.Operation != "remove") {
 		return c
 	}
@@ -27,6 +31,9 @@ func evaluateDelta(d planning.Delta, s model.Snapshot) planning.Check {
 	var observed model.Provenance
 	if d.Node != nil {
 		id, path = d.Node.ID, d.Node.Provenance.Path
+		if path == "" {
+			path = model.PathFromID(id)
+		}
 		if d.Operation != "remove" && (d.Node.Kind == "" || d.Node.Name == "") {
 			return c
 		}
@@ -63,7 +70,7 @@ func evaluateDelta(d planning.Delta, s model.Snapshot) planning.Check {
 		c.Explanation = "Incomplete indexing prevents proving graph entity absence."
 		return c
 	}
-	c.Status = "failed"
+	c.Status = model.StatusFailed
 	c.Evidence = model.VerifiedStatic
 	c.Explanation = "Expected graph change is absent or differs from observed structure."
 	if found {
@@ -71,7 +78,7 @@ func evaluateDelta(d planning.Delta, s model.Snapshot) planning.Check {
 		c.Evidence = observed.Evidence
 	}
 	if (d.Operation == "remove" && !found) || (d.Operation != "remove" && found && equal) {
-		c.Status = "passed"
+		c.Status = model.StatusPassed
 		c.Explanation = "Expected graph structure is observed; runtime behavior is not implied."
 	}
 	return c

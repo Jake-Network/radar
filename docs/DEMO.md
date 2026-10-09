@@ -13,8 +13,9 @@ bash examples/organization/demo.sh /tmp/radar
 The script prints actual JSON results and retains its temporary repository.
 It checks these scenarios:
 
-1. Index real TypeScript/JavaScript, Python, Go, and Rust declarations and imports.
-   Query `ExportSummary` in the persisted graph.
+1. Index real TypeScript/JavaScript, Python, Go, and Rust declarations, imports
+   and inferred file dependencies. Query `ExportSummary` in the persisted graph
+   (readable IDs such as `class:backend/models.py#ExportSummary`).
 2. Preflight an export plan and an intentionally inconsistent plan. The second
    has unordered shared-contract writers and lacks security verification.
    Both retain unresolved authorization and scalability assumptions.

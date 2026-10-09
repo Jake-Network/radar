@@ -11,7 +11,6 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/radar-engine/radar/internal/checkpoint"
 	gitrepo "github.com/radar-engine/radar/internal/git"
@@ -20,22 +19,19 @@ import (
 	"github.com/radar-engine/radar/internal/storage"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
-type options struct {
-	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence string
-	reverse, allow, projected                                                                   bool
-	timeout                                                                                     time.Duration
-	args                                                                                        []string
-}
 type app struct {
 	ctx         context.Context
-	root        string
+	root        string // analyzed repository
+	stateRoot   string // directory holding .radar state (shared by linked worktrees)
 	out, errout io.Writer
 	machine     bool
 	store       *storage.Store
 }
 
+// Run executes one command. Exit codes: 0 success or informational report,
+// 1 a supported check failed, 2 invocation or analysis error.
 func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	rootArg := "."
 	machine := false
@@ -62,97 +58,82 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 		}
 	}
 	a := &app{ctx: ctx, out: out, errout: errout, machine: machine}
-	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" {
-		fmt.Fprint(out, help)
+	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
+		if len(rest) > 1 {
+			if c, ok := lookup(rest[1]); ok {
+				c.usageText(out)
+				return 0
+			}
+		}
+		printHelp(out)
 		return 0
 	}
 	if rest[0] == "version" || rest[0] == "--version" {
-		a.emit(map[string]string{"version": Version})
+		a.report(map[string]string{"version": Version}, func(w io.Writer) { fmt.Fprintln(w, "radar", Version) })
 		return 0
 	}
+	c, ok := lookup(rest[0])
+	if !ok {
+		return a.fail(fmt.Errorf("unknown command %q; run radar help", rest[0]))
+	}
+	fs := flag.NewFlagSet("radar "+c.name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	o := options{}
+	if c.flags != nil {
+		c.flags(fs, &o)
+	}
+	if e := fs.Parse(rest[1:]); e != nil {
+		if errors.Is(e, flag.ErrHelp) {
+			c.usageText(out)
+			return 0
+		}
+		return a.fail(fmt.Errorf("%w (see radar help %s)", e, c.name))
+	}
+	o.args = fs.Args()
 	root, e := project.Root(rootArg)
 	if e != nil {
 		return a.fail(e)
 	}
 	a.root = root
-	fs := flag.NewFlagSet(rest[0], flag.ContinueOnError)
-	fs.SetOutput(errout)
-	o := options{}
-	fs.StringVar(&o.plan, "plan", "", "structured plan path")
-	fs.StringVar(&o.ref, "ref", "", "immutable Git checkpoint (default current working tree)")
-	fs.StringVar(&o.format, "format", "json", "json or mermaid")
-	fs.StringVar(&o.kind, "kind", "", "node kind")
-	fs.StringVar(&o.name, "name", "", "name substring")
-	fs.StringVar(&o.from, "from", "", "reachable entity ID")
-	fs.StringVar(&o.edge, "edge", "", "edge kind")
-	fs.BoolVar(&o.projected, "projected", false, "apply explicit proposed graph deltas for --plan graph view")
-	fs.BoolVar(&o.reverse, "reverse", false, "reverse graph traversal")
-	fs.StringVar(&o.base, "base", "", "base Git ref")
-	fs.StringVar(&o.head, "head", "", "head ref or WORKTREE")
-	fs.StringVar(&o.branches, "branches", "", "comma-separated refs")
-	fs.StringVar(&o.output, "output", "", "new repository-relative artifact path")
-	fs.StringVar(&o.reviewer, "reviewer", "", "explicit local review declaration identity")
-	fs.StringVar(&o.evidence, "evidence", "", "comma-separated persisted evidence IDs")
-	fs.BoolVar(&o.allow, "allow-execution", false, "explicit opt-in to run declared repository test code")
-	fs.DurationVar(&o.timeout, "timeout", 2*time.Minute, "test timeout, maximum 30 minutes")
-	if e = fs.Parse(rest[1:]); e != nil {
-		return a.fail(e)
-	}
-	o.args = fs.Args()
-	command := rest[0]
-	if command == "doctor" {
-		return a.doctor()
-	}
-	switch command {
-	case "init", "index", "graph", "plan", "preflight", "tasks", "approve", "impact", "scan", "explain", "verify", "test":
-	default:
-		return a.fail(fmt.Errorf("unknown command %q; run radar help", command))
-	}
-	if command == "init" {
-		if e = project.Init(root); e != nil {
+	a.stateRoot = project.StateRoot(ctx, root)
+	if c.state {
+		if _, e = project.Read(a.stateRoot); e != nil {
 			return a.fail(e)
 		}
-		a.emit(map[string]any{"status": "initialized", "root": root, "telemetry": false})
-		return 0
+		db, e := project.SafePath(a.stateRoot, ".radar/state.db")
+		if e != nil {
+			return a.fail(e)
+		}
+		a.store, e = storage.Open(ctx, db)
+		if e != nil {
+			return a.fail(e)
+		}
+		defer a.store.Close()
 	}
-	if _, e = project.Read(root); e != nil {
-		return a.fail(e)
-	}
-	db, e := project.SafePath(root, ".radar/state.db")
-	if e != nil {
-		return a.fail(e)
-	}
-	a.store, e = storage.Open(ctx, db)
-	if e != nil {
-		return a.fail(e)
-	}
-	defer a.store.Close()
-	switch command {
-	case "index":
-		return a.index(o)
-	case "graph":
-		return a.graph(o)
-	case "plan":
-		return a.plan(o)
-	case "preflight", "tasks", "approve", "verify":
-		return a.planCommand(command, o)
-	case "impact", "scan":
-		return a.contractCommand(command, o)
-	case "explain":
-		return a.explain(o)
-	case "test":
-		return a.test(o)
-	}
-	return 0
+	return c.run(a, o)
 }
-func (a *app) emit(value any) error {
+
+// emit writes machine-readable JSON.
+func (a *app) emit(value any) {
 	e := json.NewEncoder(a.out)
 	e.SetIndent("", "  ")
-	return e.Encode(value)
+	if err := e.Encode(value); err != nil {
+		fmt.Fprintln(a.errout, "radar: write output:", err)
+	}
 }
+
+// report writes JSON with --json, otherwise the human rendering.
+func (a *app) report(value any, human func(io.Writer)) {
+	if a.machine || human == nil {
+		a.emit(value)
+		return
+	}
+	human(a.out)
+}
+
 func (a *app) fail(e error) int {
 	if a.machine {
-		a.emit(map[string]any{"error": e.Error(), "status": "error"})
+		a.emit(map[string]any{"error": e.Error(), "status": model.StatusError})
 	} else {
 		fmt.Fprintln(a.errout, "radar:", e)
 	}
@@ -188,18 +169,18 @@ func (a *app) snapshot(ref string) (model.Snapshot, error) {
 	return checkpoint.Index(a.ctx, a.root, ref)
 }
 
-const help = `Radar — plan against code, coordinate contracts, verify evidence.
-
-Usage: radar <command> [flags] [--root DIR] [--json]
-Commands: init doctor index graph plan preflight tasks approve impact scan explain test verify
-index/plan/preflight/verify: --ref REF selects immutable committed evidence.
-plan [--output path.json] DESCRIPTION creates a grounded incomplete design bundle.
-preflight/tasks/approve/verify/test: --plan PATH
-approve: --reviewer NAME [--output NEWPATH] records an explicit local review declaration.
-test: --ref REF --allow-execution [--timeout 2m] -- COMMAND ARGS
-verify: [--ref REF] [--evidence ID,ID]
-graph: [--plan PATH --projected] [--ref REF] --format json|mermaid --kind KIND --name NAME --from ID --edge KIND --reverse
-impact: --base REF --head REF|WORKTREE; scan: --base REF --branches REF,REF
-explain FINDING_ID shows persisted evidence.
-No telemetry, cloud inference or destructive Git operations. Test execution requires explicit opt-in.
-`
+// storedOrFresh returns the latest persisted snapshot, indexing the working
+// tree when none exists yet.
+func (a *app) storedOrFresh(ref string) (model.Snapshot, error) {
+	if ref != "" {
+		return a.snapshot(ref)
+	}
+	if s, e := a.store.Snapshot(a.ctx, a.root, ""); e == nil {
+		return s, nil
+	}
+	s, e := freshSnapshot(a.ctx, a.root)
+	if e != nil {
+		return s, e
+	}
+	return s, a.store.SaveSnapshot(a.ctx, s)
+}

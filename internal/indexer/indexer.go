@@ -5,14 +5,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
+	gitrepo "github.com/radar-engine/radar/internal/git"
 	"github.com/radar-engine/radar/internal/languages"
 	"github.com/radar-engine/radar/internal/model"
 )
@@ -21,107 +20,110 @@ const MaxSourceBytes = 2 * 1024 * 1024
 const MaxSourceFiles = 10000
 const MaxTotalSourceBytes = 64 << 20
 
+// maxManifestBytes bounds auxiliary build manifests read for import resolution.
+const maxManifestBytes = 1 << 20
+
 var excluded = map[string]bool{".git": true, ".omx": true, ".agents": true, ".codex": true, ".aws": true, ".radar": true, "node_modules": true, "vendor": true, "target": true, "dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true, ".next": true, "coverage": true}
 
+// ExcludedPath applies one generated and private directory policy to every source.
+func ExcludedPath(p string) bool {
+	for _, part := range strings.Split(p, "/") {
+		if excluded[part] {
+			return true
+		}
+	}
+	return false
+}
+
+// Index snapshots the working tree below root. Inside a Git work tree the file
+// list honors .gitignore; otherwise the directory is walked.
 func Index(ctx context.Context, root, revision string) (model.Snapshot, error) {
-	absolute, err := filepath.Abs(root)
+	w, err := newWorktree(root)
 	if err != nil {
 		return model.Snapshot{}, err
 	}
-	absolute, err = filepath.EvalSymlinks(absolute)
+	return Build(ctx, w.root, revision, w)
+}
+
+// Build parses every supported file a provider exposes. Working-tree and
+// committed snapshots share this loop, limits and diagnostics.
+func Build(ctx context.Context, repository, revision string, p Provider) (model.Snapshot, error) {
+	entries, err := p.Entries(ctx)
 	if err != nil {
 		return model.Snapshot{}, err
 	}
-	info, err := os.Stat(absolute)
-	if err != nil {
-		return model.Snapshot{}, err
-	}
-	if !info.IsDir() {
-		return model.Snapshot{}, fmt.Errorf("repository root is not a directory")
-	}
-	result := model.Snapshot{Repository: absolute, Revision: revision, Nodes: []model.Node{}, Edges: []model.Edge{}, Diagnostics: []model.Diagnostic{}}
-	repositoryID := model.StableID(absolute, "repository")
-	result.Nodes = append(result.Nodes, model.Node{ID: repositoryID, Kind: "repository", Name: filepath.Base(absolute), Provenance: model.Provenance{Repository: absolute, Revision: revision, Method: "filesystem", Evidence: model.VerifiedStatic}})
-	ids := map[string]bool{repositoryID: true}
-	sourceFiles, totalBytes := 0, int64(0)
-	err = filepath.WalkDir(absolute, func(path string, entry fs.DirEntry, walkErr error) error {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	result := model.Snapshot{Repository: repository, Revision: revision, Nodes: []model.Node{}, Edges: []model.Edge{}, Diagnostics: []model.Diagnostic{}}
+	provenance := model.Provenance{Repository: repository, Revision: revision, Method: p.Method(), Evidence: model.VerifiedStatic}
+	result.Nodes = append(result.Nodes, model.Node{ID: model.RepositoryID, Kind: "repository", Name: path.Base(repository), Provenance: provenance})
+	ids := map[string]bool{model.RepositoryID: true}
+	r := newResolver()
+	count, skipped := 0, 0
+	var total int64
+	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
-			return err
+			return model.Snapshot{}, err
 		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if path != absolute && excluded[entry.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		relative, err := filepath.Rel(absolute, path)
-		if err != nil {
-			return err
-		}
-		relative = filepath.ToSlash(relative)
-		adapter, ok := languages.ForPath(relative)
-		if !ok {
-			return nil
+		if ExcludedPath(entry.Path) {
+			continue
 		}
 		diagnostic := func(message string) {
-			result.Diagnostics = append(result.Diagnostics, model.Diagnostic{Path: relative, Severity: "warning", Message: message})
+			result.Diagnostics = append(result.Diagnostics, model.Diagnostic{Path: entry.Path, Severity: model.SeverityWarning, Message: message})
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
+		if entry.Mode == ModeSubmodule {
+			diagnostic("submodule skipped; external repository not indexed")
+			continue
+		}
+		r.files[entry.Path] = true
+		if path.Base(entry.Path) == "go.mod" && entry.Mode == ModeRegular {
+			if content, err := p.Read(ctx, entry, maxManifestBytes); err == nil {
+				r.addGoModule(entry.Path, content)
+			}
+		}
+		adapter, ok := languages.ForPath(entry.Path)
+		if !ok {
+			continue
+		}
+		switch {
+		case entry.Mode == ModeSymlink:
 			diagnostic("symlink source skipped to preserve repository boundary")
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
+			continue
+		case entry.Mode != ModeRegular:
 			diagnostic("non-regular source skipped")
-			return nil
-		}
-		if info.Size() > MaxSourceBytes {
+			continue
+		case entry.Size > MaxSourceBytes:
 			diagnostic("source exceeds 2 MiB limit; skipped")
-			return nil
+			continue
+		case count >= MaxSourceFiles || total+entry.Size > MaxTotalSourceBytes:
+			skipped++
+			continue
 		}
-		if sourceFiles >= MaxSourceFiles || totalBytes+info.Size() > MaxTotalSourceBytes {
-			diagnostic("working-tree source budget exceeded; index is partial")
-			return nil
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		content, readErr := io.ReadAll(io.LimitReader(file, MaxSourceBytes+1))
-		closeErr := file.Close()
-		if readErr != nil {
-			return readErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if len(content) > MaxSourceBytes {
+		content, err := p.Read(ctx, entry, MaxSourceBytes)
+		if errors.Is(err, gitrepo.ErrBlobTooLarge) || errors.Is(err, errTooLarge) {
 			diagnostic("source exceeds 2 MiB limit; skipped")
-			return nil
+			continue
 		}
-		sourceFiles++
-		totalBytes += int64(len(content))
-		parsed, err := adapter.Parse(ctx, languages.Source{Repository: absolute, Revision: revision, Path: relative, Content: content})
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return model.Snapshot{}, ctx.Err()
+			}
+			return model.Snapshot{}, fmt.Errorf("read %s: %w", entry.Path, err)
+		}
+		count++
+		total += int64(len(content))
+		parsed, err := adapter.Parse(ctx, languages.Source{Repository: repository, Revision: revision, Path: entry.Path, Content: content})
+		if err != nil {
+			if ctx.Err() != nil {
+				return model.Snapshot{}, ctx.Err()
 			}
 			diagnostic("structural analysis unavailable: " + err.Error())
-			return nil
+			continue
 		}
 		digest := sha256.Sum256(content)
-		for i := range parsed.Nodes {
-			if parsed.Nodes[i].Kind == "file" {
-				parsed.Nodes[i].Properties = map[string]string{"content_sha256": hex.EncodeToString(digest[:])}
-			}
-		}
 		for _, node := range parsed.Nodes {
+			if node.Kind == "file" {
+				node.Properties = map[string]string{"content_sha256": hex.EncodeToString(digest[:])}
+			}
 			if !ids[node.ID] {
 				ids[node.ID] = true
 				result.Nodes = append(result.Nodes, node)
@@ -129,24 +131,17 @@ func Index(ctx context.Context, root, revision string) (model.Snapshot, error) {
 		}
 		result.Edges = append(result.Edges, parsed.Edges...)
 		result.Diagnostics = append(result.Diagnostics, parsed.Diagnostics...)
-		fileID := model.StableID(absolute, "file", relative)
-		result.Edges = append(result.Edges, model.Edge{ID: model.StableID(repositoryID, "DEFINES", fileID), From: repositoryID, To: fileID, Kind: "DEFINES", Provenance: model.Provenance{Repository: absolute, Revision: revision, Path: relative, Method: "filesystem", Evidence: model.VerifiedStatic}})
-		return nil
-	})
-	if err != nil {
-		return model.Snapshot{}, err
+		r.addSource(entry.Path, parsed.Imports)
+		fp := provenance
+		fp.Path = entry.Path
+		fileID := model.FileID(entry.Path)
+		result.Edges = append(result.Edges, model.Edge{ID: model.StableID(model.RepositoryID, "DEFINES", fileID), From: model.RepositoryID, To: fileID, Kind: "DEFINES", Provenance: fp})
 	}
+	if skipped > 0 {
+		result.Diagnostics = append(result.Diagnostics, model.Diagnostic{Severity: model.SeverityWarning, Message: fmt.Sprintf("%d source files skipped after reaching the %d-file / %d MiB source budget; index is partial", skipped, MaxSourceFiles, MaxTotalSourceBytes>>20)})
+	}
+	result.Edges = append(result.Edges, r.edges(repository, revision)...)
 	sort.Slice(result.Nodes, func(i, j int) bool { return result.Nodes[i].ID < result.Nodes[j].ID })
 	sort.Slice(result.Edges, func(i, j int) bool { return result.Edges[i].ID < result.Edges[j].ID })
 	return result, nil
-}
-
-// ExcludedPath applies the same generated and private directory policy to Git trees.
-func ExcludedPath(path string) bool {
-	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
-		if excluded[part] {
-			return true
-		}
-	}
-	return false
 }

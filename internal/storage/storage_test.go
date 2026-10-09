@@ -104,3 +104,52 @@ func TestEvidenceIsInsertOnly(t *testing.T) {
 		t.Fatal("evidence mutated", e, string(raw))
 	}
 }
+
+func TestWorkingTreeSnapshotRetention(t *testing.T) {
+	ctx := context.Background()
+	s, e := Open(ctx, filepath.Join(t.TempDir(), "state.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	nodes := []model.Node{{ID: "a", Kind: "file"}}
+	if e = s.SaveSnapshot(ctx, model.Snapshot{Repository: "repo", Revision: "0123456789012345678901234567890123456789", Nodes: nodes}); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < KeepWorkingTreeSnapshots+5; i++ {
+		if e = s.SaveSnapshot(ctx, model.Snapshot{Repository: "repo", Revision: "WORKTREE:" + string(rune('a'+i)), Nodes: nodes}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var worktree, total int
+	s.db.QueryRow(`SELECT COUNT(*) FROM snapshots WHERE revision LIKE 'WORKTREE%'`).Scan(&worktree)
+	s.db.QueryRow(`SELECT COUNT(*) FROM snapshots`).Scan(&total)
+	if worktree != KeepWorkingTreeSnapshots || total != KeepWorkingTreeSnapshots+1 {
+		t.Fatalf("retention: worktree=%d total=%d", worktree, total)
+	}
+}
+func TestMigratesVersionOneDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	s, e := Open(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Rebuild a version 1 layout to check the upgrade path.
+	for _, q := range []string{`DROP TABLE snapshots`, `DROP TABLE findings`, `DROP TABLE artifacts`, `DELETE FROM schema_migrations`, migrations[1], `INSERT INTO schema_migrations VALUES(1)`} {
+		if _, e = s.db.Exec(q); e != nil {
+			t.Fatal(q, e)
+		}
+	}
+	s.Close()
+	s, e = Open(ctx, path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	var v int
+	s.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&v)
+	if v != schemaVersion {
+		t.Fatal("not migrated", v)
+	}
+}

@@ -1,6 +1,9 @@
 package verification
 
-import "github.com/radar-engine/radar/internal/planning"
+import (
+	"github.com/radar-engine/radar/internal/model"
+	"github.com/radar-engine/radar/internal/planning"
+)
 
 // ApplyTaskResults derives task completion from acceptance evidence and DAG
 // prerequisites. Owning code or finishing an agent session is not completion.
@@ -22,9 +25,9 @@ func ApplyTaskResults(p planning.Plan, r *planning.Report) {
 	results := map[string]planning.TaskStatus{}
 	for _, id := range schedule.Order {
 		t := byID[id]
-		result := planning.TaskStatus{ID: id, Status: "passed", Explanation: "All declared acceptance checks passed and prerequisites are complete.", Checks: append([]string(nil), t.Acceptance...), BlockedBy: []string{}}
+		result := planning.TaskStatus{ID: id, Status: model.StatusPassed, Explanation: "All declared acceptance checks passed and prerequisites are complete.", Checks: append([]string(nil), t.Acceptance...), BlockedBy: []string{}}
 		if len(t.Acceptance) == 0 {
-			result.Status = "unknown"
+			result.Status = model.StatusUnknown
 			result.Explanation = "Task declares no acceptance evidence."
 		}
 		for _, contractID := range t.Contracts {
@@ -36,28 +39,28 @@ func ApplyTaskResults(p planning.Plan, r *planning.Report) {
 		}
 		for _, cid := range result.Checks {
 			c, ok := checks[cid]
-			if !ok || c.Status == "unknown" || c.Status == "warning" {
-				if result.Status != "failed" {
-					result.Status = "unknown"
+			if !ok || c.Status == model.StatusUnknown || c.Status == model.StatusWarning {
+				if result.Status != model.StatusFailed {
+					result.Status = model.StatusUnknown
 					result.Explanation = "Acceptance evidence is missing or unverified."
 				}
-			} else if c.Status == "failed" {
-				result.Status = "failed"
+			} else if c.Status == model.StatusFailed {
+				result.Status = model.StatusFailed
 				result.Explanation = "Declared acceptance evidence failed."
 			}
 		}
 		for _, dep := range t.DependsOn {
-			if results[dep].Status != "passed" {
+			if results[dep].Status != model.StatusPassed {
 				result.BlockedBy = append(result.BlockedBy, dep)
 			}
 		}
-		if len(result.BlockedBy) > 0 && result.Status != "failed" {
-			result.Status = "blocked"
+		if len(result.BlockedBy) > 0 && result.Status != model.StatusFailed {
+			result.Status = model.StatusBlocked
 			result.Explanation = "Prerequisite tasks are not verified complete."
 		}
 		results[id] = result
 		r.Tasks = append(r.Tasks, result)
-		if result.Status != "passed" {
+		if result.Status != model.StatusPassed {
 			r.Feedback = append(r.Feedback, planning.AgentFeedback{TaskID: id, Status: result.Status, Message: result.Explanation, CheckIDs: append([]string(nil), result.Checks...)})
 		}
 	}

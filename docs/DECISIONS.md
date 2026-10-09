@@ -58,3 +58,29 @@ plan invalidates its review. Radar does not manufacture or authenticate reviews.
     complete linked Go module set, a dependency inventory and archive checksum.
 
 Authoritative implementation checkpoints must descend from the approved baseline. Test evidence attachment is operational metadata excluded from the design digest; exact command, criterion identity and the complete design remain bound. Standalone task packets include approved contract projections and proposed graph deltas. Duplicate projections for one contract are rejected.
+
+14. **Location-independent identities.** Entity IDs are `kind:path#Qualified.Name`
+    and evidence names the repository by its root commits. Absolute checkout
+    paths made plans, task packets and test evidence invalid in other clones and
+    in the Git worktrees parallel agents use. Readable IDs also let agents and
+    reviewers write plans without copying hashes.
+15. **One indexing loop, two providers.** Working-tree and committed indexing
+    share `indexer.Build`; the working tree honors `.gitignore`, commits stream
+    blobs through `git cat-file --batch` instead of a subprocess per file.
+16. **Inferred import dependencies.** Path-convention resolution gives file-level
+    impact analysis without compilers. Edges are labeled `inferred` and never
+    substitute for semantic references.
+17. **Local contract comparison.** Annotation and validation keywords no longer
+    abort a binding: an unrelated `format` previously hid a removed property.
+    Unsupported constructs are compared as opaque subtrees and reported as
+    unanalyzed only when they change; reports carry `incomplete` status.
+18. **Test environment errors are not test failures.** A command that fails
+    before any recognized result is `error`. Local dependency caches are reused
+    read-mostly offline; further environment needs are declared in the reviewed
+    rule (`setup`, `env`, `link`, `junit`). Output tails are shown, never stored.
+19. **Assumption lifecycle.** Assumptions are open, accepted or resolved with a
+    resolution, so plans can pass without deleting unresolved premises.
+20. **Agent surfaces exclude consequential actions.** The MCP server exposes
+    read-mostly commands; `test` (executes code) and `approve` (declares a human
+    review) stay with the user. The Claude Code Stop hook blocks only on
+    supported failed checks.

@@ -26,5 +26,8 @@ Package boundaries are described in [architecture](docs/ARCHITECTURE.md). Keep
 command parsing in `internal/cli`, test execution in `internal/evidence`, and
 analysis rules in their owning modules. `cmd/radar` remains an entry point.
 When changing evidence or plan semantics, add stale-commit and stale-plan negative
-cases and update the JSON schema, integration skill and CLI demos together.
+cases and update the JSON schema, integration skills (Claude Code and Codex),
+MCP tool descriptions and CLI demos together. New commands go in the command
+table in `internal/cli/commands.go` with their own flags and a human renderer.
+Entity identities must stay independent of the checkout location.
 For release packaging and dependency notices, see [releasing](docs/RELEASING.md).

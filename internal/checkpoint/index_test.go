@@ -102,7 +102,7 @@ func TestCommittedSnapshotIgnoresDirtyFilesAndPinsRevision(t *testing.T) {
 	if !matched {
 		t.Fatal("symbol identity changed with function body")
 	}
-	fileID := model.StableID(base.Repository, "file", "api.py")
+	fileID := model.FileID("api.py")
 	found := 0
 	for _, s := range []model.Snapshot{base, head} {
 		for _, n := range s.Nodes {

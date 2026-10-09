@@ -17,11 +17,24 @@ repository before opting in. This copy protects your checkout from normal test
 writes, but is not an OS sandbox: malicious code can access credentials, the
 network or files available to your user. Tests receive PATH plus private HOME and temporary directories; inherited secrets
 and language startup settings are removed. Package-manager offline settings are
-set and dependencies are not installed automatically. This is an environment
-restriction, not a network or filesystem sandbox. Evidence stores output digests, not
-raw stdout/stderr; avoid sensitive command arguments because arguments are stored.
+set and dependencies are not installed automatically. Existing local dependency
+caches (Go module and build caches, Cargo and rustup homes, npm cache, Python
+user base, an active virtualenv) are made available so offline builds work;
+tests can read and may write them. A rule may additionally pass named
+environment variables (`env`), link untracked checkout directories into the
+snapshot (`link`) and run `setup` commands; all are part of the reviewed plan,
+so review them like the test command. This is an environment restriction, not
+a network or filesystem sandbox. Evidence stores output digests, not raw
+stdout/stderr; the last 4 KiB of output is displayed to the operator (and
+returned in `--json` output) but never persisted. Avoid sensitive command
+arguments because arguments and passed-through variable names are stored.
 Optional cloud inference remains unimplemented and must disclose data sent before
 any future opt-in.
+
+`radar mcp` runs locally over stdio for one fixed root. It does not expose
+`test` or `approve`, so an agent cannot execute repository code or declare a
+review through it; it can write Radar state and new plan files under the root.
+The Claude Code Stop hook only runs `radar verify`.
 
 Agent skills are advisory instructions, not a security sandbox. Review plans
 and consequential decisions. A local plan review declaration is not an

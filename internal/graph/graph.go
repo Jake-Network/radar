@@ -11,10 +11,12 @@ import (
 type Graph struct {
 	Nodes map[string]model.Node
 	Edges []model.Edge
+	out   map[string][]int // edge indexes by source
+	in    map[string][]int // edge indexes by target
 }
 
 func New(s model.Snapshot) (*Graph, error) {
-	g := &Graph{Nodes: map[string]model.Node{}, Edges: append([]model.Edge(nil), s.Edges...)}
+	g := &Graph{Nodes: map[string]model.Node{}, Edges: append([]model.Edge(nil), s.Edges...), out: map[string][]int{}, in: map[string][]int{}}
 	for _, n := range s.Nodes {
 		if n.ID == "" {
 			return nil, fmt.Errorf("node has empty identity")
@@ -25,7 +27,9 @@ func New(s model.Snapshot) (*Graph, error) {
 		g.Nodes[n.ID] = n
 	}
 	seen := map[string]bool{}
-	for _, e := range g.Edges {
+	for i, e := range g.Edges {
+		g.out[e.From] = append(g.out[e.From], i)
+		g.in[e.To] = append(g.in[e.To], i)
 		if e.ID == "" || seen[e.ID] {
 			return nil, fmt.Errorf("empty or duplicate edge identity %q", e.ID)
 		}
@@ -52,26 +56,88 @@ func (g *Graph) Select(kind, name string) []model.Node {
 
 // Reachable follows only recorded edges, never infers runtime reachability.
 func (g *Graph) Reachable(start, kind string, reverse bool) []model.Node {
-	seen := map[string]bool{start: true}
-	q := []string{start}
 	out := []model.Node{}
-	for len(q) > 0 {
-		x := q[0]
-		q = q[1:]
-		for _, e := range g.Edges {
+	for _, id := range g.Distances(start, kind, reverse, 0) {
+		out = append(out, g.Nodes[id.ID])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Hop is a node reached by traversal with its distance and predecessor.
+type Hop struct {
+	ID    string `json:"id"`
+	Depth int    `json:"depth"`
+	Via   string `json:"via,omitempty"`
+}
+
+// Distances runs a breadth-first traversal from start, optionally limited to
+// maxDepth hops (0 means unlimited). start itself is not included.
+func (g *Graph) Distances(start, kind string, reverse bool, maxDepth int) []Hop {
+	seen := map[string]bool{start: true}
+	frontier := []Hop{{ID: start}}
+	out := []Hop{}
+	for len(frontier) > 0 {
+		x := frontier[0]
+		frontier = frontier[1:]
+		if maxDepth > 0 && x.Depth >= maxDepth {
+			continue
+		}
+		index := g.out[x.ID]
+		if reverse {
+			index = g.in[x.ID]
+		}
+		for _, i := range index {
+			e := g.Edges[i]
 			if kind != "" && e.Kind != kind {
 				continue
 			}
-			from, to := e.From, e.To
+			next := e.To
 			if reverse {
-				from, to = to, from
+				next = e.From
 			}
-			if from == x && !seen[to] {
-				seen[to] = true
-				q = append(q, to)
-				out = append(out, g.Nodes[to])
+			if !seen[next] {
+				seen[next] = true
+				hop := Hop{ID: next, Depth: x.Depth + 1, Via: x.ID}
+				if x.ID == start {
+					hop.Via = ""
+				}
+				frontier = append(frontier, hop)
+				out = append(out, hop)
 			}
 		}
+	}
+	return out
+}
+
+// Resolve finds entities for a human query: an exact ID, a "path#qualified"
+// suffix, a repository path, or a case-insensitive name/qualified-name match.
+func (g *Graph) Resolve(query, kind string) []model.Node {
+	if n, ok := g.Nodes[query]; ok && (kind == "" || n.Kind == kind) {
+		return []model.Node{n}
+	}
+	lower := strings.ToLower(query)
+	var exact, partial []model.Node
+	for _, n := range g.Nodes {
+		if kind != "" && n.Kind != kind {
+			continue
+		}
+		_, suffix, _ := strings.Cut(n.ID, ":")
+		qualified := n.Properties["qualified_name"]
+		switch {
+		case suffix == query, n.Provenance.Path+"#"+qualified == query && qualified != "":
+			exact = append(exact, n)
+		case n.Kind == "file" && n.Name == query:
+			exact = append(exact, n)
+		case strings.EqualFold(n.Name, query) || strings.EqualFold(qualified, query):
+			exact = append(exact, n)
+		case strings.Contains(strings.ToLower(n.Name), lower) || strings.Contains(strings.ToLower(qualified), lower) || strings.Contains(strings.ToLower(n.ID), lower):
+			partial = append(partial, n)
+		}
+	}
+	out := exact
+	if len(out) == 0 {
+		out = partial
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

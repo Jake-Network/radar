@@ -2,9 +2,12 @@
 /radar
 *.test
 coverage.out
-.radar/state.db*
-.radar/config.json
-.radar/plans/
+# Radar state is local and may contain absolute paths; contracts.json is committed.
+**/.radar/state.db*
+**/.radar/config.json
+**/.radar/plans/
+**/.radar/active-plan
 .omx/
+.idea/
 
 /dist/

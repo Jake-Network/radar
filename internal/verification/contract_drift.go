@@ -3,14 +3,15 @@ package verification
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/radar-engine/radar/internal/contracts"
 	gitrepo "github.com/radar-engine/radar/internal/git"
+	"github.com/radar-engine/radar/internal/jsonptr"
 	"github.com/radar-engine/radar/internal/model"
+	"github.com/radar-engine/radar/internal/pathutil"
 	"github.com/radar-engine/radar/internal/planning"
 )
 
@@ -18,9 +19,9 @@ import (
 // changes. It does not infer runtime producer/consumer relationships.
 func VerifyContracts(ctx context.Context, root string, p planning.Plan, s model.Snapshot) []planning.Check {
 	var checks []planning.Check
-	add := func(id, status, message, path string) {
+	add := func(id string, status model.Status, message, path string) {
 		c := planning.Check{ID: id, Status: status, Explanation: message, Evidence: model.VerifiedStatic}
-		if status == "unknown" {
+		if status == model.StatusUnknown {
 			c.Evidence = model.Unknown
 		}
 		if path != "" {
@@ -274,7 +275,7 @@ func expandSchema(doc, obj map[string]any, depth int) (map[string]any, error) {
 // objectPresent proves absence from the committed file inventory or a valid
 // JSON object pointer. Read/parse errors never stand in for deletion evidence.
 func objectPresent(ctx context.Context, root, rev, path, pointer string) (bool, error) {
-	if path == "" || filepath.IsAbs(path) || strings.ContainsAny(path, "\\\x00\r\n") || filepath.Clean(path) == ".." || strings.HasPrefix(filepath.Clean(path), "../") {
+	if _, err := pathutil.RepoRelative(path); err != nil {
 		return false, fmt.Errorf("invalid repository path")
 	}
 	files, err := gitrepo.Files(ctx, root, rev)
@@ -295,34 +296,14 @@ func objectPresent(ctx context.Context, root, rev, path, pointer string) (bool, 
 	if err != nil {
 		return false, err
 	}
-	if pointer == "" {
-		return true, nil
+	value, present, err := jsonptr.Lookup(doc, pointer)
+	if err != nil {
+		return false, err
 	}
-	if !strings.HasPrefix(pointer, "/") {
-		return false, fmt.Errorf("invalid JSON pointer")
+	if !present {
+		return false, nil
 	}
-	for i := 0; i < len(pointer); i++ {
-		if pointer[i] == '~' {
-			if i+1 >= len(pointer) || (pointer[i+1] != '0' && pointer[i+1] != '1') {
-				return false, fmt.Errorf("invalid JSON pointer escape")
-			}
-			i++
-		}
-	}
-	var cur any = doc
-	for _, token := range strings.Split(pointer[1:], "/") {
-		obj, ok := cur.(map[string]any)
-		if !ok {
-			return false, fmt.Errorf("pointer crosses a non-object")
-		}
-		token = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
-		var exists bool
-		cur, exists = obj[token]
-		if !exists {
-			return false, nil
-		}
-	}
-	if _, ok := cur.(map[string]any); !ok {
+	if _, ok := value.(map[string]any); !ok {
 		return false, fmt.Errorf("pointer target is not an object")
 	}
 	return true, nil

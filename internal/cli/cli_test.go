@@ -77,7 +77,7 @@ func TestCLIArchitectureLifecycle(t *testing.T) {
 	}
 	p := planning.Generate("Preserve summary contract", s)
 	p.Incomplete = []string{}
-	p.Assumptions = []string{}
+	p.Assumptions = []planning.Assumption{}
 	p.Acceptance = []planning.Criterion{{ID: "total", Requirement: "request", Intent: "retain total", Rule: &planning.Rule{Kind: "json_property", Path: "openapi.json", Pointer: "/components/schemas/Summary/properties", Property: "total"}}}
 	p.Tasks = []planning.Task{{ID: "producer", Intent: "preserve response", Requirements: []string{"request"}, Acceptance: []string{"total"}, Contracts: []string{"summary"}}}
 	b, _ := json.Marshal(p)

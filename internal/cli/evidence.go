@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+
 	"github.com/radar-engine/radar/internal/evidence"
-	"strings"
+	"github.com/radar-engine/radar/internal/model"
 )
 
 func (a *app) test(o options) int {
@@ -30,25 +32,25 @@ func (a *app) test(o options) int {
 	if e = a.store.SaveEvidence(a.ctx, record.ID, record); e != nil {
 		return a.fail(e)
 	}
-	a.emit(record)
-	if record.Status == "failed" {
+	// The output tail is displayed, never persisted.
+	a.report(struct {
+		evidence.Record
+		OutputTail string `json:"output_tail,omitempty"`
+	}{record, record.OutputTail}, func(w io.Writer) { renderRecord(w, record) })
+	if record.Status == model.StatusFailed {
 		return 1
 	}
 	return 0
 }
-func (a *app) records(ids string) ([]evidence.Record, error) {
+func (a *app) records(ids []string) ([]evidence.Record, error) {
 	out := []evidence.Record{}
-	if ids == "" {
-		return out, nil
-	}
 	seen := map[string]bool{}
-	for _, id := range strings.Split(ids, ",") {
-		id = strings.TrimSpace(id)
+	for _, id := range ids {
 		if seen[id] {
 			continue
 		}
 		seen[id] = true
-		kind, raw, e := a.store.Artifact(a.ctx, strings.TrimSpace(id))
+		kind, raw, e := a.store.Artifact(a.ctx, id)
 		if e != nil {
 			return nil, e
 		}

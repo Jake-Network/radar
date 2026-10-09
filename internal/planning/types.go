@@ -2,7 +2,9 @@
 package planning
 
 import (
+	"bytes"
 	"encoding/json"
+
 	"github.com/radar-engine/radar/internal/model"
 )
 
@@ -32,7 +34,50 @@ type Rule struct {
 	Entity     string   `json:"entity,omitempty"`
 	Pointer    string   `json:"pointer,omitempty"`
 	Property   string   `json:"property,omitempty"`
+	// test_run execution environment. Every field is part of the reviewed plan.
+	Setup [][]string `json:"setup,omitempty"` // commands run before Command in the snapshot
+	Env   []string   `json:"env,omitempty"`   // caller environment variable names passed through
+	Link  []string   `json:"link,omitempty"`  // untracked dependency paths linked from the checkout
+	JUnit string     `json:"junit,omitempty"` // snapshot-relative JUnit XML report
 }
+
+// Assumption statuses. Open assumptions keep verification unknown; accepted
+// (risk knowingly taken) and resolved (investigated) require a resolution.
+const (
+	AssumptionOpen     = "open"
+	AssumptionAccepted = "accepted"
+	AssumptionResolved = "resolved"
+)
+
+// Assumption is an unverified design premise with an explicit lifecycle.
+type Assumption struct {
+	ID         string `json:"id,omitempty"`
+	Text       string `json:"text"`
+	Status     string `json:"status,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+}
+
+// UnmarshalJSON also accepts the original plain-string form.
+func (a *Assumption) UnmarshalJSON(b []byte) error {
+	var text string
+	if json.Unmarshal(b, &text) == nil {
+		*a = Assumption{Text: text}
+		return nil
+	}
+	type plain Assumption
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	var v plain
+	if err := d.Decode(&v); err != nil {
+		return err
+	}
+	*a = Assumption(v)
+	return nil
+}
+
+// Open reports whether the assumption still needs investigation.
+func (a Assumption) Open() bool { return a.Status == "" || a.Status == AssumptionOpen }
+
 type Criterion struct {
 	ID          string `json:"id"`
 	Requirement string `json:"requirement"`
@@ -84,7 +129,7 @@ type Plan struct {
 	Tasks          []Task             `json:"tasks"`
 	Acceptance     []Criterion        `json:"acceptance"`
 	GraphDeltas    []Delta            `json:"graph_deltas"`
-	Assumptions    []string           `json:"assumptions"`
+	Assumptions    []Assumption       `json:"assumptions"`
 	Evidence       []model.Provenance `json:"evidence"`
 	Incomplete     []string           `json:"incomplete"`
 	Approval       *Approval          `json:"approval,omitempty"`
@@ -92,23 +137,23 @@ type Plan struct {
 }
 type Check struct {
 	ID          string            `json:"id"`
-	Status      string            `json:"status"`
+	Status      model.Status      `json:"status"`
 	Explanation string            `json:"explanation"`
 	Evidence    model.Evidence    `json:"evidence"`
 	Location    *model.Provenance `json:"location,omitempty"`
 }
 type TaskStatus struct {
-	Checks      []string `json:"checks,omitempty"`
-	BlockedBy   []string `json:"blocked_by,omitempty"`
-	ID          string   `json:"id"`
-	Status      string   `json:"status"`
-	Explanation string   `json:"explanation"`
+	Checks      []string     `json:"checks,omitempty"`
+	BlockedBy   []string     `json:"blocked_by,omitempty"`
+	ID          string       `json:"id"`
+	Status      model.Status `json:"status"`
+	Explanation string       `json:"explanation"`
 }
 type AgentFeedback struct {
-	TaskID   string   `json:"task_id"`
-	Status   string   `json:"status"`
-	Message  string   `json:"message"`
-	CheckIDs []string `json:"check_ids"`
+	TaskID   string       `json:"task_id"`
+	Status   model.Status `json:"status"`
+	Message  string       `json:"message"`
+	CheckIDs []string     `json:"check_ids"`
 }
 type ContextMatch struct {
 	Entity      string           `json:"entity"`
@@ -130,10 +175,11 @@ type Report struct {
 	PlanDigest    string          `json:"plan_digest,omitempty"`
 	Tasks         []TaskStatus    `json:"tasks,omitempty"`
 	Feedback      []AgentFeedback `json:"feedback,omitempty"`
-	Status        string          `json:"status"`
+	Status        model.Status    `json:"status"`
 	Authoritative bool            `json:"authoritative"`
 	Findings      []model.Finding `json:"findings"`
 	Checks        []Check         `json:"checks"`
+	NextSteps     []string        `json:"next_steps,omitempty"`
 }
 type TaskPacket struct {
 	ContractDeltas []ContractDelta    `json:"contract_deltas"`

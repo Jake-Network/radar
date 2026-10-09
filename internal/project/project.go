@@ -2,11 +2,14 @@
 package project
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+
+	gitrepo "github.com/radar-engine/radar/internal/git"
+	"github.com/radar-engine/radar/internal/pathutil"
 )
 
 type Config struct {
@@ -32,31 +35,37 @@ func Root(path string) (string, error) {
 	}
 	return abs, nil
 }
-func SafePath(root, path string) (string, error) {
-	if filepath.IsAbs(path) {
-		return "", fmt.Errorf("expected repository-relative path")
+
+// SafePath returns a Radar state location below root without following symlinks.
+func SafePath(root, path string) (string, error) { return pathutil.StatePath(root, path) }
+
+// StateRoot selects the directory holding .radar state. A linked Git worktree
+// without its own initialized state shares the main worktree's state, so
+// evidence and snapshots recorded by parallel agents are visible everywhere.
+func StateRoot(ctx context.Context, root string) string {
+	if initialized(root) {
+		return root
 	}
-	candidate := filepath.Join(root, filepath.Clean(path))
-	rel, e := filepath.Rel(root, candidate)
-	if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes repository: %q", path)
+	common, err := gitrepo.CommonDir(ctx, root)
+	if err != nil || filepath.Base(common) != ".git" {
+		return root
 	}
-	cur := root
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		cur = filepath.Join(cur, part)
-		st, e := os.Lstat(cur)
-		if os.IsNotExist(e) {
-			continue
-		}
-		if e != nil {
-			return "", e
-		}
-		if st.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("refusing symlink in state path: %q", cur)
-		}
+	main := filepath.Dir(common)
+	if main != root && initialized(main) {
+		return main
 	}
-	return candidate, nil
+	return root
 }
+
+func initialized(root string) bool {
+	path, err := SafePath(root, ".radar/config.json")
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err == nil
+}
+
 func Init(root string) error {
 	dir, e := SafePath(root, ".radar")
 	if e != nil {

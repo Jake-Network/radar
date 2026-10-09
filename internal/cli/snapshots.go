@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"time"
+
 	"github.com/radar-engine/radar/internal/contractgraph"
 	"github.com/radar-engine/radar/internal/indexer"
 	"github.com/radar-engine/radar/internal/model"
-	"sort"
-	"time"
 )
 
 func (a *app) index(o options) int {
@@ -21,16 +22,29 @@ func (a *app) index(o options) int {
 	if e = a.store.SaveSnapshot(a.ctx, s); e != nil {
 		return a.fail(e)
 	}
-	if a.machine {
-		a.emit(s)
-	} else {
-		fmt.Fprintf(a.out, "Indexed %d entities and %d relationships at %s\n", len(s.Nodes), len(s.Edges), s.Revision)
-		for _, d := range s.Diagnostics {
-			fmt.Fprintf(a.out, "%s: %s %s\n", d.Severity, d.Path, d.Message)
-		}
+	nodeKinds, edgeKinds := map[string]int{}, map[string]int{}
+	for _, n := range s.Nodes {
+		nodeKinds[n.Kind]++
 	}
+	for _, edge := range s.Edges {
+		edgeKinds[edge.Kind]++
+	}
+	dependencies := edgeKinds["DEPENDS_ON"]
+	var value any = s
+	if o.summary {
+		value = map[string]any{"repository": s.Repository, "revision": s.Revision, "entities": len(s.Nodes), "relationships": len(s.Edges), "entity_kinds": nodeKinds, "relationship_kinds": edgeKinds, "diagnostics": s.Diagnostics}
+	}
+	a.report(value, func(w io.Writer) {
+		fmt.Fprintf(w, "Indexed %d entities and %d relationships (%d resolved file dependencies) at %s\n", len(s.Nodes), len(s.Edges), dependencies, s.Revision)
+		for _, d := range s.Diagnostics {
+			fmt.Fprintf(w, "%s: %s %s\n", d.Severity, d.Path, d.Message)
+		}
+	})
 	return 0
 }
+
+// freshSnapshot indexes the working tree. Its revision is a digest of the
+// observed content, independent of where the checkout lives.
 func freshSnapshot(ctx context.Context, root string) (model.Snapshot, error) {
 	s, e := indexer.Index(ctx, root, "WORKTREE")
 	if e != nil {
@@ -39,9 +53,18 @@ func freshSnapshot(ctx context.Context, root string) (model.Snapshot, error) {
 	if e = contractgraph.Augment(ctx, &s); e != nil {
 		return s, e
 	}
-	sort.Slice(s.Nodes, func(i, j int) bool { return s.Nodes[i].ID < s.Nodes[j].ID })
-	sort.Slice(s.Edges, func(i, j int) bool { return s.Edges[i].ID < s.Edges[j].ID })
-	b, e := json.Marshal(s)
+	model.SortSnapshot(&s)
+	portable := s
+	portable.Repository = ""
+	portable.Nodes = append([]model.Node(nil), s.Nodes...)
+	portable.Edges = append([]model.Edge(nil), s.Edges...)
+	for i := range portable.Nodes {
+		portable.Nodes[i].Provenance.Repository = ""
+	}
+	for i := range portable.Edges {
+		portable.Edges[i].Provenance.Repository = ""
+	}
+	b, e := json.Marshal(portable)
 	if e != nil {
 		return s, e
 	}

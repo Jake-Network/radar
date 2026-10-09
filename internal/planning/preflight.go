@@ -9,8 +9,8 @@ import (
 )
 
 func Validate(p Plan, s model.Snapshot) Report {
-	r := Report{Status: "passed", Revision: s.Revision, BaseRevision: p.BaseRevision, PlanDigest: Digest(p), Findings: []model.Finding{}, Checks: []Check{}}
-	add := func(code, msg, severity string) {
+	r := Report{Status: model.StatusPassed, Revision: s.Revision, BaseRevision: p.BaseRevision, PlanDigest: Digest(p), Findings: []model.Finding{}, Checks: []Check{}}
+	add := func(code, msg string, severity model.Severity) {
 		evidence := model.VerifiedStatic
 		switch code {
 		case "unresolved_assumption", "incomplete_design", "unknown_component", "unresolved_consumer", "unverified_criterion", "requirement_verification":
@@ -20,20 +20,20 @@ func Validate(p Plan, s model.Snapshot) Report {
 		f.ID = model.StableID(s.Repository, r.PlanDigest, s.Revision, code, msg)
 		f.Severity = severity
 		r.Findings = append(r.Findings, f)
-		if severity == "error" {
-			r.Status = "failed"
-		} else if r.Status == "passed" {
-			r.Status = "warning"
+		if severity == model.SeverityError {
+			r.Status = model.StatusFailed
+		} else if r.Status == model.StatusPassed {
+			r.Status = model.StatusWarning
 		}
 	}
 	if p.SchemaVersion != SchemaVersion {
-		add("plan_schema", "unsupported schema_version; expected 1", "error")
+		add("plan_schema", "unsupported schema_version; expected 1", model.SeverityError)
 	}
 	if strings.TrimSpace(p.Intent) == "" || p.FeatureID == "" {
-		add("plan_identity", "feature_id and intent are required", "error")
+		add("plan_identity", "feature_id and intent are required", model.SeverityError)
 	}
 	if p.BaseRevision == "" || p.BaseRevision != s.Revision {
-		add("stale_context", "plan base_revision does not match indexed revision", "error")
+		add("stale_context", "plan base_revision does not match indexed revision", model.SeverityError)
 	}
 	req := map[string]bool{}
 	criteria := map[string]Criterion{}
@@ -43,42 +43,42 @@ func Validate(p Plan, s model.Snapshot) Report {
 	}
 	for _, q := range p.Requirements {
 		if q.ID == "" || q.Intent == "" || req[q.ID] {
-			add("requirement_identity", "requirements need unique IDs and intent", "error")
+			add("requirement_identity", "requirements need unique IDs and intent", model.SeverityError)
 		}
 		req[q.ID] = true
 	}
 	for _, c := range p.Acceptance {
 		if c.Rule != nil {
 			if err := ValidateRule(*c.Rule); err != nil {
-				add("verification_rule", err.Error(), "error")
+				add("verification_rule", err.Error(), model.SeverityError)
 			}
 		}
 		if c.ID == "" || c.Intent == "" {
-			add("criterion_identity", "acceptance criteria need ID and intent", "error")
+			add("criterion_identity", "acceptance criteria need ID and intent", model.SeverityError)
 		}
 		if _, ok := criteria[c.ID]; ok {
-			add("criterion_identity", "duplicate acceptance criterion "+c.ID, "error")
+			add("criterion_identity", "duplicate acceptance criterion "+c.ID, model.SeverityError)
 		}
 		criteria[c.ID] = c
 		if !req[c.Requirement] {
-			add("criterion_requirement", "unknown requirement "+c.Requirement, "error")
+			add("criterion_requirement", "unknown requirement "+c.Requirement, model.SeverityError)
 		}
 		if c.Rule == nil {
-			add("unverified_criterion", "criterion "+c.ID+" has no deterministic verification rule", "warning")
+			add("unverified_criterion", "criterion "+c.ID+" has no deterministic verification rule", model.SeverityWarning)
 		}
 	}
 	if len(p.Requirements) == 0 {
-		add("requirements_missing", "at least one requirement is required", "error")
+		add("requirements_missing", "at least one requirement is required", model.SeverityError)
 	}
 	constraintIDs := map[string]bool{}
 	for _, c := range p.Constraints {
 		if c.ID == "" || c.Intent == "" || constraintIDs[c.ID] {
-			add("constraint_identity", "constraints need ID and intent", "error")
+			add("constraint_identity", "constraints need ID and intent", model.SeverityError)
 		}
 		constraintIDs[c.ID] = true
 		if c.Rule != nil {
 			if err := ValidateRule(*c.Rule); err != nil {
-				add("constraint_rule", err.Error(), "error")
+				add("constraint_rule", err.Error(), model.SeverityError)
 			}
 		}
 	}
@@ -90,25 +90,25 @@ func Validate(p Plan, s model.Snapshot) Report {
 			}
 		}
 		if !covered {
-			sev := "warning"
+			sev := model.SeverityWarning
 			if q.SecuritySensitive {
-				sev = "error"
+				sev = model.SeverityError
 			}
 			add("requirement_verification", "requirement "+q.ID+" lacks a verification criterion", sev)
 		}
 	}
 	for _, t := range p.Tasks {
 		if t.Intent == "" || len(t.Requirements) == 0 || len(t.Acceptance) == 0 {
-			add("task_proof", "task "+t.ID+" needs intent, requirements and acceptance", "error")
+			add("task_proof", "task "+t.ID+" needs intent, requirements and acceptance", model.SeverityError)
 		}
 		for _, id := range t.Requirements {
 			if !req[id] {
-				add("task_requirement", "task "+t.ID+" references missing requirement "+id, "error")
+				add("task_requirement", "task "+t.ID+" references missing requirement "+id, model.SeverityError)
 			}
 		}
 		for _, id := range t.Acceptance {
 			if criterion, ok := criteria[id]; !ok {
-				add("task_acceptance", "task "+t.ID+" references missing criterion "+id, "error")
+				add("task_acceptance", "task "+t.ID+" references missing criterion "+id, model.SeverityError)
 			} else {
 				linked := false
 				for _, requirement := range t.Requirements {
@@ -117,21 +117,21 @@ func Validate(p Plan, s model.Snapshot) Report {
 					}
 				}
 				if !linked {
-					add("task_acceptance", "task "+t.ID+" criterion "+id+" verifies a requirement not declared by that task", "error")
+					add("task_acceptance", "task "+t.ID+" criterion "+id+" verifies a requirement not declared by that task", model.SeverityError)
 				}
 			}
 		}
 		for _, id := range t.Components {
 			if _, ok := nodes[id]; !ok {
-				add("unknown_component", "task "+t.ID+" component is unresolved: "+id, "warning")
+				add("unknown_component", "task "+t.ID+" component is unresolved: "+id, model.SeverityWarning)
 			}
 		}
 		if t.Consequential && !Approved(p) {
-			add("review_required", "consequential task "+t.ID+" requires a digest-bound checkpoint review declaration", "error")
+			add("review_required", "consequential task "+t.ID+" requires a digest-bound checkpoint review declaration", model.SeverityError)
 		}
 	}
 	if _, err := Tasks(p); err != nil {
-		add("task_dag", err.Error(), "error")
+		add("task_dag", err.Error(), model.SeverityError)
 	}
 	// Unordered writers of a shared contract require explicit coordination.
 	byID := map[string]Task{}
@@ -156,55 +156,55 @@ func Validate(p Plan, s model.Snapshot) Report {
 			for _, c := range a.Contracts {
 				for _, d := range b.Contracts {
 					if c == d && !depends(a.ID, b.ID, map[string]bool{}) && !depends(b.ID, a.ID, map[string]bool{}) {
-						add("contract_owner_conflict", fmt.Sprintf("unordered tasks %s and %s both own contract %s", a.ID, b.ID, c), "error")
+						add("contract_owner_conflict", fmt.Sprintf("unordered tasks %s and %s both own contract %s", a.ID, b.ID, c), model.SeverityError)
 					}
 				}
 			}
 		}
 	}
 	if _, err := Project(p, s); err != nil {
-		add("graph_projection", err.Error(), "error")
+		add("graph_projection", err.Error(), model.SeverityError)
 	}
 	deltaIDs := map[string]bool{}
 	for _, d := range p.ContractDeltas {
 		if deltaIDs[d.Contract] {
-			add("contract_delta_duplicate", "contract has multiple projections: "+d.Contract, "error")
+			add("contract_delta_duplicate", "contract has multiple projections: "+d.Contract, model.SeverityError)
 		}
 		deltaIDs[d.Contract] = true
 		if d.Schema != "" {
 			if err := ValidateRule(Rule{Kind: "file_exists", Path: d.Schema}); err != nil {
-				add("contract_delta", err.Error(), "error")
+				add("contract_delta", err.Error(), model.SeverityError)
 			}
 			if err := ValidateRule(Rule{Kind: "json_property", Path: d.Schema, Pointer: d.Pointer, Property: "_validation"}); err != nil {
-				add("contract_delta", err.Error(), "error")
+				add("contract_delta", err.Error(), model.SeverityError)
 			}
 			if d.Operation != "remove" {
 				var value map[string]any
 				if json.Unmarshal(d.Expected, &value) != nil || value == nil {
-					add("contract_delta", "projected schema add/modify requires expected JSON object", "error")
+					add("contract_delta", "projected schema add/modify requires expected JSON object", model.SeverityError)
 				}
 			}
 			if d.Operation == "remove" && len(d.Expected) > 0 {
-				add("contract_delta", "remove delta must omit expected schema", "error")
+				add("contract_delta", "remove delta must omit expected schema", model.SeverityError)
 			}
 		} else if d.Pointer != "" || len(d.Expected) > 0 {
-			add("contract_delta", "projected pointer/expected require schema path", "error")
+			add("contract_delta", "projected pointer/expected require schema path", model.SeverityError)
 		}
 		if d.Operation != "add" && d.Operation != "remove" && d.Operation != "modify" {
-			add("contract_delta", "unsupported contract operation "+d.Operation, "error")
+			add("contract_delta", "unsupported contract operation "+d.Operation, model.SeverityError)
 		}
 		if d.Contract == "" || d.Description == "" {
-			add("contract_delta", "contract delta requires contract and description", "error")
+			add("contract_delta", "contract delta requires contract and description", model.SeverityError)
 		}
 		for _, c := range d.Consumers {
 			if _, ok := nodes[c]; !ok {
-				add("unresolved_consumer", "contract consumer is unresolved: "+c, "warning")
+				add("unresolved_consumer", "contract consumer is unresolved: "+c, model.SeverityWarning)
 			}
 		}
 	}
 	for _, f := range projectedConsumers(p, s) {
 		r.Findings = append(r.Findings, f)
-		r.Status = "failed"
+		r.Status = model.StatusFailed
 	}
 	consequential := false
 	for _, t := range p.Tasks {
@@ -215,27 +215,85 @@ func Validate(p Plan, s model.Snapshot) Report {
 	decisionIDs := map[string]bool{}
 	for _, d := range p.Decisions {
 		if d.ID == "" || d.Intent == "" || decisionIDs[d.ID] {
-			add("decision_identity", "architecture decisions need unique IDs and intent", "error")
+			add("decision_identity", "architecture decisions need unique IDs and intent", model.SeverityError)
 		}
 		decisionIDs[d.ID] = true
 		if consequential && (len(d.Alternatives) == 0 || len(d.Tradeoffs) == 0) {
-			add("decision_review", "consequential design decision "+d.ID+" requires alternatives and tradeoffs", "error")
+			add("decision_review", "consequential design decision "+d.ID+" requires alternatives and tradeoffs", model.SeverityError)
 		}
 	}
 	if consequential && len(p.Decisions) == 0 {
-		add("decision_review", "consequential work requires an architecture decision with alternatives and tradeoffs", "error")
+		add("decision_review", "consequential work requires an architecture decision with alternatives and tradeoffs", model.SeverityError)
 	}
+	assumptionIDs := map[string]bool{}
 	for _, a := range p.Assumptions {
-		add("unresolved_assumption", a, "warning")
+		if strings.TrimSpace(a.Text) == "" {
+			add("assumption_identity", "assumptions need text", model.SeverityError)
+		}
+		if a.ID != "" {
+			if assumptionIDs[a.ID] {
+				add("assumption_identity", "duplicate assumption "+a.ID, model.SeverityError)
+			}
+			assumptionIDs[a.ID] = true
+		}
+		switch a.Status {
+		case "", AssumptionOpen:
+			add("unresolved_assumption", assumptionLabel(a)+a.Text, model.SeverityWarning)
+		case AssumptionAccepted, AssumptionResolved:
+			if strings.TrimSpace(a.Resolution) == "" {
+				add("assumption_resolution", "assumption "+assumptionLabel(a)+"is "+a.Status+" without a resolution explaining the evidence or accepted risk", model.SeverityError)
+			}
+		default:
+			add("assumption_status", "assumption "+assumptionLabel(a)+"has unsupported status "+a.Status+"; use open, accepted or resolved", model.SeverityError)
+		}
 	}
 	for _, field := range p.Incomplete {
-		add("incomplete_design", "design field incomplete: "+field, "warning")
+		add("incomplete_design", "design field incomplete: "+field, model.SeverityWarning)
 	}
 	if p.Approval != nil && !Approved(p) {
-		add("invalid_review", "review declaration does not match plan digest/checkpoint or design is incomplete", "error")
+		add("invalid_review", "review declaration does not match plan digest/checkpoint or design is incomplete", model.SeverityError)
 	}
 	r.Authoritative = false
+	r.NextSteps = NextSteps(r.Findings)
 	return r
+}
+
+func assumptionLabel(a Assumption) string {
+	if a.ID == "" {
+		return ""
+	}
+	return "[" + a.ID + "] "
+}
+
+var nextStepHints = map[string]string{
+	"stale_context":                    "Re-index and regenerate context, or set base_revision to the analyzed revision (`radar index --ref SHA`).",
+	"incomplete_design":                "Fill the missing design fields, then remove them from `incomplete`.",
+	"unresolved_assumption":            "Investigate each open assumption; set status to `resolved` (with evidence) or `accepted` (with the risk owner's rationale) in `resolution`.",
+	"requirement_verification":         "Add an acceptance criterion with a deterministic `rule` (file_exists, json_property, graph_entity or test_run) for each uncovered requirement.",
+	"unverified_criterion":             "Attach a `rule` to criteria that only have prose intent.",
+	"unknown_component":                "Use `radar resolve QUERY` to find valid entity IDs for task components.",
+	"unresolved_consumer":              "Use `radar resolve QUERY` to find the consumer file IDs.",
+	"review_required":                  "Ask a human to review the plan, then run `radar approve --plan PATH --reviewer NAME`.",
+	"invalid_review":                   "The plan changed after review; request a new review and re-run `radar approve`.",
+	"contract_owner_conflict":          "Order tasks that share a contract with `depends_on`, or assign the contract to one task.",
+	"decision_review":                  "Record alternatives and tradeoffs for consequential decisions.",
+	"task_dag":                         "Fix task IDs and `depends_on` so tasks form an acyclic graph.",
+	"projected_consumed_field_removed": "Keep the field in the projected schema or migrate the declared consumer first.",
+}
+
+// NextSteps turns findings into ordered, de-duplicated actions for an agent.
+func NextSteps(findings []model.Finding) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, f := range findings {
+		hint, ok := nextStepHints[f.Code]
+		if !ok || seen[hint] {
+			continue
+		}
+		seen[hint] = true
+		out = append(out, hint)
+	}
+	return out
 }
 
 // projectedConsumers detects explicit field dependency contradictions in a proposed direct schema.

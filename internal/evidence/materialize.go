@@ -3,41 +3,52 @@ package evidence
 import (
 	"context"
 	"errors"
-	gitrepo "github.com/radar-engine/radar/internal/git"
 	"os"
 	"path/filepath"
 	"strings"
+
+	gitrepo "github.com/radar-engine/radar/internal/git"
+	"github.com/radar-engine/radar/internal/pathutil"
 )
 
-const maxSnapshot = 64 << 20
+const (
+	maxSnapshot      = 64 << 20
+	maxSnapshotFiles = 10000
+)
 
+// snapshot writes the regular files of a commit into dest through one batch
+// object reader. Symlinks and submodules are not materialized.
 func snapshot(ctx context.Context, root, revision, dest string) error {
 	entries, err := gitrepo.Entries(ctx, root, revision)
 	if err != nil {
 		return err
 	}
-	if len(entries) > 10000 {
+	if len(entries) > maxSnapshotFiles {
 		return errors.New("snapshot exceeds 10000 files")
 	}
-	total := 0
+	reader, err := gitrepo.OpenBlobReader(ctx, root)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	var total int64
 	for _, entry := range entries {
 		if entry.Mode != "100644" && entry.Mode != "100755" {
 			continue
 		}
-		path := entry.Path
-		clean := filepath.Clean(path)
-		if filepath.IsAbs(path) || strings.ContainsAny(path, "\\:\x00") || clean == ".." || strings.HasPrefix(clean, "../") || clean == ".git" || strings.HasPrefix(clean, ".git/") {
+		clean, err := pathutil.RepoRelative(entry.Path)
+		if err != nil || clean == ".git" || strings.HasPrefix(clean, ".git/") || strings.ContainsRune(clean, ':') {
 			return errors.New("unsafe checkpoint path")
 		}
-		content, err := gitrepo.ReadBlob(ctx, root, entry.OID)
+		content, err := reader.Read(entry.OID, maxSnapshot-total)
+		if errors.Is(err, gitrepo.ErrBlobTooLarge) {
+			return errors.New("snapshot exceeds 64 MiB")
+		}
 		if err != nil {
 			return err
 		}
-		total += len(content)
-		if total > maxSnapshot {
-			return errors.New("snapshot exceeds 64 MiB")
-		}
-		full := filepath.Join(dest, clean)
+		total += int64(len(content))
+		full := filepath.Join(dest, filepath.FromSlash(clean))
 		if err = os.MkdirAll(filepath.Dir(full), 0700); err != nil {
 			return err
 		}

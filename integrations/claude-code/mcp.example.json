@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "radar": {
+      "command": "radar",
+      "args": ["mcp", "--root", "."]
+    }
+  }
+}

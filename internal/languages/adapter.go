@@ -25,6 +25,17 @@ type Result struct {
 	Nodes       []model.Node
 	Edges       []model.Edge
 	Diagnostics []model.Diagnostic
+	// Imports keeps raw specifiers for later repository-level path resolution.
+	Imports []Import
+}
+
+// Import is one import specifier as written in a source file. Names lists
+// imported members, which may themselves be submodules (Python `from . import x`).
+type Import struct {
+	Language string
+	Module   string
+	Names    []string
+	Line     int
 }
 type Capability struct {
 	Language   string `json:"language"`
@@ -113,7 +124,7 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 		return Result{}, err
 	}
 	root := tree.RootNode()
-	fileID := model.StableID(s.Repository, "file", s.Path)
+	fileID := model.FileID(s.Path)
 	provenance := func(n *sitter.Node) model.Provenance {
 		return model.Provenance{Repository: s.Repository, Revision: s.Revision, Path: s.Path, Line: int(n.StartPosition().Row) + 1, EndLine: int(n.EndPosition().Row) + 1, Method: "tree-sitter:" + a.language, Evidence: model.VerifiedStatic}
 	}
@@ -147,17 +158,17 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 		if n.Kind() == "method_declaration" {
 			if receiver := n.ChildByFieldName("receiver"); receiver != nil && receiver.NamedChildCount() > 0 {
 				if typ := receiver.NamedChild(0).ChildByFieldName("type"); typ != nil {
-					scope += "/receiver:" + typ.Utf8Text(s.Content)
+					scope = qualify(scope, strings.TrimLeft(typ.Utf8Text(s.Content), "*"))
 				}
 			}
 		}
 		if kind != "" && nameNode != nil && !n.HasError() {
 			name := nameNode.Utf8Text(s.Content)
-			qualified := scope + "/" + name
-			key := kind + qualified
+			qualified := qualify(scope, name)
+			key := kind + "\x00" + qualified
 			occurrence := duplicates[key]
 			duplicates[key]++
-			id := model.StableID(s.Repository, s.Path, kind, qualified, fmt.Sprint(occurrence))
+			id := model.EntityID(kind, s.Path, qualified, occurrence)
 			props := map[string]string{"qualified_name": qualified, "syntax_kind": n.Kind()}
 			result.Nodes = append(result.Nodes, model.Node{ID: id, Kind: kind, Name: name, Language: a.language, Properties: props, Provenance: provenance(n)})
 			result.Edges = append(result.Edges, model.Edge{ID: model.StableID(owner, "DEFINES", id), From: owner, To: id, Kind: "DEFINES", Provenance: provenance(n)})
@@ -166,14 +177,27 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 		// impl blocks have no declaration name, but their type supplies the method scope.
 		if n.Kind() == "impl_item" {
 			if typ := n.ChildByFieldName("type"); typ != nil {
-				scope += "/impl:" + typ.Utf8Text(s.Content)
+				scope = qualify(scope, typ.Utf8Text(s.Content))
 			}
 		}
-		for _, module := range importNames(n, s.Content, a.language) {
+		imported := importNames(n, s.Content, a.language)
+		if len(imported) > 0 {
+			names := importedMembers(n, s.Content, a.language)
+			for _, module := range imported {
+				if module != "" {
+					result.Imports = append(result.Imports, Import{Language: a.language, Module: module, Names: names, Line: int(n.StartPosition().Row) + 1})
+				}
+			}
+		}
+		// A Rust `mod name;` declaration loads a sibling module file.
+		if n.Kind() == "mod_item" && n.ChildByFieldName("body") == nil && nameNode != nil {
+			result.Imports = append(result.Imports, Import{Language: a.language, Module: "self::" + nameNode.Utf8Text(s.Content), Line: int(n.StartPosition().Row) + 1})
+		}
+		for _, module := range imported {
 			if module == "" {
 				continue
 			}
-			id := model.StableID(s.Repository, a.language, "import-module", module)
+			id := model.ModuleID(a.language, module)
 			if !imports[id] {
 				imports[id] = true
 				result.Nodes = append(result.Nodes, model.Node{ID: id, Kind: "module", Name: module, Language: a.language, Properties: map[string]string{"resolution": "unresolved", "origin": "import syntax"}, Provenance: provenance(n)})
@@ -187,17 +211,49 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 	return result, nil
 }
 
+// qualify joins declaration scopes with dots, e.g. Server.Handle.
+func qualify(scope, name string) string {
+	if scope == "" {
+		return name
+	}
+	return scope + "." + name
+}
+
+// importedMembers returns the member names of a Python `from X import a, b`.
+func importedMembers(n *sitter.Node, source []byte, language string) []string {
+	if language != "python" || n.Kind() != "import_from_statement" {
+		return nil
+	}
+	var names []string
+	module := n.ChildByFieldName("module_name")
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		c := n.NamedChild(i)
+		if module != nil && c.StartByte() == module.StartByte() {
+			continue
+		}
+		switch c.Kind() {
+		case "dotted_name":
+			names = append(names, c.Utf8Text(source))
+		case "aliased_import":
+			if name := c.ChildByFieldName("name"); name != nil {
+				names = append(names, name.Utf8Text(source))
+			}
+		}
+	}
+	return names
+}
+
 func definitionKind(n *sitter.Node) string {
 	switch n.Kind() {
 	case "package_clause":
 		return "package"
 	case "function_declaration", "function_definition", "function_item", "method_definition", "method_declaration", "function_signature":
 		return "function"
-	case "class_declaration", "class_definition":
+	case "class_declaration", "class_definition", "abstract_class_declaration":
 		return "class"
 	case "interface_declaration", "trait_item":
 		return "interface"
-	case "type_alias_declaration", "type_spec", "struct_item", "enum_item", "type_item":
+	case "type_alias_declaration", "type_spec", "struct_item", "enum_item", "type_item", "enum_declaration":
 		return "type"
 	case "mod_item":
 		return "module"

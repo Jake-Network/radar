@@ -9,7 +9,26 @@ import (
 )
 
 func Generate(intent string, s model.Snapshot) Plan {
-	p := Plan{SchemaVersion: SchemaVersion, FeatureID: model.StableID("feature", intent), Intent: intent, BaseRevision: s.Revision, Requirements: []Requirement{{ID: "request", Intent: intent}}, Decisions: []Decision{}, Constraints: []Constraint{}, ContractDeltas: []ContractDelta{}, Tasks: []Task{}, Acceptance: []Criterion{}, GraphDeltas: []Delta{}, Assumptions: []string{"Authorization, scalability, and runtime behavior require investigation; structural indexing does not verify them."}, Evidence: []model.Provenance{}, Incomplete: []string{"architecture decisions", "task decomposition", "acceptance and verification criteria", "design review"}}
+	p := Plan{
+		SchemaVersion:  SchemaVersion,
+		FeatureID:      model.StableID("feature", intent),
+		Intent:         intent,
+		BaseRevision:   s.Revision,
+		Requirements:   []Requirement{{ID: "request", Intent: intent}},
+		Decisions:      []Decision{},
+		Constraints:    []Constraint{},
+		ContractDeltas: []ContractDelta{},
+		Tasks:          []Task{},
+		Acceptance:     []Criterion{},
+		GraphDeltas:    []Delta{},
+		Assumptions: []Assumption{{
+			ID:     "runtime-behavior",
+			Text:   "Authorization, scalability, and runtime behavior require investigation; structural indexing does not verify them.",
+			Status: AssumptionOpen,
+		}},
+		Evidence:   []model.Provenance{},
+		Incomplete: []string{"architecture decisions", "task decomposition", "acceptance and verification criteria", "design review"},
+	}
 	p.Context = GroundedContext(intent, s)
 	for _, match := range p.Context.Matches {
 		p.Evidence = append(p.Evidence, match.Evidence)
@@ -46,6 +65,31 @@ func GroundedContext(intent string, s model.Snapshot) *Context {
 	matched := map[string]bool{}
 	for _, m := range c.Matches {
 		matched[m.Entity] = true
+	}
+	// Files that import, or are imported by, a matched file are likely in scope.
+	files := map[string]bool{}
+	for _, m := range c.Matches {
+		if m.Evidence.Path != "" {
+			files[model.FileID(m.Evidence.Path)] = true
+		}
+	}
+	related := map[string]bool{}
+	for _, edge := range s.Edges {
+		if edge.Kind != "DEPENDS_ON" {
+			continue
+		}
+		if files[edge.From] && !matched[edge.To] {
+			related[edge.To] = true
+		}
+		if files[edge.To] && !matched[edge.From] {
+			related[edge.From] = true
+		}
+	}
+	for _, n := range s.Nodes {
+		if related[n.ID] && len(c.Matches) < 100 {
+			c.Matches = append(c.Matches, ContextMatch{Entity: n.ID, Score: 0, Explanation: "Imports or is imported by a matched file (inferred path resolution); relevance unverified.", Evidence: n.Provenance})
+			matched[n.ID] = true
+		}
 	}
 	for _, edge := range s.Edges {
 		if matched[edge.From] || matched[edge.To] {

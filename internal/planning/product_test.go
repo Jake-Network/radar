@@ -88,7 +88,7 @@ func TestProofTaskCriteriaBelongToDeclaredRequirements(t *testing.T) {
 		t.Fatal("unrelated criterion accepted as task proof", r)
 	}
 	p = validPlan()
-	p.Assumptions = []string{"Runtime organization authorization unverified"}
+	p.Assumptions = []Assumption{{Text: "Runtime organization authorization unverified"}}
 	r := Validate(p, model.Snapshot{Revision: "base"})
 	for _, f := range r.Findings {
 		if f.Code == "unresolved_assumption" && f.Evidence != model.Unknown {
@@ -159,5 +159,33 @@ func TestIntentGraphKeepsProposalsSeparate(t *testing.T) {
 		if n.ID != "file" && n.Provenance.Evidence != model.Proposed {
 			t.Fatal("planning entity misrepresented")
 		}
+	}
+}
+
+func TestAssumptionLifecycle(t *testing.T) {
+	var p Plan
+	raw := `{"schema_version":"1","feature_id":"f","intent":"i","base_revision":"base","requirements":[],"decisions":[],"constraints":[],"contract_deltas":[],"tasks":[],"acceptance":[],"graph_deltas":[],"assumptions":["legacy string",{"id":"auth","text":"Org scope enforced","status":"accepted","resolution":"Owner accepts until load test"}],"evidence":[],"incomplete":[]}`
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Assumptions[0].Open() || p.Assumptions[1].Open() {
+		t.Fatal("assumption state", p.Assumptions)
+	}
+	if err := json.Unmarshal([]byte(`{"assumptions":[{"text":"x","unknown":1}]}`), &p); err == nil {
+		t.Fatal("unknown assumption field accepted")
+	}
+	valid := validPlan()
+	valid.Assumptions = []Assumption{{ID: "auth", Text: "Org scope enforced", Status: AssumptionResolved, Resolution: "Covered by test_auth"}}
+	if r := Validate(valid, model.Snapshot{Revision: "base"}); r.Status != "passed" {
+		t.Fatal("resolved assumption still blocks", r)
+	}
+	valid.Assumptions[0].Resolution = ""
+	if r := Validate(valid, model.Snapshot{Revision: "base"}); r.Status != "failed" {
+		t.Fatal("resolution not required", r)
+	}
+	valid.Assumptions[0] = Assumption{Text: "open"}
+	r := Validate(valid, model.Snapshot{Revision: "base"})
+	if r.Status != "warning" || len(r.NextSteps) == 0 {
+		t.Fatal("open assumption must warn with next steps", r)
 	}
 }

@@ -1,0 +1,71 @@
+# Example workflow for a repository that uses Radar. Copy it to
+# .github/workflows/radar.yml and point RADAR_SOURCE at your Radar checkout or
+# replace the build step with a published binary.
+#
+# It reports, as annotations:
+#   - contract changes in this pull request against declared consumers,
+#   - files, contracts and plan tasks affected through import dependencies,
+#   - contract conflicts between this pull request and other open pull requests.
+# It never merges, rebases or pushes.
+name: radar
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    env:
+      BASE_REF: ${{ github.base_ref }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      RADAR_SOURCE: https://example.invalid/your-org/radar.git
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Build Radar
+        run: |
+          git clone --depth 1 "$RADAR_SOURCE" "$RUNNER_TEMP/radar-src"
+          (cd "$RUNNER_TEMP/radar-src" && go build -o "$RUNNER_TEMP/radar" ./cmd/radar)
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Prepare
+        run: |
+          radar init
+          echo "MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD)" >> "$GITHUB_ENV"
+      - name: Contract manifest
+        run: radar contracts --ref HEAD
+      - name: Affected files and contracts
+        run: radar affected --base "$MERGE_BASE" --head HEAD
+      - name: Contract impact of this pull request
+        run: |
+          status=0
+          radar impact --base "$MERGE_BASE" --head HEAD --json > impact.json || status=$?
+          jq -r '.findings[] | "::\(if .severity == "error" then "error" else "warning" end) title=\(.code)::\(.explanation)"' impact.json
+          jq -r '.diagnostics[] | "::warning title=radar diagnostic::\(.path) \(.message)"' impact.json
+          exit "$status"
+      - name: Conflicts with other open pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branches=HEAD
+          for number in $(gh pr list --base "$BASE_REF" --state open --json number --jq '.[].number'); do
+            [ "$number" = "$PR_NUMBER" ] && continue
+            if git fetch --quiet origin "pull/$number/head:refs/radar/pr-$number"; then
+              branches="$branches,refs/radar/pr-$number"
+            fi
+          done
+          if [ "$branches" = HEAD ]; then
+            echo "No other open pull requests."
+            exit 0
+          fi
+          status=0
+          radar scan --base "$MERGE_BASE" --branches "$branches" --json > scan.json || status=$?
+          jq -r '.findings[] | "::\(if .severity == "error" then "error" else "warning" end) title=\(.code)::\(.explanation) (\(.branches | join(" vs ")))"' scan.json
+          exit "$status"

@@ -2,18 +2,20 @@ package verification
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
 	"os"
 	"strings"
+
+	"github.com/radar-engine/radar/internal/contracts"
+	gitrepo "github.com/radar-engine/radar/internal/git"
+	"github.com/radar-engine/radar/internal/jsonptr"
+	"github.com/radar-engine/radar/internal/model"
+	"github.com/radar-engine/radar/internal/planning"
 )
 
 func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snapshot, root string) planning.Check {
-	c := planning.Check{ID: id, Status: "unknown", Evidence: model.Unknown, Explanation: "No deterministic verification rule declared."}
+	c := planning.Check{ID: id, Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "No deterministic verification rule declared."}
 	if rule == nil {
 		return c
 	}
@@ -30,22 +32,22 @@ func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snaps
 	if rule.Kind == "graph_entity" {
 		for _, n := range s.Nodes {
 			if n.ID == rule.Entity {
-				c.Status = "passed"
+				c.Status = model.StatusPassed
 				c.Evidence = n.Provenance.Evidence
 				c.Location = &n.Provenance
 				c.Explanation = "Entity observed in indexed graph."
 				if c.Evidence != model.VerifiedStatic && c.Evidence != model.VerifiedTool {
-					c.Status = "unknown"
+					c.Status = model.StatusUnknown
 					c.Explanation = "Entity has no verified indexing evidence."
 				}
 				return c
 			}
 		}
-		c.Status = "failed"
+		c.Status = model.StatusFailed
 		c.Evidence = model.VerifiedStatic
 		c.Explanation = "Entity absent from indexed graph."
-		if incompleteFor(s, rule.Path) {
-			c.Status = "unknown"
+		if incompleteFor(s, model.PathFromID(rule.Entity)) {
+			c.Status = model.StatusUnknown
 			c.Evidence = model.Unknown
 			c.Explanation = "Entity absent but indexing diagnostics prevent proving absence."
 		}
@@ -59,7 +61,7 @@ func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snaps
 	if err != nil {
 		c.Explanation = "Unable to read bounded repository evidence: " + err.Error()
 		if errors.Is(err, os.ErrNotExist) {
-			c.Status = "failed"
+			c.Status = model.StatusFailed
 			c.Evidence = model.VerifiedStatic
 			c.Explanation = "Required file does not exist at the analyzed revision."
 		}
@@ -67,32 +69,26 @@ func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snaps
 	}
 	c.Evidence = model.VerifiedStatic
 	if rule.Kind == "file_exists" {
-		c.Status = "passed"
+		c.Status = model.StatusPassed
 		c.Explanation = "File exists and is readable at analyzed revision."
 		return c
 	}
-	var value any
-	if err = json.Unmarshal(data, &value); err != nil {
+	doc, err := contracts.DecodeDocumentAt(rule.Path, data)
+	if err != nil {
 		c.Evidence = model.Unknown
-		c.Explanation = "Malformed JSON evidence: " + err.Error()
+		c.Explanation = "Malformed JSON/YAML evidence: " + err.Error()
 		return c
 	}
-	if rule.Pointer != "" {
-		for _, token := range strings.Split(strings.TrimPrefix(rule.Pointer, "/"), "/") {
-			token = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
-			obj, ok := value.(map[string]any)
-			if !ok {
-				c.Explanation = "JSON pointer crosses a non-object; unsupported evidence."
-				c.Evidence = model.Unknown
-				return c
-			}
-			value, ok = obj[token]
-			if !ok {
-				c.Status = "failed"
-				c.Explanation = "JSON pointer does not exist: " + rule.Pointer
-				return c
-			}
-		}
+	value, found, err := jsonptr.Lookup(doc, rule.Pointer)
+	if err != nil {
+		c.Evidence = model.Unknown
+		c.Explanation = "JSON pointer crosses a non-object; unsupported evidence."
+		return c
+	}
+	if !found {
+		c.Status = model.StatusFailed
+		c.Explanation = "JSON pointer does not exist: " + rule.Pointer
+		return c
 	}
 	obj, ok := value.(map[string]any)
 	if !ok {
@@ -101,10 +97,10 @@ func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snaps
 		return c
 	}
 	_, ok = obj[rule.Property]
-	c.Status = "failed"
+	c.Status = model.StatusFailed
 	c.Explanation = fmt.Sprintf("Required property %q is absent at %q.", rule.Property, rule.Pointer)
 	if ok {
-		c.Status = "passed"
+		c.Status = model.StatusPassed
 		c.Explanation = fmt.Sprintf("Required property %q is present at %q.", rule.Property, rule.Pointer)
 	}
 	return c
