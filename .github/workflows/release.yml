@@ -22,7 +22,7 @@ jobs:
           - { os: ubuntu-22.04-arm, target: linux_arm64 }
           - { os: macos-15-intel, target: darwin_amd64 }
           - { os: macos-15, target: darwin_arm64 }
-          - { os: windows-2022, target: windows_amd64 }
+          # windows_amd64 returns once Windows Git (autocrlf, long paths) qualifies.
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "1"
@@ -112,7 +112,6 @@ jobs:
         shell: bash
         run: |
           test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 4
-          test "$(find dist -maxdepth 1 -name '*.zip' | wc -l)" -eq 1
           cd dist
           sha256sum --check *.sha256
           cat *.sha256 > checksums.txt

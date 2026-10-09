@@ -22,7 +22,7 @@ assert len(expected) == 2 and expected[1] == artifact.name
 assert hashlib.sha256(artifact.read_bytes()).hexdigest() == expected[0]
 
 with tempfile.TemporaryDirectory(prefix="radar-installed-smoke-") as tmp:
-    root = pathlib.Path(tmp)
+    root = pathlib.Path(tmp).resolve()  # macOS temp is below the /var symlink
     seen = set()
     total = 0
     def destination(name, size):

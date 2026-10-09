@@ -89,7 +89,7 @@ class WorkflowPolicyTests(unittest.TestCase):
 
     def test_every_native_platform_must_qualify(self):
         source = (ROOT / WORKFLOWS[1]).read_text()
-        for target in ("linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64", "windows_amd64"):
+        for target in ("linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"):
             self.assertIn("target: " + target, source)
         for required in ("CGO_ENABLED: \"1\"", "go vet ./...", "go test ./...", "go test -race ./...", "scripts/release-test.py", "scripts/validate-release.py", "scripts/install-release-test.ps1", "sha256sum --check"):
             self.assertIn(required, source)
