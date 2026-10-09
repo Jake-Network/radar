@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/radar-engine/radar/internal/languages"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
-	"github.com/radar-engine/radar/internal/project"
-	"github.com/radar-engine/radar/internal/verification"
+	"github.com/Jake-Network/radar/internal/languages"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/project"
+	"github.com/Jake-Network/radar/internal/verification"
 )
 
 func (a *app) plan(o options) int {
@@ -116,6 +116,9 @@ func planCommand(command string) func(*app, options) int {
 			return a.fail(e)
 		}
 		a.report(r, func(w io.Writer) { renderReport(w, command, r) })
+		if r.Status == model.StatusError || r.Status == model.StatusTimeout {
+			return 2
+		}
 		if r.Status == model.StatusFailed {
 			return 1
 		}

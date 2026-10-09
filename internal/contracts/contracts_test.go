@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func doc(t *testing.T, s string) map[string]any {

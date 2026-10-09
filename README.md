@@ -4,19 +4,41 @@
 
 Radar is an open-source, local-first architecture intelligence CLI for AI-assisted development. It connects structural source evidence, inferred import dependencies, explicit contracts, structured implementation plans and Git checkpoints. It runs without an LLM API key and works with Claude Code, Codex or any other coding agent (CLI, JSON output or MCP).
 
-Current scope: structural indexing for TypeScript/JavaScript, Python, Go and Rust with file-level import dependencies; explicit JSON/YAML OpenAPI and JSON Schema contract comparisons; plan DAG/preflight checks with actionable next steps; checkpoint-bound verification with test evidence from common harnesses; impact analysis across files, contracts and plan tasks; an MCP server for agents. Compiler-resolved semantic analysis and runtime behavior tracing are not implemented. See [capabilities](docs/CAPABILITIES.md) and [implementation status](docs/IMPLEMENTATION_STATUS.md).
+**Two agents. Two passing branches. One broken integration. Radar catches it before merge.**
 
-## Install from this checkout
+`radar merge-check` constructs the combined branches in private Git state, analyzes their contracts and import dependencies, and can run an explicitly authorized verification command against that exact candidate. Individual branch test results are never used as combined evidence. Try the [deterministic demo](docs/INTEGRATION_DEMO.md).
 
-Requires Go 1.23 or newer and a C compiler for the embedded Tree-sitter parsers. Dependencies download on the first build. No Python, Node or Rust toolchain is required for indexing.
+Radar complements coding agents and orchestrators with repository evidence, declared architecture intent and combined-source verification. Git supplies textual merge semantics; Radar adds supported contract findings and opt-in verification of the resulting tree. Schema diff tools and CI already perform parts of this work: Radar connects their evidence to agent plans and repair feedback locally. It does not launch agents or guarantee comprehensive architectural correctness.
+
+## Install
+
+Source install requires Go 1.23+ and a C compiler for embedded Tree-sitter:
 
 ```sh
+go install github.com/Jake-Network/radar/cmd/radar@latest
+# From this checkout:
 go build -o bin/radar ./cmd/radar
-# Or install in your Go binary directory:
-go install ./cmd/radar
 ```
 
-The module path is a project identifier; a public remote/release is not assumed to exist. Build and install locally with `bash scripts/install.sh /your/bin/directory`. Build a native-host distributable with `bash scripts/release.sh /tmp/radar-release`; this packages dependency notices and checksums. Remote publication and signing are not configured.
+For developers without Go, release preparation now includes a Linux amd64 binary archive with checksums and dependency notices. Once a maintainer publishes a version, download its archive from [GitHub Releases](https://github.com/Jake-Network/radar/releases), verify the accompanying checksum, and put `radar` on PATH. The checkout also provides `bash scripts/install-release.sh --version vX.Y.Z --dir ~/.local/bin`. **This milestone prepares artifacts; it does not publish a release or verify public downloads.** Windows/macOS binaries are not validated. See [release instructions](docs/RELEASING.md).
+
+## First use
+
+Inside a Git repository with at least one commit:
+
+```sh
+radar setup --agent codex                  # or claude, both
+radar setup --agent both --dry-run         # inspect changes first
+radar check --base main                    # current working tree; no tests execute
+radar discover --json                     # inspect proposed contract candidates
+radar merge-check --base main --branches feature/backend,feature/frontend
+radar merge-check --base main --branches feature/backend,feature/frontend \
+  --verify --allow-execution -- python3 -m unittest test_integration
+```
+
+Setup installs project-local skills and MCP configuration, preserves unrelated settings, and refuses conflicting Radar entries. Agent trust/restart may need manual action. `--agent claude --hook` adds the optional bounded Stop hook; Bash is required for that hook. No LLM credentials, telemetry or uploads are required.
+
+`check`, `discover` and `merge-check` do not require prior initialization. Reports distinguish passed, failed, warning, unknown, incomplete and environment errors. Missing manifest, missing plan or unexecuted tests remain explicit coverage gaps; exit 0 does not mean comprehensive verification. Use `--require-complete` to enforce coverage, or inspect per-check status in JSON. Discovered links remain proposals until reviewed and explicitly accepted; lexical names never prove runtime use. [Supported patterns](docs/DISCOVERY.md).
 
 ## Quickstart
 
@@ -77,7 +99,7 @@ A `test_run` acceptance rule declares the exact argument array before execution.
 
 ### Checkpoints and exit codes
 
-All stateful commands require `init`. Linked Git worktrees without their own `.radar` share the main worktree's state, and evidence identifies the repository by its root commit, so parallel agents in separate worktrees can record evidence that verifies anywhere. `preflight` analyzes current source and rejects a plan whose indexed baseline has changed. `verify --ref SHA` analyzes a committed implementation; its approved baseline remains separate. Authoritative means the result is bound to a reviewed plan and committed source, not that every requirement passed. Working-tree indexing uses a content-derived observation ID, and working-tree verification is informational. `impact --head WORKTREE` produces warnings rather than authoritative integration failures. Branch analysis requires the selected Git repository top-level root. Radar never merges, rebases or pushes.
+Legacy stateful commands require `init`; `setup` performs initialization. Linked Git worktrees without their own `.radar` share the main worktree's state, and evidence identifies the repository by its root commit, so parallel agents in separate worktrees can record evidence that verifies anywhere. `preflight` analyzes current source and rejects a plan whose indexed baseline has changed. `verify --ref SHA` analyzes a committed implementation; its approved baseline remains separate. Authoritative means the result is bound to a reviewed plan and committed source, not that every requirement passed. Working-tree indexing uses a content-derived observation ID, and working-tree verification is informational. `impact --head WORKTREE` produces warnings rather than authoritative integration failures. Branch analysis requires the selected Git repository top-level root. Radar never merges into user branches, rebases or pushes. `merge-check` performs merges exclusively in private temporary Git state and removes it after analysis.
 
 Exit codes: `0` successful command/informational report (which may contain warnings or unknown checks), `1` supported failed check/committed contract finding, `2` invocation/analysis error. Contract reports carry `status: incomplete` when a binding could not be analyzed; `--strict` turns that into exit `1`. Always inspect status and diagnostics; exit `0` does not mean every architectural requirement is verified.
 
@@ -105,7 +127,7 @@ Radar compares schema objects at committed revisions: removed properties, type c
 ## Agent and CI integrations
 
 - **Claude Code**: `radar mcp` (MCP server), a skill and a Stop hook that hands failed plan checks back to the agent. See [integrations/claude-code](integrations/claude-code/README.md).
-- **Codex**: [skill](integrations/codex/SKILL.md).
+- **Codex**: `radar setup --agent codex`, project MCP and [skill](integrations/codex/SKILL.md).
 - **GitHub Actions**: an [example pull-request workflow](integrations/github-actions/README.md) annotates contract impact, affected files and conflicts with other open pull requests.
 
 ## Development
@@ -115,6 +137,7 @@ go test ./...
 go vet ./...
 go test -race ./...
 make demo-all
+bash scripts/install-release-test.sh
 ```
 
 Tests use deterministic source and real temporary Git repositories; no model outputs or external cloud service are needed. See [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md), [roadmap](docs/ROADMAP.md), and [security](docs/SECURITY.md). MIT licensed, with dependency license notices preserved.

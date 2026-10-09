@@ -16,5 +16,6 @@ demo: build
 demo-all: build
 	bash examples/organization/demo.sh "$$(pwd)/bin/radar"
 	bash examples/verification/demo.sh "$$(pwd)/bin/radar"
+	bash examples/integration/demo.sh "$$(pwd)/bin/radar"
 release:
 	bash scripts/release.sh dist

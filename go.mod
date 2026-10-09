@@ -1,4 +1,4 @@
-module github.com/radar-engine/radar
+module github.com/Jake-Network/radar
 
 go 1.23.0
 

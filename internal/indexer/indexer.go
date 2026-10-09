@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/languages"
-	"github.com/radar-engine/radar/internal/model"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/languages"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 const MaxSourceBytes = 2 * 1024 * 1024

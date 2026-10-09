@@ -8,3 +8,9 @@
 5. Expansion (deferred): compiler semantic resolution, SCIP ingestion, tsconfig path aliases and workspace-aware resolution, Protobuf, incremental parsing, scalable graph queries, richer language contracts, agent notifications and interactive UI.
 
 Current acceptance evidence is maintained in IMPLEMENTATION_STATUS.md. Release readiness requires all relevant tests, limitations and installation checks; milestones are never inferred from document existence.
+
+## Agent-native milestone (implemented bounded vertical slices)
+
+A: project setup and unified check; B: inspectable static discovery; C: private combined-branch preview and opt-in verification with the two-passing-branches demo; D: read-only MCP, bounded repair guidance and planning ownership/integration warnings; E: module path alignment, unpublished Linux artifact preparation and regression checks. See implementation status for actual current execution results.
+
+Next: broaden imported FastAPI/TypeScript client resolution with scoped symbol evidence, use plan-declared integration suites to recommend checks, and benchmark representative monorepos. Compiler semantics, runtime transport resolution, prose contradiction detection, multi-platform releases, signing and incremental caching remain deferred.

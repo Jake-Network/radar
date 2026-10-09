@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/radar-engine/radar/internal/graph"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/graph"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 // KeepWorkingTreeSnapshots bounds informational working-tree snapshots per

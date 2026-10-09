@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 const SchemaVersion = "1"

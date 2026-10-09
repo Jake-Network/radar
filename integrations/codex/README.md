@@ -1,6 +1,8 @@
 # Codex integration
 
-Install the bundled skill in a project or personal Codex skills directory:
+Run `radar setup --agent codex` inside the project to install its skill and project MCP configuration. Use `--dry-run` to inspect changes. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration and restart Codex. No global configuration is written.
+
+For manual skill installation:
 
 ```sh
 mkdir -p .agents/skills/radar-architecture
@@ -23,3 +25,5 @@ later implementation SHA for verification. The skill documents explicit approval
 and test evidence commands; repository instructions alone do not approve a plan
 or authorize arbitrary scripts. See [verification demo](../../docs/DEMO.md) for
 an executable workflow and [security](../../docs/SECURITY.md) for execution limits.
+
+For concurrent work, start with `radar check --base main --json`, inspect `radar discover --json`, and use `radar merge-check --base main --branches backend,frontend --json` before integration. MCP exposes these read-only tools; it cannot enable execution or record human approval. If the user authorizes tests, run the CLI with `--verify --allow-execution -- COMMAND ARGS`. Treat failed finding IDs as repair inputs and revalidate the combined source after repair; avoid repeating identical feedback indefinitely.

@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/jsonptr"
-	"github.com/radar-engine/radar/internal/pathutil"
+	"github.com/Jake-Network/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

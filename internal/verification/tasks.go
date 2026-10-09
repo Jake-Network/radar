@@ -1,8 +1,8 @@
 package verification
 
 import (
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 // ApplyTaskResults derives task completion from acceptance evidence and DAG
@@ -39,10 +39,15 @@ func ApplyTaskResults(p planning.Plan, r *planning.Report) {
 		}
 		for _, cid := range result.Checks {
 			c, ok := checks[cid]
-			if !ok || c.Status == model.StatusUnknown || c.Status == model.StatusWarning {
-				if result.Status != model.StatusFailed {
+			if !ok || c.Status == model.StatusUnknown || c.Status == model.StatusWarning || c.Status == model.StatusIncomplete || c.Status == model.StatusBlocked {
+				if result.Status != model.StatusFailed && result.Status != model.StatusError && result.Status != model.StatusTimeout {
 					result.Status = model.StatusUnknown
 					result.Explanation = "Acceptance evidence is missing or unverified."
+				}
+			} else if c.Status == model.StatusError || c.Status == model.StatusTimeout {
+				if result.Status != model.StatusFailed {
+					result.Status = c.Status
+					result.Explanation = "Acceptance execution could not establish a result; resolve the execution environment and rerun."
 				}
 			} else if c.Status == model.StatusFailed {
 				result.Status = model.StatusFailed

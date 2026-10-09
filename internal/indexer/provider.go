@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
 )
 
 // EntryMode classifies a repository entry without following it.

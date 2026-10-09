@@ -3,9 +3,9 @@ package verification
 import (
 	"context"
 	"fmt"
-	"github.com/radar-engine/radar/internal/evidence"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 	"time"
 )
 
@@ -53,8 +53,10 @@ func evaluateWithEvidence(ctx context.Context, id string, rule *planning.Rule, s
 		c.Status = model.StatusFailed
 		c.Explanation = fmt.Sprintf("Declared test command failed with exit code %d (evidence %s).", chosen.ExitCode, chosen.ID)
 	case model.StatusTimeout:
+		c.Status = model.StatusTimeout
 		c.Explanation = "Test execution timed out; criterion is not verified."
 	case model.StatusError:
+		c.Status = model.StatusError
 		c.Explanation = fmt.Sprintf("Declared command failed (exit %d) before any recognized test result: a build, setup or environment error, not a test outcome (evidence %s).", chosen.ExitCode, chosen.ID)
 	default:
 		c.Explanation = "Test runner did not establish successful execution of non-skipped test cases."

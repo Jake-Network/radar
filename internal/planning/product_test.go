@@ -2,7 +2,7 @@ package planning
 
 import (
 	"encoding/json"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 	"strings"
 	"testing"
 )
@@ -187,5 +187,51 @@ func TestAssumptionLifecycle(t *testing.T) {
 	r := Validate(valid, model.Snapshot{Revision: "base"})
 	if r.Status != "warning" || len(r.NextSteps) == 0 {
 		t.Fatal("open assumption must warn with next steps", r)
+	}
+}
+
+func TestParallelComponentOwnershipAndIntegrationProof(t *testing.T) {
+	p := validPlan()
+	p.Tasks[0].Components = []string{"file:shared.go"}
+	p.Acceptance[0].Rule = &Rule{Kind: "test_run", Command: []string{"go", "test", "./backend"}}
+	second := p.Tasks[0]
+	second.ID = "frontend"
+	second.Acceptance = []string{"frontend-test"}
+	p.Tasks = append(p.Tasks, second)
+	p.Acceptance = append(p.Acceptance, Criterion{ID: "frontend-test", Requirement: "r", Intent: "frontend works", Rule: &Rule{Kind: "test_run", Command: []string{"go", "test", "./frontend"}}})
+	snapshot := model.Snapshot{Revision: "base", Nodes: []model.Node{{ID: "file:shared.go", Kind: "file"}}}
+	r := Validate(p, snapshot)
+	seen := map[string]bool{}
+	for _, f := range r.Findings {
+		seen[f.Code] = true
+		if f.Code == "component_owner_conflict" || f.Code == "integration_verification_missing" {
+			if f.Evidence != model.Unknown || f.Remediation == "" || f.Verification == "" {
+				t.Fatal(f)
+			}
+		}
+	}
+	if r.Status != model.StatusWarning || !seen["component_owner_conflict"] || !seen["integration_verification_missing"] {
+		t.Fatal(r)
+	}
+	p.Tasks[1].DependsOn = []string{"t"}
+	if r := Validate(p, snapshot); r.Status != model.StatusPassed {
+		t.Fatal(r)
+	}
+	p.Tasks[1].DependsOn = nil
+	p.Tasks[1].Components = nil
+	p.Tasks[1].Acceptance = []string{"a"}
+	if r := Validate(p, snapshot); r.Status != model.StatusPassed {
+		t.Fatal("shared criterion should not fabricate missing integration", r)
+	}
+}
+
+func TestContextExpandsContractNeighborAndPreservesEvidence(t *testing.T) {
+	s := model.Snapshot{Nodes: []model.Node{{ID: "field", Name: "price", Provenance: model.Provenance{Path: "schema.json", Evidence: model.VerifiedStatic}}, {ID: "client", Name: "display", Provenance: model.Provenance{Path: "client.ts", Evidence: model.VerifiedStatic}}}, Edges: []model.Edge{{ID: "consumes", From: "client", To: "field", Kind: "CONSUMES", Provenance: model.Provenance{Evidence: model.VerifiedStatic}}}}
+	c := GroundedContext("price", s)
+	if len(c.Matches) != 2 || c.Matches[1].Entity != "client" || c.Matches[1].Score != 0 || len(c.Relationships) != 1 || !strings.Contains(c.Matches[1].Explanation, "unverified") {
+		t.Fatal(c)
+	}
+	if s.Edges[0].Provenance.Evidence != model.VerifiedStatic {
+		t.Fatal("mutated provenance")
 	}
 }

@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/contracts"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/contracts"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func contractCommand(command string) func(*app, options) int {

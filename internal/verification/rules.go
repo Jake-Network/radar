@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/contracts"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/jsonptr"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/contracts"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 func evaluate(ctx context.Context, id string, rule *planning.Rule, s model.Snapshot, root string) planning.Check {

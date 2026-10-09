@@ -6,15 +6,15 @@ import (
 	"io"
 	"time"
 
-	"github.com/radar-engine/radar/internal/project"
+	"github.com/Jake-Network/radar/internal/project"
 )
 
 type options struct {
-	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence string
-	reverse, allow, projected, strict, summary                                                  bool
-	depth, limit                                                                                int
-	timeout                                                                                     time.Duration
-	args                                                                                        []string
+	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence, agent string
+	reverse, allow, projected, strict, summary, dryRun, hook, verify                                   bool
+	depth, limit                                                                                       int
+	timeout                                                                                            time.Duration
+	args                                                                                               []string
 }
 
 // command describes one subcommand: only its own flags are accepted.
@@ -39,6 +39,10 @@ var commands []command
 
 func init() {
 	commands = []command{
+		checkCommand(),
+		setupCommand(),
+		discoveryCommand(),
+		mergeCheckCommand(),
 		{name: "init", usage: "radar init", summary: "Create .radar state for this repository (linked worktrees share the main worktree's state).",
 			run: func(a *app, _ options) int {
 				if e := project.Init(a.root); e != nil {

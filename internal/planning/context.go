@@ -2,7 +2,7 @@
 package planning
 
 import (
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 	"sort"
 	"strings"
 	"unicode"
@@ -66,7 +66,7 @@ func GroundedContext(intent string, s model.Snapshot) *Context {
 	for _, m := range c.Matches {
 		matched[m.Entity] = true
 	}
-	// Files that import, or are imported by, a matched file are likely in scope.
+	// Expand one evidence-backed hop; these links describe static structure, not runtime behavior.
 	files := map[string]bool{}
 	for _, m := range c.Matches {
 		if m.Evidence.Path != "" {
@@ -75,19 +75,21 @@ func GroundedContext(intent string, s model.Snapshot) *Context {
 	}
 	related := map[string]bool{}
 	for _, edge := range s.Edges {
-		if edge.Kind != "DEPENDS_ON" {
+		if edge.Kind != "DEPENDS_ON" && edge.Kind != "CONSUMES" && edge.Kind != "EXPOSES" {
 			continue
 		}
-		if files[edge.From] && !matched[edge.To] {
+		if (files[edge.From] || matched[edge.From]) && !matched[edge.To] {
 			related[edge.To] = true
 		}
-		if files[edge.To] && !matched[edge.From] {
+		if (files[edge.To] || matched[edge.To]) && !matched[edge.From] {
 			related[edge.From] = true
 		}
 	}
-	for _, n := range s.Nodes {
+	orderedNodes := append([]model.Node(nil), s.Nodes...)
+	sort.Slice(orderedNodes, func(i, j int) bool { return orderedNodes[i].ID < orderedNodes[j].ID })
+	for _, n := range orderedNodes {
 		if related[n.ID] && len(c.Matches) < 100 {
-			c.Matches = append(c.Matches, ContextMatch{Entity: n.ID, Score: 0, Explanation: "Imports or is imported by a matched file (inferred path resolution); relevance unverified.", Evidence: n.Provenance})
+			c.Matches = append(c.Matches, ContextMatch{Entity: n.ID, Score: 0, Explanation: "One-hop import or declared contract neighbor; inspect relationship provenance; runtime relevance unverified.", Evidence: n.Provenance})
 			matched[n.ID] = true
 		}
 	}

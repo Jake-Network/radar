@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"strings"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func Impact(ctx context.Context, root, base, head string) (Report, error) {

@@ -6,11 +6,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/checkpoint"
-	"github.com/radar-engine/radar/internal/contracts"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/graph"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/checkpoint"
+	"github.com/Jake-Network/radar/internal/contracts"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/graph"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 type affectedFile struct {
@@ -41,20 +41,20 @@ type affectedReport struct {
 // affected follows inferred DEPENDS_ON edges backwards from changed files in
 // both the base and head graphs, so removed or renamed files still reach the
 // files that imported them.
-func (a *app) affected(o options) int {
+func (a *app) affectedReport(o options) (affectedReport, error) {
 	if o.base == "" {
-		return a.fail(errors.New("--base is required"))
+		return affectedReport{}, errors.New("--base is required")
 	}
 	if e := a.repository(); e != nil {
-		return a.fail(e)
+		return affectedReport{}, e
 	}
 	changed, e := gitrepo.ChangedFiles(a.ctx, a.root, o.base, o.head)
 	if e != nil {
-		return a.fail(e)
+		return affectedReport{}, e
 	}
 	base, e := checkpoint.Index(a.ctx, a.root, o.base)
 	if e != nil {
-		return a.fail(e)
+		return affectedReport{}, e
 	}
 	head := base
 	if o.head == "WORKTREE" {
@@ -63,12 +63,14 @@ func (a *app) affected(o options) int {
 		head, e = checkpoint.Index(a.ctx, a.root, o.head)
 	}
 	if e != nil {
-		return a.fail(e)
+		return affectedReport{}, e
 	}
 	r := affectedReport{Base: base.Revision, Head: o.head, Changed: changed, Affected: []affectedFile{}, Contracts: []affectedContract{}, Evidence: model.Inferred, Diagnostics: []model.Diagnostic{}}
 	if o.head != "WORKTREE" {
 		r.Head = head.Revision
 	}
+	r.Diagnostics = append(r.Diagnostics, base.Diagnostics...)
+	r.Diagnostics = append(r.Diagnostics, head.Diagnostics...)
 	isChanged := map[string]bool{}
 	for _, p := range changed {
 		isChanged[p] = true
@@ -77,7 +79,7 @@ func (a *app) affected(o options) int {
 	for _, s := range []model.Snapshot{base, head} {
 		g, e := graph.New(s)
 		if e != nil {
-			return a.fail(e)
+			return affectedReport{}, e
 		}
 		for _, p := range changed {
 			if _, ok := g.Nodes[model.FileID(p)]; !ok {
@@ -134,7 +136,7 @@ func (a *app) affected(o options) int {
 	if o.plan != "" {
 		p, e := a.loadPlan(o.plan)
 		if e != nil {
-			return a.fail(e)
+			return affectedReport{}, e
 		}
 		bindings := map[string]contracts.Binding{}
 		for _, b := range m.Bindings {
@@ -164,6 +166,14 @@ func (a *app) affected(o options) int {
 				r.Tasks = append(r.Tasks, affectedTask{ID: t.ID, Paths: list})
 			}
 		}
+	}
+	return r, nil
+}
+
+func (a *app) affected(o options) int {
+	r, err := a.affectedReport(o)
+	if err != nil {
+		return a.fail(err)
 	}
 	a.report(r, func(w io.Writer) { renderAffected(w, r) })
 	return 0

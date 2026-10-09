@@ -13,7 +13,11 @@ Verified locally on 2026-10-09 with Go 1.26.8, linux/amd64 (WSL workspace). Rada
 | 4 Agent and team workflow (0.2) | Complete for the scenarios below | Location-independent IDs, worktree-shared state and evidence, inferred import dependencies, `affected`, robust contract comparison, environment-error classification, more harnesses, assumption lifecycle, MCP server and Claude Code/GitHub integrations |
 | 5 Expansion | Deferred | Compiler semantics, SCIP, tsconfig aliases, Protobuf, incremental parsing, large-repository optimization and interactive visualization |
 
-## Executed checks
+## Historical v0.2 validation snapshot
+
+The checks and live-agent results below describe the prior implementation snapshot; they are not fresh live-agent or hosted-CI claims for the current milestone.
+
+### Executed checks
 
 - `go test ./...`: **127 passed test/subtest cases across 16 tested packages**, zero failures or skips. The entry point has no standalone tests.
 - `go test -race ./...`, `go vet ./...`, `gofmt -l cmd internal` (empty): passed.
@@ -58,6 +62,26 @@ Other covered behavior: import resolution for all four languages (`TestImportRes
 - Indexing replaces full snapshots and retains commit versions; the newest ten working-tree snapshots are kept per repository. Limits: 2 MiB per source file, 64 MiB aggregate source and 10,000 source files; exceeding the budget yields one repository-wide diagnostic and a partial index.
 - Native Linux amd64 is the tested distribution target. Windows/macOS native builds, hosted CI runs and public distribution need their own execution evidence. `.github/workflows/ci.yml` has run under `act`, not yet on a hosted GitHub runner.
 
-## Next development milestone
+## Current agent-native milestone
 
-Optional TypeScript/Python semantic adapters and SCIP ingestion, tsconfig `paths` and workspace-aware resolution, preserving structural support, explicit uncertainty and all regression scenarios. Establish representative large-repository benchmarks before making performance claims or redesigning incremental storage.
+Working slices now add project-local `setup`, manifest-free `check`, conservative
+`discover`, private combined-source `merge-check`, opt-in recognized test
+observations with exact candidate evidence, read-only MCP integration tools,
+planning ownership/integration warnings, bounded repair guidance, module-path
+alignment and unpublished Linux release artifacts. The implementation plan and
+trade-offs are in [the inspected plan](plans/AGENT_NATIVE_MILESTONE.md).
+
+Current validation results are recorded in [the milestone report](MILESTONE_REPORT.md).
+The [central demo](INTEGRATION_DEMO.md) proves independently passing branches can
+merge textually yet fail combined verification, then pass after repair. A passing
+observed command does not make the entire integration report complete.
+
+Remaining scope: compiler semantics, runtime transport validation, imported
+Python response models, broad TS client patterns, automated suite recommendation,
+semantic contradiction detection in architecture prose, large-monorepo evidence,
+multi-platform published binaries and signing. Existing plan/manifest/evidence
+formats remain readable; combined evidence is a separate metadata format.
+
+Next: expand scoped producer/consumer resolution and recommend plan-declared
+integration suites while preserving explicit execution authorization. See
+[performance measurements](PERFORMANCE.md) before planning cache redesign.

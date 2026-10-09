@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/languages"
-	"github.com/radar-engine/radar/internal/project"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/languages"
+	"github.com/Jake-Network/radar/internal/project"
 )
 
 func (a *app) doctor(_ options) int {

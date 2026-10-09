@@ -7,7 +7,12 @@ mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 cd "$project_dir"
 platform="$(go env GOOS)_$(go env GOARCH)"
+if [[ "$platform" != linux_amd64 || "$(go env CGO_ENABLED)" != 1 || "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
+    printf 'Supported release target is native Linux amd64 with CGO_ENABLED=1; got %s.\n' "$platform" >&2
+    exit 1
+fi
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/radar-release.XXXXXX")
+trap 'rm -rf "$package_dir"' EXIT
 stage="$package_dir/radar-$platform"
 mkdir -p "$stage/licenses"
 go build -trimpath -buildvcs=false -ldflags=-buildid= -o "$stage/radar" ./cmd/radar

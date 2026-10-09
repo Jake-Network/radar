@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/jsonptr"
 	"gopkg.in/yaml.v3"
 )
 

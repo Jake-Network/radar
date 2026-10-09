@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	goGrammar "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	jsGrammar "github.com/tree-sitter/tree-sitter-javascript/bindings/go"

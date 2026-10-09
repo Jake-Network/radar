@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/checkpoint"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/project"
-	"github.com/radar-engine/radar/internal/storage"
+	"github.com/Jake-Network/radar/internal/checkpoint"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/project"
+	"github.com/Jake-Network/radar/internal/storage"
 )
 
 const Version = "0.2.0"

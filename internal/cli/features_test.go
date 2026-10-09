@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 func run(t *testing.T, root string, args ...string) (int, string, string) {

@@ -1,8 +1,8 @@
 package verification
 
 import (
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 	"reflect"
 )
 

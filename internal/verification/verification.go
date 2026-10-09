@@ -3,11 +3,11 @@ package verification
 
 import (
 	"context"
-	"github.com/radar-engine/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/evidence"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 // VerifyWithEvidence reads the implementation revision, while approval remains
@@ -30,7 +30,9 @@ func VerifyWithEvidence(ctx context.Context, p planning.Plan, s model.Snapshot, 
 		r.Checks = append(r.Checks, c)
 		if c.Status == model.StatusFailed {
 			r.Status = model.StatusFailed
-		} else if c.Status == model.StatusUnknown && r.Status == model.StatusPassed {
+		} else if (c.Status == model.StatusError || c.Status == model.StatusTimeout) && r.Status != model.StatusFailed {
+			r.Status = c.Status
+		} else if (c.Status == model.StatusUnknown || c.Status == model.StatusIncomplete || c.Status == model.StatusBlocked) && r.Status == model.StatusPassed {
 			r.Status = model.StatusUnknown
 		}
 		if c.Status != model.StatusPassed {

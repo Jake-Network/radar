@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 func fixture(t *testing.T, files map[string]string) string {

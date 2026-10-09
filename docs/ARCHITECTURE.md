@@ -18,7 +18,7 @@ References: [upstream Go bindings](https://github.com/tree-sitter/go-tree-sitter
 
 Explicit JSON OpenAPI/JSON Schema documents and consumer bindings provide a reproducible cross-language boundary. Compatibility findings are directional and bounded to implemented checks, never arbitrary HTTP tracing. Plans carry requirements, decisions, constraints, deltas, tasks, dependencies, acceptance and verification. A DAG scheduler rejects missing dependencies, cycles and concurrent ownership overlap. Agent reasoning supplies unresolved design choices; deterministic planning only creates evidence context and incomplete fields.
 
-Git operations are read-only with bounded subprocess contexts. Committed refs are stable checkpoints; working-tree observations are informational. Verification checks approved deltas and supported explicit rules, preserving unknown when coverage is absent.
+The shared Git inspection package is read-only with bounded subprocess contexts. Integration preview performs Git merges only in a private repository with copied objects, never shared writable Git state. Committed refs are stable checkpoints; working-tree observations are informational. Verification checks approved deltas and supported explicit rules, preserving unknown when coverage is absent.
 
 Preflight analyzes current content to detect stale baselines. Graph filters return closed subgraphs, including only edges whose endpoints are selected. Missing entities in incomplete indexes remain unknown rather than proving removal or failure.
 
@@ -65,6 +65,16 @@ and head graphs and maps the result to contract bindings and plan tasks.
 
 Task reports and structured feedback are coordination artifacts, not a process
 controller. Contract ownership and DAG eligibility guide parallel work; Radar does
-not launch agents, send external messages or apply Git integration operations.
+not launch agents, send external messages or modify user branches.
 
 `planning.IntentGraph` connects requirements, decisions, constraints, tasks, acceptance and verification rules to indexed components and contracts with proposed relationships. CLI `graph --plan` exports this view; `--projected` applies explicit graph deltas. Static source provenance remains separate. Finding identities include repository, analyzed revision and plan digest so later reports cannot replace earlier branch evidence under the same ID.
+
+## Onboarding, discovery and combined verification
+
+`onboarding` embeds agent assets in the binary and prepares project-local configuration changes before writing. Dry runs and conflict detection preserve existing user settings. Setup never writes home configuration.
+
+`discovery` reads bounded regular files, uses Tree-sitter declaration/member evidence alongside narrow static patterns, and proposes endpoint/model/imported-type/field candidates. Provenance separates observed syntax from inferred transport relationships. Proposed manifests are output for review, not persisted as accepted contracts.
+
+`integration` resolves ordered input commits, transfers objects into a private Git repository, applies Git merge semantics there and analyzes the exact combined candidate. It rejects unsafe paths, symlinks and submodules. Repository hooks and external Git configuration are disabled. Execution is explicit opt-in with host permissions, not an OS sandbox. Integration evidence records input revisions, candidate commit/tree, command and optional plan digest, with output digests rather than raw output. Branch evidence is never consumed as integrated evidence. Temporary candidate state is removed on return. Default preview and verification write no files into the original repository; `--evidence-output .radar/evidence/candidate.json` explicitly saves structured metadata to a new path.
+
+`check` composes affected-file analysis, explicit and discovered contract comparison, manifest lint and optional plan verification. Each coverage check retains its own status. Unknown architecture, semantic or execution properties cannot be promoted by a successful Git merge or empty finding list. Read-only MCP exposes check/discovery/merge preview and excludes execution authorization and review declarations.

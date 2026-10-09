@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/radar-engine/radar/internal/pathutil"
+	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
 // MaxFileBytes bounds a single file or small command output.
@@ -55,14 +55,14 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 // Caller Git overrides could otherwise redirect reads, inject config, or
 // replace objects.
 func command(ctx context.Context, root string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager", "-c", "core.fsmonitor=false"}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager", "-c", "core.fsmonitor=false", "-c", "protocol.allow=never"}, args...)...)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		if !strings.HasPrefix(strings.ToUpper(key), "GIT_") {
 			cmd.Env = append(cmd.Env, entry)
 		}
 	}
-	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_NO_LAZY_FETCH=1")
 	return cmd
 }
 

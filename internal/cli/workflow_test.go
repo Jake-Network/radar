@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/planning"
 	"os/exec"
 	"testing"
 )

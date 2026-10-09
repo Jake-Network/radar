@@ -4,7 +4,7 @@ package planning
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/model"
 	"strings"
 )
 
@@ -13,12 +13,16 @@ func Validate(p Plan, s model.Snapshot) Report {
 	add := func(code, msg string, severity model.Severity) {
 		evidence := model.VerifiedStatic
 		switch code {
-		case "unresolved_assumption", "incomplete_design", "unknown_component", "unresolved_consumer", "unverified_criterion", "requirement_verification":
+		case "component_owner_conflict", "integration_verification_missing", "unresolved_assumption", "incomplete_design", "unknown_component", "unresolved_consumer", "unverified_criterion", "requirement_verification":
 			evidence = model.Unknown
 		}
 		f := model.NewFinding(code, msg, evidence)
 		f.ID = model.StableID(s.Repository, r.PlanDigest, s.Revision, code, msg)
 		f.Severity = severity
+		f.Remediation = nextStepHints[code]
+		if f.Remediation != "" {
+			f.Verification = "Run radar preflight again against the same baseline after repair; implementation checks still require radar check and exact-state test evidence."
+		}
 		r.Findings = append(r.Findings, f)
 		if severity == model.SeverityError {
 			r.Status = model.StatusFailed
@@ -153,6 +157,36 @@ func Validate(p Plan, s model.Snapshot) Report {
 	}
 	for i, a := range p.Tasks {
 		for _, b := range p.Tasks[i+1:] {
+			ordered := depends(a.ID, b.ID, map[string]bool{}) || depends(b.ID, a.ID, map[string]bool{})
+			if !ordered {
+				for _, component := range a.Components {
+					for _, other := range b.Components {
+						if component == other {
+							add("component_owner_conflict", fmt.Sprintf("unordered tasks %s and %s both declare component %s; write compatibility is unproven", a.ID, b.ID, component), model.SeverityWarning)
+						}
+					}
+				}
+				// Separate passing test commands cannot establish their combined behavior.
+				separateTests := false
+				sharedTest := false
+				for _, ac := range a.Acceptance {
+					ca := criteria[ac]
+					for _, bc := range b.Acceptance {
+						cb := criteria[bc]
+						if ca.Rule == nil || cb.Rule == nil || ca.Rule.Kind != "test_run" || cb.Rule.Kind != "test_run" {
+							continue
+						}
+						if ac == bc {
+							sharedTest = true
+						} else {
+							separateTests = true
+						}
+					}
+				}
+				if separateTests && !sharedTest {
+					add("integration_verification_missing", fmt.Sprintf("parallel tasks %s and %s declare separate test criteria without a shared integration criterion; combined behavior remains unknown", a.ID, b.ID), model.SeverityWarning)
+				}
+			}
 			for _, c := range a.Contracts {
 				for _, d := range b.Contracts {
 					if c == d && !depends(a.ID, b.ID, map[string]bool{}) && !depends(b.ID, a.ID, map[string]bool{}) {
@@ -266,6 +300,8 @@ func assumptionLabel(a Assumption) string {
 }
 
 var nextStepHints = map[string]string{
+	"component_owner_conflict":         "Assign one owner to shared components, split ownership at resolvable symbols, or order the tasks with depends_on.",
+	"integration_verification_missing": "Declare a shared test_run acceptance criterion and run it against the exact combined source state using radar merge-check --verify --allow-execution.",
 	"stale_context":                    "Re-index and regenerate context, or set base_revision to the analyzed revision (`radar index --ref SHA`).",
 	"incomplete_design":                "Fill the missing design fields, then remove them from `incomplete`.",
 	"unresolved_assumption":            "Investigate each open assumption; set status to `resolved` (with evidence) or `accepted` (with the risk owner's rationale) in `resolution`.",

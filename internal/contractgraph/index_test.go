@@ -2,8 +2,8 @@ package contractgraph
 
 import (
 	"context"
-	"github.com/radar-engine/radar/internal/graph"
-	"github.com/radar-engine/radar/internal/indexer"
+	"github.com/Jake-Network/radar/internal/graph"
+	"github.com/Jake-Network/radar/internal/indexer"
 	"os"
 	"path/filepath"
 	"testing"

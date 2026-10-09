@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/jsonptr"
-	"github.com/radar-engine/radar/internal/pathutil"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
 // ManifestPath is the committed location of explicit contract bindings.

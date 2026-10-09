@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -36,8 +37,11 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
+	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "fail when coverage is incomplete", false)}},
+	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true)}},
+	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
 	{"radar_doctor", "doctor", "Report Radar capabilities, repository identity and state location.", nil},
-	{"radar_init", "init", "Create .radar state in the repository (required once before other tools).", nil},
+	{"radar_init", "init", "Create .radar state in the repository (required by legacy stateful tools).", nil},
 	{"radar_index", "index", "Index source declarations, inferred file dependencies and explicit contracts; returns counts and diagnostics (query entities with radar_resolve/radar_graph). Omit ref for the working tree.", []toolParam{p("ref", "ref", "string", "Git commit/branch to index", false)}},
 	{"radar_resolve", "resolve", "Find entity IDs for a name, file path or path#Qualified.Name. Use the IDs in plan components and graph queries.", []toolParam{p("query", "", "string", "name, path or path#Qualified.Name", true), p("kind", "kind", "string", "restrict to a node kind (file, function, class, type, ...)", false), p("limit", "limit", "integer", "maximum results", false)}},
 	{"radar_graph", "graph", "Query the indexed graph. Use from+edge=DEPENDS_ON+reverse=true to find files that import a file.", []toolParam{p("kind", "kind", "string", "node kind", false), p("name", "name", "string", "name substring", false), p("from", "from", "string", "start entity ID", false), p("edge", "edge", "string", "edge kind (DEFINES, IMPORTS, DEPENDS_ON, CONSUMES, EXPOSES)", false), p("reverse", "reverse", "boolean", "follow edges backwards", false), p("depth", "depth", "integer", "maximum traversal depth", false), p("ref", "ref", "string", "Git checkpoint", false), p("plan", "plan", "string", "overlay a plan's intent graph", false)}},
@@ -79,6 +83,9 @@ func (t toolSpec) args(arguments map[string]any) ([]string, error) {
 		var text string
 		switch v := value.(type) {
 		case string:
+			if param.kind != "string" {
+				return nil, fmt.Errorf("argument %s must be a %s", param.name, param.kind)
+			}
 			text = v
 		case bool:
 			if param.kind != "boolean" {
@@ -89,6 +96,9 @@ func (t toolSpec) args(arguments map[string]any) ([]string, error) {
 			}
 			continue
 		case float64:
+			if param.kind != "integer" || math.Trunc(v) != v || math.IsInf(v, 0) || math.IsNaN(v) {
+				return nil, fmt.Errorf("argument %s must be an integer", param.name)
+			}
 			text = strconv.FormatFloat(v, 'f', -1, 64)
 		default:
 			return nil, fmt.Errorf("argument %s has unsupported type", param.name)

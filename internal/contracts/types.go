@@ -1,6 +1,6 @@
 package contracts
 
-import "github.com/radar-engine/radar/internal/model"
+import "github.com/Jake-Network/radar/internal/model"
 
 type Binding struct {
 	ID        string   `json:"id"`

@@ -10,14 +10,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 func invoke(t *testing.T, root string, want int, args ...string) map[string]any {
 	t.Helper()
 	var out, errs bytes.Buffer
-	all := append(append([]string{}, args...), "--root", root, "--json")
+	all := append([]string{"--root", root, "--json"}, args...)
 	code := Run(context.Background(), all, &out, &errs)
 	if code != want {
 		t.Fatalf("%v: exit %d want %d\n%s\n%s", args, code, want, out.String(), errs.String())

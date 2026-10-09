@@ -1,0 +1,33 @@
+name: Prepare native release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-amd64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: bash scripts/install-release-test.sh
+      - name: Package native CGO binary and dependency notices
+        run: bash scripts/release.sh "$RUNNER_TEMP/radar-release"
+      - name: Validate packaged executable and runtime libraries
+        run: |
+          tar -xzf "$RUNNER_TEMP/radar-release/radar-linux_amd64.tar.gz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/radar-linux_amd64/radar" version
+          ldd "$RUNNER_TEMP/radar-linux_amd64/radar"
+          bash examples/organization/demo.sh "$RUNNER_TEMP/radar-linux_amd64/radar"
+          bash examples/verification/demo.sh "$RUNNER_TEMP/radar-linux_amd64/radar"
+          bash examples/integration/demo.sh "$RUNNER_TEMP/radar-linux_amd64/radar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-linux_amd64
+          path: ${{ runner.temp }}/radar-release/*
+          if-no-files-found: error

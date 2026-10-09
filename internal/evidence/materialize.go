@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/pathutil"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
 const (

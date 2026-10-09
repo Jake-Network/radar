@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/languages"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/languages"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 // resolver maps import specifiers to repository files using each language's

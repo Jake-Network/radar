@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/pathutil"
-	"github.com/radar-engine/radar/internal/planning"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/pathutil"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 // execution is the part of a test_run rule that shapes how the command runs.

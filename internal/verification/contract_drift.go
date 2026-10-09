@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/radar-engine/radar/internal/contracts"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/jsonptr"
-	"github.com/radar-engine/radar/internal/model"
-	"github.com/radar-engine/radar/internal/pathutil"
-	"github.com/radar-engine/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/contracts"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/pathutil"
+	"github.com/Jake-Network/radar/internal/planning"
 )
 
 // VerifyContracts compares explicitly bound contract objects, including additive

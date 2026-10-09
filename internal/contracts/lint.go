@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/model"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 // BindingCheck reports whether one binding can be analyzed and still matches

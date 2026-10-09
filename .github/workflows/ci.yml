@@ -20,5 +20,9 @@ jobs:
         run: bash examples/organization/demo.sh /tmp/radar
       - name: Committed verification demo
         run: bash examples/verification/demo.sh /tmp/radar
+      - name: Combined integration demo
+        run: bash examples/integration/demo.sh /tmp/radar
+      - name: Offline binary installer checks
+        run: bash scripts/install-release-test.sh
       - name: Native release packaging
         run: bash scripts/release.sh /tmp/radar-release

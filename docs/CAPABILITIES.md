@@ -29,8 +29,7 @@ Annotations are ignored. Several structured alternatives, `not`,
 conditionals, tuple items and external references are not analyzed: unchanged
 they are ignored, changed they are reported as unanalyzed and the report
 status is `incomplete`. It is not a complete OpenAPI compatibility
-implementation. Protobuf, automatic FastAPI schema extraction and
-network-call tracing are unavailable. Consumer field dependencies are
+implementation. Protobuf, runtime FastAPI schema generation and network-call tracing are unavailable. Static candidates are described in [discovery](DISCOVERY.md). Consumer field dependencies are
 declarations, not verified runtime access; `radar contracts` flags declared
 fields that do not appear in the consumer source (a lexical check).
 
@@ -38,7 +37,7 @@ Plans support requirements, decisions, constraints, contract and graph deltas,
 tasks, DAG ordering, contract ownership conflicts, acceptance criteria and
 assumptions with an open/accepted/resolved lifecycle. Preflight returns
 `next_steps`. Without a reasoning agent, `radar plan` creates grounded context
-(lexical matches plus their import neighbours) and labels design fields
+(lexical matches plus import and explicit contract neighbours) and labels design fields
 incomplete. It does not invent an architecture.
 
 Verification rules check file existence, JSON/YAML properties, indexed graph
@@ -72,7 +71,7 @@ review declarations are not exposed. `radar_index` returns counts and
 diagnostics (`index --summary`) and tool output is capped at 40,000 bytes.
 
 Native-host release packaging includes dependency notices and checksums;
-published releases and signing are not configured. Initial execution evidence
+a manual artifact preparation workflow and checksum installer are available; no release was published by this milestone. Signing is not configured. Initial execution evidence
 covers linux/amd64. Windows/macOS builds and release binaries are not yet
 validated. Indexing retains transactional full snapshots; incremental parsing
 and source-specific semantic reference resolution are deferred.
@@ -85,3 +84,13 @@ removed request enum value are breaking. Response enum additions and request
 property removals are risks. Missing direction makes every change a risk.
 Strict approved-design drift still reports unplanned changes even when
 schema-compatible.
+
+## Agent-native integration milestone
+
+- `setup --agent codex|claude|both [--dry-run] [--hook]`: project-local embedded skills, MCP and optional Claude Stop hook. Existing conflicting Radar configuration is refused; unrelated settings remain. Agent trust/restart and placing radar on PATH may require manual action.
+- `check --base REF [--head REF|WORKTREE] [--plan PATH] [--require-complete]`: changed files, inferred reverse dependencies, explicit contract comparison, static discovered candidate comparison and optional plan criteria. No initialization or manifest required; absent coverage is incomplete/unknown. No code executes.
+- `discover [--ref REF]`: inspect static candidate relationships and a proposed manifest. Discovery never accepts bindings automatically and never establishes runtime compatibility.
+- `merge-check --base REF --branches REF,REF`: Git's combined candidate in private state, textual conflicts, contract and dependency analysis. `--verify --allow-execution -- COMMAND ARGS` observes only that supplied command. Missing tools/results remain environment errors/unknown, branch test results cannot establish combined success. Exact candidate evidence is separate from historical plan evidence.
+- MCP offers read-only equivalents. Bounded agent repair guidance uses finding IDs, evidence, source locations, remediation and required revalidation. Planning warns about unordered component ownership and missing shared integration criteria; shared criteria do not establish test quality.
+
+Initial preview rejects symlink/submodule trees instead of implementing their trust and materialization semantics. Branch order is explicit; merge order can change the candidate. Analysis coverage remains incomplete even when the authorized tests pass. There is no automatic command selection, dependency installation, autonomous retries or secure execution sandbox.

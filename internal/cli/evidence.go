@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/radar-engine/radar/internal/evidence"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func (a *app) test(o options) int {

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/indexer"
-	"github.com/radar-engine/radar/internal/model"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/indexer"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func repository(t *testing.T) (string, func(...string)) {

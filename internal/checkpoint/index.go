@@ -5,10 +5,10 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/radar-engine/radar/internal/contractgraph"
-	gitrepo "github.com/radar-engine/radar/internal/git"
-	"github.com/radar-engine/radar/internal/indexer"
-	"github.com/radar-engine/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/contractgraph"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/indexer"
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 // Index pins ref once and parses the committed tree with the same rules as the
