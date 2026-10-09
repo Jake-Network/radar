@@ -198,6 +198,15 @@ func Identity(ctx context.Context, root string) string {
 	return "git:" + strings.Join(roots, "+")
 }
 
+// TopLevel returns the top-level directory of the working tree containing dir.
+func TopLevel(ctx context.Context, dir string) (string, error) {
+	b, err := run(ctx, dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(strings.TrimSpace(string(b))), nil
+}
+
 // CommonDir returns the absolute Git common directory shared by all worktrees.
 func CommonDir(ctx context.Context, root string) (string, error) {
 	b, err := run(ctx, root, "rev-parse", "--git-common-dir")
