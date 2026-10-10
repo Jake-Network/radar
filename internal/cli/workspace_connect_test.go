@@ -160,6 +160,96 @@ func TestWorkspaceConnectRefusesSymlinkState(t *testing.T) {
 	}
 }
 
+func TestWorkspaceConnectIgnoresUnavailableRegistryOnlyRepo(t *testing.T) {
+	s := newShop(t)
+	s.register()
+	put(t, s.orders, "openapi.json", connectSchema)
+	invoke(t, s.orders, 0, connectArgs("first-response")...)
+	dir, err := workspace.ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing-repo")
+	if err = workspace.Update(dir, func(reg *workspace.Registry) error {
+		reg.Workspaces[0].Repos = append(reg.Workspaces[0].Repos, workspace.Repo{ID: "unused", Path: missing, CommonDir: filepath.Join(missing, ".git")})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	invoke(t, s.orders, 0, connectArgs("second-response")...)
+	b, err := os.ReadFile(filepath.Join(s.orders, workspace.TeamPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, err := workspace.ParseTeam(b)
+	if err != nil || len(team.Repos) != 2 || len(team.Links) != 2 {
+		t.Fatalf("connect changed team membership or lost links: %+v %v", team, err)
+	}
+	reg, err := workspace.Load(dir)
+	if err != nil || len(reg.Workspaces[0].Repos) != 3 {
+		t.Fatalf("connect changed registry-only membership: %+v %v", reg, err)
+	}
+}
+
+func TestWorkspaceConnectBoundsDefaultIDForLongRepoIDs(t *testing.T) {
+	s := newShop(t)
+	s.register()
+	put(t, s.orders, "openapi.json", connectSchema)
+	producerID := "orders-" + strings.Repeat("a", workspace.MaxIDLength-len("orders-"))
+	consumerID := "payments-" + strings.Repeat("b", workspace.MaxIDLength-len("payments-"))
+	dir, err := workspace.ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = workspace.Update(dir, func(reg *workspace.Registry) error {
+		for i := range reg.Workspaces[0].Repos {
+			r := &reg.Workspaces[0].Repos[i]
+			if r.ID == "orders" {
+				r.ID = producerID
+			} else if r.ID == "payments" {
+				r.ID = consumerID
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"workspace", "connect", producerID + ":openapi.json#", consumerID, "--fields", "total", "--direction", "response"}
+	invoke(t, s.orders, 0, args...)
+	invoke(t, s.orders, 0, args...) // Same generated ID updates, rather than adding a duplicate.
+	args[len(args)-1] = "request"
+	invoke(t, s.orders, 0, args...) // Distinct long inputs must retain distinct IDs.
+	b, err := os.ReadFile(filepath.Join(s.orders, workspace.TeamPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, err := workspace.ParseTeam(b)
+	if err != nil || len(team.Links) != 2 {
+		t.Fatalf("default IDs were unstable or collided: %+v %v", team, err)
+	}
+	for _, link := range team.Links {
+		if err := workspace.ValidID(link.ID); err != nil {
+			t.Fatal(err)
+		}
+		if link.Producer != producerID+":openapi.json#" || link.Consumer != consumerID {
+			t.Fatalf("bounded ID changed link endpoints: %+v", link)
+		}
+	}
+	b, err = os.ReadFile(filepath.Join(s.payments, workspace.ConsumesPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumes, err := workspace.ParseConsumes(b)
+	if err != nil || len(consumes.Consumes) != 2 {
+		t.Fatalf("consumer IDs were unstable or collided: %+v %v", consumes, err)
+	}
+	for _, consume := range consumes.Consumes {
+		if consume.Contract != team.Links[0].ID && consume.Contract != team.Links[1].ID {
+			t.Fatalf("consumer expectation has mismatched generated ID: %+v", consume)
+		}
+	}
+}
+
 func connectText(t *testing.T, root string, args ...string) string {
 	t.Helper()
 	var out, errs bytes.Buffer
