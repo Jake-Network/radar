@@ -123,9 +123,20 @@ func TestWorkspaceStage2TeamMembershipAndBaseOverride(t *testing.T) {
 	team := workspace.TeamFile{Version: 1, Repos: []workspace.TeamRepo{{ID: "orders", Identity: gitrepo.Identity(context.Background(), s.orders)}, {ID: "unknown", Identity: gitrepo.Identity(context.Background(), extra)}}}
 	data, _ := json.Marshal(team)
 	s.commit(s.orders, map[string]string{workspace.TeamPath: string(data)})
+	// A team repo that is not registered here is that repo's error; the
+	// registered repos are still checked.
 	code, missing := gateJSON(t, s.orders, "orders:agent/api")
-	if code != 2 || !strings.Contains(missing["next"].(string), "radar workspace add <PATH> --id unknown") {
+	unknown := repoOf(t, missing, "unknown")
+	if code != 2 || unknown["verdict"] != "error" || !strings.Contains(unknown["next"].(string), "radar workspace add <NEW PATH> --id unknown") || repoOf(t, missing, "orders")["verdict"] != "pass" {
 		t.Fatal(code, missing)
+	}
+	checkStage2Schema(t, missing)
+	if code, _ := gateJSON(t, s.orders, "--only", "orders", "orders:agent/api"); code != 0 {
+		t.Fatal("--only orders with an unregistered team repo", code)
+	}
+	show := invoke(t, s.orders, 0, "workspace", "show")
+	if len(show["repos"].([]any)) != 2 {
+		t.Fatal("workspace show must list the unregistered team repo", show)
 	}
 }
 
@@ -230,5 +241,41 @@ func TestWorkspaceStage2SuggestedLinksDoNotAffectVerdict(t *testing.T) {
 	json.Unmarshal(data, &full)
 	if len(full["suggested_links"].([]any)) != 4 {
 		t.Fatal(full)
+	}
+}
+
+func TestWorkspaceStage2WarningLinkIsCheckedAndPasses(t *testing.T) {
+	s := stage2Shop(t)
+	data, _ := os.ReadFile(filepath.Join(s.orders, workspace.TeamPath))
+	team, err := workspace.ParseTeam(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Without a direction a changed consumed field is only an inferred risk.
+	team.Links[0].Direction = ""
+	data, _ = json.Marshal(team)
+	s.commit(s.orders, map[string]string{workspace.TeamPath: string(data)})
+	s.agent(s.orders, "agent/retype", map[string]string{"openapi.json": `{"type":"object","properties":{"total":{"type":"string"},"status":{"type":"string"}}}`})
+	code, report := gateJSON(t, s.orders, "orders:agent/retype")
+	link := report["links"].([]any)[0].(map[string]any)
+	if code != 0 || report["verdict"] != "pass" || link["status"] != "warning" || report["cross_repo"].(map[string]any)["status"] != "passed" || !strings.Contains(report["scope_summary"].(string), "1/1 cross-repo links checked") {
+		t.Fatal(code, report["verdict"], link["status"], report["cross_repo"], report["scope_summary"])
+	}
+	checkStage2Schema(t, report)
+	_, text, _ := run(t, s.orders, "gate", "orders:agent/retype")
+	if !strings.Contains(text, "✓ link order-response  orders → payments (warning: ") || strings.Contains(text, "link order-response  not checked") {
+		t.Fatal(text)
+	}
+}
+
+func TestWorkspaceStage2OnlyOutsideWorkspaceAndDuplicates(t *testing.T) {
+	s := newShop(t)
+	if code, _, errs := run(t, s.orders, "gate", "--only", "orders"); code != 2 || !strings.Contains(errs, "--only limits a workspace run, but this repository is not in a workspace") {
+		t.Fatal("--only outside a workspace", code, errs)
+	}
+	s.register()
+	_, report := gateJSON(t, s.orders, "--only", "orders", "--only", "orders")
+	if only := report["only"].([]any); len(only) != 1 || report["selection"].(map[string]any)["only"].([]any)[0] != "orders" || len(report["selection"].(map[string]any)["only"].([]any)) != 1 {
+		t.Fatal("duplicate --only values", report["only"], report["selection"])
 	}
 }

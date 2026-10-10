@@ -209,7 +209,7 @@ func (a *app) workspaceConnect(current workspace.Location, producer, consumer st
 			if !ok {
 				return wsError("radar workspace add <PATH> --id "+r.ID, "team repo %s is not registered", r.ID)
 			}
-			if gitrepo.Identity(a.ctx, path) != r.Identity {
+			if !gitrepo.HasIdentity(a.ctx, path, r.Identity) {
 				return wsError("radar workspace add <PATH> --id "+r.ID, "repo %s identity differs from team file", r.ID)
 			}
 		}

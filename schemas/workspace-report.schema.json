@@ -389,7 +389,7 @@
           "type": "string"
         },
         "status": {
-          "enum": ["passed", "failed", "incomplete"]
+          "enum": ["passed", "warning", "failed", "incomplete"]
         },
         "cells": {
           "type": "array",
@@ -406,7 +406,7 @@
                 "enum": ["base", "candidate"]
               },
               "status": {
-                "enum": ["passed", "failed", "incomplete"]
+                "enum": ["passed", "warning", "failed", "incomplete"]
               },
               "findings": {
                 "type": "array",

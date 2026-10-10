@@ -38,12 +38,12 @@
 5. **`consumes.json`:** `fields`는 v1 `contracts.json` 표기(점 경로, `[]`)를 쓰고 `FieldOverlaps`를 재사용한다. `source`가 없으면 `·` 참고 줄로만 알린다.
 
 6. **home 선택:** 첫 `connect`의 현재 repo를 home으로 기록한다. home이 없고 등록 repo들의 기준 커밋 중 정확히 하나에 팀 파일이 있으면 그것을 사용한다. 둘 이상이면 오류다. gate는 레지스트리에 home을 쓰지 않는다.
-7. **repo identity:** 팀 파일에는 `gitrepo.Identity`의 root commit 집합(`git:<sha>+…`)을 기록한다. remote URL이나 체크아웃 경로에 의존하지 않으며 identity 불일치는 ERROR다.
+7. **repo identity:** 팀 파일에는 `gitrepo.Identity`의 root commit 집합(`git:<sha>+…`)을 기록한다. 멤버 확인은 등록된 repo가 그 root commit을 모두 부모 없는 commit으로 가지고 있는지 본다. remote URL, 체크아웃 경로, 현재 체크아웃한 브랜치(orphan 브랜치 등)에 의존하지 않으며 identity 불일치는 ERROR다. 팀 파일에 있지만 이 머신에 등록되지 않았거나 경로를 쓸 수 없는 repo는 그 repo만 ERROR로 보고하며, `--only`로 뺄 수 있다.
 8. **형식:** workspace report와 레지스트리의 version은 1을 유지한다. 팀 파일과 소비 기대 파일의 알 수 없는 필드는 오류로 처리한다.
 9. **연결 방향과 source:** `connect --direction request|response`는 필수다. `--source PATH`는 선택이며 소비 repo 상대 경로다. 수동으로 선언한 링크의 direction이 없으면 변경을 risk로 분류한다.
-10. **기준과 replay:** 기준 우선순위는 CLI `--base` → 팀 파일의 repo별 `base` → 자동 기준 탐색이다. 팀 파일은 home의 고정된 기준 commit에서 읽고 blob OID를 기록한다. replay는 기록된 home 기준 commit과 blob을 검증하여 당시 선언을 읽는다. 작업 트리 팀 파일 변경은 반영하지 않고 경고한다.
+10. **기준과 replay:** 기준 우선순위는 CLI `--base` → 팀 파일의 repo별 `base` → 자동 기준 탐색이다. 팀 파일이 home의 `base`로 지정한 커밋에 팀 파일이 없으면 오류다(선언된 연결이 조용히 사라지지 않게). 팀 파일은 home의 고정된 기준 commit에서 읽고 blob OID를 기록한다. replay는 기록된 home 기준 commit과 blob을 검증하여 당시 선언을 읽는다. 작업 트리 팀 파일 변경은 반영하지 않고 경고한다.
 11. **제안의 범위와 순서:** 팀 파일이 없는 gate에서, 서로 다른 repo 쌍 중 적어도 한쪽에 선택된 브랜치가 있는 경우만 제안한다. literal endpoint와 확정된 HTTP method가 같아야 하며 타입 이름만으로 연결하지 않는다. 소비 필드 수 내림차순, 동률은 producer ID·consumer ID·candidate ID 순이다. text/MCP는 최대 3개, JSON은 전체를 제공한다. 제안은 판정과 exit code에 영향을 주지 않는다.
-12. **판정 범위:** `cross_repo.status: passed`만 선언된 repo 간 정적 연결 검사의 통과 근거다. 후보+후보 칸이 개발 판정을 결정하고, 중간 칸 실패는 참고다. 분석 불가·의무 삭제·축소는 NOT VERIFIED로 남긴다. 이것은 배포 순서나 실제 HTTP 동작의 검증이 아니다.
+12. **판정 범위:** `cross_repo.status: passed`만 선언된 repo 간 정적 연결 검사의 통과 근거다. 후보+후보 칸이 개발 판정을 결정하고, 중간 칸 실패는 참고다. 분석 불가·의무 삭제·축소는 NOT VERIFIED로 남긴다. 추론된 risk만 있는 연결(`warning`)은 검사된 것으로 세고 판정을 막지 않는다. 의무 삭제·축소는 후보 팀 파일의 `retired`가 덮으며, repo마다 따로 병합되므로 home 기준에 이미 병합된 retirement도 포함한다. home 후보가 없으면(충돌·오류·범위 밖) 모든 연결은 그 이유로 미완료다. 이것은 배포 순서나 실제 HTTP 동작의 검증이 아니다.
 13. **help와 MCP:** `connect`와 전용 플래그는 `radar help --all` 계층에 둔다. MCP는 연결 요약과 제안만 제공하며 `connect`를 노출하지 않는다.
 
 ---

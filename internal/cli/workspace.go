@@ -199,7 +199,7 @@ func (a *app) workspaceShow(current workspace.Location) int {
 		return a.fail(err)
 	}
 	if team != nil {
-		resolved, e := workspace.ResolveTeamScope(*scope, team.File, team.Identities(a.ctx, *scope))
+		resolved, e := workspace.ResolveTeamScope(*scope, team.File, composition.Member(a.ctx))
 		if e != nil {
 			return a.fail(e)
 		}

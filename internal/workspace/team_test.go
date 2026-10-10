@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -86,7 +87,8 @@ func TestResolveTeamScope(t *testing.T) {
 	f := teamFixture()
 	s := Scope{Workspace: "shop", Key: "shop", Current: "orders", Source: SourceRegistry, Repos: []ScopeRepo{{ID: "orders", Origin: SourceRegistry}, {ID: "payments", Origin: SourceRegistry}, {ID: "extra", Origin: SourceRegistry}, {ID: "adhoc", Origin: SourceWith}}, Only: []string{"orders"}, OneOff: true}
 	identities := map[string]string{"orders": f.Repos[0].Identity, "payments": f.Repos[1].Identity}
-	out, err := ResolveTeamScope(s, f, identities)
+	member := func(r ScopeRepo, identity string) bool { return identities[r.ID] == identity }
+	out, err := ResolveTeamScope(s, f, member)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,17 +99,29 @@ func TestResolveTeamScope(t *testing.T) {
 		t.Fatal("mutated input scope")
 	}
 	delete(identities, "payments")
-	if _, err := ResolveTeamScope(s, f, identities); err == nil {
+	if _, err := ResolveTeamScope(s, f, member); err == nil {
 		t.Fatal("identity mismatch hidden by --only")
 	}
+	// A team repo that is unregistered or moved is reported as missing, and
+	// --only can leave it out, instead of stopping the run.
 	s.Repos = s.Repos[:1]
-	if _, err := ResolveTeamScope(s, f, identities); err == nil || !strings.Contains(err.Error(), "radar workspace add <PATH> --id payments") {
-		t.Fatal(err)
+	s.Only = []string{"orders", "orders"}
+	out, err = ResolveTeamScope(s, f, member)
+	if err != nil || len(out.Repos) != 1 || len(out.All) != 2 || !slices.Equal(out.Only, []string{"orders"}) {
+		t.Fatalf("unregistered team repo excluded by --only: %+v %v", out, err)
+	}
+	s.Only = nil
+	if out, err = ResolveTeamScope(s, f, member); err != nil || len(out.Repos) != 2 || out.Repos[1].ID != "payments" || out.Repos[1].Missing == "" {
+		t.Fatalf("unregistered team repo: %+v %v", out, err)
 	}
 	identities["payments"] = f.Repos[1].Identity
-	s.Repos = append(s.Repos, ScopeRepo{ID: "payments", Origin: SourceRegistry})
+	s.Repos = append(s.Repos, ScopeRepo{ID: "payments", Origin: SourceRegistry, Missing: "path /gone is not available"})
+	if out, err = ResolveTeamScope(s, f, member); err != nil || out.Repos[1].Missing != "path /gone is not available" {
+		t.Fatalf("moved team repo: %+v %v", out, err)
+	}
+	s.Repos[1].Missing = ""
 	s.Only = []string{"extra"}
-	if _, err := ResolveTeamScope(s, f, identities); err == nil {
+	if _, err := ResolveTeamScope(s, f, member); err == nil {
 		t.Fatal("--only selected excluded registry member")
 	}
 }

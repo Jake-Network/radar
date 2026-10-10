@@ -1,7 +1,6 @@
 package composition
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -111,9 +110,6 @@ func LoadTeam(ctx context.Context, scope workspace.Scope, home string, bases map
 				}
 			}
 		}
-		if working, err := gitrepo.ReadFile(ctx, repo.Path, "WORKTREE", workspace.TeamPath); err == nil && !bytes.Equal(data, working) {
-			found.Uncommitted = true
-		}
 	}
 	if replay != nil && found == nil {
 		return nil, &workspace.Error{Message: "not reproducible: home repository is unavailable", Next: "radar workspace add <PATH> --id " + home}
@@ -132,7 +128,13 @@ func LoadTeam(ctx context.Context, scope workspace.Scope, home string, bases map
 						override[id] = ref
 					}
 					override[found.Home] = repo.Base
-					return LoadTeam(ctx, scope, found.Home, override, nil)
+					declared, err := LoadTeam(ctx, scope, found.Home, override, nil)
+					if err == nil && declared == nil {
+						// The declarations on this base name the base to read; one
+						// without the file would silently drop every declared link.
+						return nil, &workspace.Error{Message: fmt.Sprintf("%s: the team file names base %q for its home repository, and that base has no %s", found.Home, repo.Base, workspace.TeamPath), Next: "commit " + workspace.TeamPath + " to " + repo.Base + ", or fix the home repo's base in the team file"}
+					}
+					return declared, err
 				}
 			}
 		}
@@ -154,13 +156,10 @@ func teamDigest(file *workspace.TeamFile) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// Identities resolves repository identity independently of checkout paths.
-func (t *Team) Identities(ctx context.Context, scope workspace.Scope) map[string]string {
-	out := map[string]string{}
-	for _, r := range scope.Repos {
-		if r.Missing == "" {
-			out[r.ID] = gitrepo.Identity(ctx, r.Path)
-		}
+// Member reports whether a registered repository holds a team identity,
+// independently of checkout paths and of the checked-out branch.
+func Member(ctx context.Context) func(workspace.ScopeRepo, string) bool {
+	return func(r workspace.ScopeRepo, identity string) bool {
+		return gitrepo.HasIdentity(ctx, r.Path, identity)
 	}
-	return out
 }

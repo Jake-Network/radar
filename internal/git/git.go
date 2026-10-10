@@ -198,6 +198,27 @@ func Identity(ctx context.Context, root string) string {
 	return "git:" + strings.Join(roots, "+")
 }
 
+// HasIdentity reports whether the repository at root holds every root commit
+// of identity (as Identity formats it) as a parentless commit. Unlike
+// comparing Identity, it does not depend on the checked-out branch: an orphan
+// branch or merged unrelated history keeps the repository's identity.
+func HasIdentity(ctx context.Context, root, identity string) bool {
+	roots, ok := strings.CutPrefix(identity, "git:")
+	if !ok || roots == "" {
+		return false
+	}
+	for _, sha := range strings.Split(roots, "+") {
+		if sha == "" || strings.HasPrefix(sha, "-") {
+			return false
+		}
+		b, err := run(ctx, root, "rev-list", "--parents", "-n", "1", "--end-of-options", sha+"^{commit}")
+		if err != nil || strings.TrimSpace(string(b)) != sha {
+			return false
+		}
+	}
+	return true
+}
+
 // TopLevel returns the top-level directory of the working tree containing dir.
 func TopLevel(ctx context.Context, dir string) (string, error) {
 	b, err := run(ctx, dir, "rev-parse", "--show-toplevel")

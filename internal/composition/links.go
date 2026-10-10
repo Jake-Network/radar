@@ -43,12 +43,14 @@ func cacheFiles(ctx context.Context, res *Result, c *integration.Candidate, team
 	if c.Commit == "" {
 		return
 	}
-	// Discover only committed candidate sources. It reads data and never executes
-	// application code. Keeping reports in memory permits matching after Close.
-	if report, err := discovery.Discover(ctx, c.Dir, c.Commit); err == nil {
-		res.Discovery = &report
-	}
 	if team == nil {
+		// Suggestions are made only without a team file. Discover only
+		// committed candidate sources: it reads data and never executes
+		// application code. Keeping reports in memory permits matching after
+		// Close.
+		if report, err := discovery.Discover(ctx, c.Dir, c.Commit); err == nil {
+			res.Discovery = &report
+		}
 		return
 	}
 	if res.ID == team.Home {
@@ -147,21 +149,27 @@ func CheckLinks(results []Result, team *Team) []Link {
 	for _, r := range results {
 		repos[r.ID] = r
 	}
+	// Without a home candidate the candidate declarations are unknown, not
+	// removed: every link is incomplete for that reason.
 	candidateTeam := team.File
-	var teamErr error
-	if home, ok := repos[team.Home]; ok {
-		if data := home.Files[workspace.TeamPath]; data.CandidateErr != nil {
-			teamErr = data.CandidateErr
-		} else if data.Candidate == nil {
-			candidateTeam = &workspace.TeamFile{Version: 1}
-		} else {
-			candidateTeam, teamErr = workspace.ParseTeam(data.Candidate)
-		}
+	var teamReason string
+	if home, ok := repos[team.Home]; !ok {
+		teamReason = "team home " + team.Home + " is outside the selected scope"
+	} else if home.Report == nil {
+		teamReason = "team home " + team.Home + " has no candidate"
+	} else if len(home.Report.Conflicts) > 0 {
+		teamReason = "team home " + team.Home + " has no candidate (conflict)"
+	} else if data := home.Files[workspace.TeamPath]; data.CandidateErr != nil {
+		teamReason = "candidate team file is invalid: " + data.CandidateErr.Error()
+	} else if data.Candidate == nil {
+		candidateTeam = &workspace.TeamFile{Version: 1}
+	} else if parsed, err := workspace.ParseTeam(data.Candidate); err != nil {
+		teamReason = "candidate team file is invalid: " + err.Error()
 	} else {
-		teamErr = fmt.Errorf("%s is outside the selected scope", team.Home)
+		candidateTeam = parsed
 	}
 	declarations := team.File.Links
-	if candidateTeam != nil {
+	if teamReason == "" {
 		declarations = unionTeam(team.File, candidateTeam).Links
 	}
 	for _, decl := range declarations {
@@ -190,8 +198,8 @@ func CheckLinks(results []Result, team *Team) []Link {
 				break
 			}
 		}
-		if teamErr != nil {
-			reason = "candidate team file is invalid: " + teamErr.Error()
+		if teamReason != "" {
+			reason = teamReason
 		}
 		if reason != "" {
 			link := Link{LinkResult: contracts.LinkResult{ID: decl.ID, Status: model.StatusIncomplete}, Producer: p.Repo, Consumer: decl.Consumer, ProducerPath: p.Path, Pointer: p.Pointer, Direction: decl.Direction}
@@ -241,17 +249,11 @@ func CheckLinks(results []Result, team *Team) []Link {
 				break
 			}
 		}
-		for _, v := range candidateTeam.Retired {
-			existing := false
-			for _, base := range team.File.Retired {
-				if reflect.DeepEqual(v, base) {
-					existing = true
-				}
-			}
-			if !existing {
-				input.Retirements = append(input.Retirements, v)
-			}
-		}
+		// Repositories merge independently, so a retirement merged to the
+		// home base before the consumer narrows still covers that narrowing.
+		// The candidate team file keeps base retirements unless it removes
+		// them, and a removed retirement covers nothing.
+		input.Retirements = candidateTeam.Retired
 		link := Link{LinkResult: contracts.CheckLink(input), Producer: p.Repo, Consumer: decl.Consumer, ProducerPath: p.Path, Pointer: p.Pointer, Direction: decl.Direction}
 		if file, err := workspace.ParseConsumes(consume.Candidate); err == nil {
 			for _, entry := range file.Consumes {

@@ -9,7 +9,9 @@ import (
 
 // LinkInput contains committed documents and explicit consumer declarations.
 // Empty link states mean present, for callers that have no declaration delta.
-// Retirements must be newly introduced, reviewed declarations, not base entries.
+// Retirements are the reviewed declarations the caller accepts for this
+// delta. Because repositories merge independently, workspace links pass the
+// candidate team file's retirements, including those already on its base.
 type LinkInput struct {
 	ID                     string         `json:"id"`
 	Direction              string         `json:"direction,omitempty"`

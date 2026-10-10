@@ -68,7 +68,7 @@ func TestTeamCacheLinksAndObligations(t *testing.T) {
 		t.Fatal("optional team digest changed stage1 or omitted team")
 	}
 	rec := NewRecord(scope, Selection{}, results, Digest(results, team), "FAIL", team)
-	if rec.Team == nil || rec.Team.File != nil || rec.Team.Blob != team.Blob || len(rec.Links) != 1 {
+	if rec.Team == nil || rec.Team.File != nil || rec.Team.Blob != team.Blob {
 		t.Fatalf("record %+v", rec)
 	}
 	// Removing a declaration must retain its base obligation.
@@ -169,5 +169,117 @@ func TestStageOneDigestUnchangedWithoutTeam(t *testing.T) {
 	}
 	if got := Digest(nil, nil); got != expected {
 		t.Fatalf("nil team changed legacy digest: %s", got)
+	}
+}
+
+func TestTeamDeclaredBaseWithoutTeamFileIsAnError(t *testing.T) {
+	_, orders, _, team, scope := teamFixture(t)
+	ctx := context.Background()
+	// main~1 is the baseline before the team file was committed.
+	git(t, orders, "branch", "before-team", "main~1")
+	file := *team.File
+	file.Repos = append([]workspace.TeamRepo(nil), file.Repos...)
+	file.Repos[0].Base = "before-team"
+	data, _ := json.Marshal(file)
+	write(t, orders, workspace.TeamPath, string(data))
+	git(t, orders, "add", ".")
+	git(t, orders, "commit", "-qm", "declare a base without the team file")
+	if loaded, err := LoadTeam(ctx, scope, "", nil, nil); err == nil || !strings.Contains(err.Error(), "that base has no "+workspace.TeamPath) {
+		t.Fatalf("declared links dropped silently: %+v %v", loaded, err)
+	}
+}
+
+func TestTeamCommittedOnCheckedOutBranchIsNotUncommitted(t *testing.T) {
+	_, orders, _, team, scope := teamFixture(t)
+	ctx := context.Background()
+	git(t, orders, "checkout", "-q", "-b", "agent/links")
+	changed := *team.File
+	changed.Links = nil
+	data, _ := json.Marshal(changed)
+	write(t, orders, workspace.TeamPath, string(data))
+	git(t, orders, "add", ".")
+	git(t, orders, "commit", "-qm", "edit team on a branch")
+	loaded, err := LoadTeam(ctx, scope, "orders", map[string]string{"orders": "main"}, nil)
+	if err != nil || loaded.Uncommitted {
+		t.Fatalf("committed branch edit reported as uncommitted: %+v %v", loaded, err)
+	}
+}
+
+func TestTeamMembershipIgnoresTheCheckedOutBranch(t *testing.T) {
+	_, _, payments, team, scope := teamFixture(t)
+	ctx := context.Background()
+	git(t, payments, "checkout", "-q", "--orphan", "gh-pages")
+	git(t, payments, "commit", "-qm", "pages")
+	if gitrepo.Identity(ctx, payments) == team.File.Repos[1].Identity {
+		t.Fatal("orphan branch kept the HEAD identity; the test checks nothing")
+	}
+	if _, err := workspace.ResolveTeamScope(scope, team.File, Member(ctx)); err != nil {
+		t.Fatal("orphan branch changed team membership:", err)
+	}
+	other := workspace.TeamFile{Version: 1, Repos: []workspace.TeamRepo{team.File.Repos[0], {ID: "payments", Identity: team.File.Repos[0].Identity}}}
+	if _, err := workspace.ResolveTeamScope(scope, &other, Member(ctx)); err == nil || !strings.Contains(err.Error(), "identity differs") {
+		t.Fatal("another repository's identity accepted", err)
+	}
+}
+
+func TestTeamHomeConflictLeavesOtherLinksIncomplete(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	orders := f.repo("orders", map[string]string{"schema.json": `{"type":"object","properties":{"total":{"type":"number"}}}`})
+	payments := f.repo("payments", map[string]string{workspace.ConsumesPath: `{"version":1,"consumes":[{"contract":"order","fields":["total"]}]}`})
+	catalog := f.repo("catalog", map[string]string{"c.txt": "0\n"})
+	file := workspace.TeamFile{Version: 1, Repos: []workspace.TeamRepo{{ID: "catalog", Identity: gitrepo.Identity(ctx, catalog)}, {ID: "orders", Identity: gitrepo.Identity(ctx, orders)}, {ID: "payments", Identity: gitrepo.Identity(ctx, payments)}}, Links: []workspace.Link{{ID: "order", Producer: "orders:schema.json#", Consumer: "payments", Direction: "response"}}}
+	data, _ := json.Marshal(file)
+	write(t, catalog, workspace.TeamPath, string(data))
+	git(t, catalog, "add", ".")
+	git(t, catalog, "commit", "-qm", "team")
+	f.agent(catalog, "agent/a", map[string]string{"c.txt": "a\n"})
+	f.agent(catalog, "agent/b", map[string]string{"c.txt": "b\n"})
+	scope := scopeOf(t, catalog, orders, payments)
+	team, err := LoadTeam(ctx, scope, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repos, err := Collect(ctx, Request{Scope: scope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := CheckLinks(Build(ctx, repos, integration.Options{}, team), team)
+	if len(links) != 1 || links[0].Status != model.StatusIncomplete || links[0].Cells[3].Reason != "team home catalog has no candidate (conflict)" || len(links[0].Obligations) != 0 {
+		t.Fatalf("home conflict reported as a removed declaration: %+v", links)
+	}
+}
+
+func TestTeamBaseRetirementCoversLaterNarrowing(t *testing.T) {
+	f, orders, payments, team, scope := teamFixture(t)
+	ctx := context.Background()
+	write(t, payments, workspace.ConsumesPath, `{"version":1,"consumes":[{"contract":"order","fields":["total","status"]}]}`)
+	git(t, payments, "add", ".")
+	git(t, payments, "commit", "-qm", "consume status")
+	f.agent(payments, "agent/narrow", map[string]string{workspace.ConsumesPath: `{"version":1,"consumes":[{"contract":"order","fields":["total"]}]}`})
+	check := func() Link {
+		t.Helper()
+		team, err := LoadTeam(ctx, scope, "", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		repos, err := Collect(ctx, Request{Scope: scope})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return CheckLinks(Build(ctx, repos, integration.Options{}, team), team)[0]
+	}
+	if l := check(); l.Status != model.StatusIncomplete || !strings.Contains(l.Cells[3].Reason, "without an explicit retirement record") {
+		t.Fatalf("unretired narrowing %+v", l)
+	}
+	// The home PR that retires status merges first; the consumer merges later.
+	retired := *team.File
+	retired.Retired = []contracts.Retirement{{ID: "order", Fields: []string{"status"}, Reason: "payments stops reading status"}}
+	data, _ := json.Marshal(retired)
+	write(t, orders, workspace.TeamPath, string(data))
+	git(t, orders, "add", ".")
+	git(t, orders, "commit", "-qm", "retire status")
+	if l := check(); l.Status != model.StatusPassed {
+		t.Fatalf("base retirement ignored %+v", l)
 	}
 }

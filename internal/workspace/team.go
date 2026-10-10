@@ -202,8 +202,11 @@ func ParseConsumes(data []byte) (*ConsumesFile, error) {
 }
 
 // ResolveTeamScope applies team membership before --only, retaining explicit
-// --with additions. identities must describe the actual registered repositories.
-func ResolveTeamScope(scope Scope, team *TeamFile, identities map[string]string) (Scope, error) {
+// --with additions. member reports whether a registered repository is the
+// one a team entry identifies. A team repo with no usable registered location
+// is kept as Missing, so it is reported (or excluded by --only) instead of
+// stopping the run; a registered repository with another identity is an error.
+func ResolveTeamScope(scope Scope, team *TeamFile, member func(ScopeRepo, string) bool) (Scope, error) {
 	if team == nil {
 		return applyTeamOnly(scope)
 	}
@@ -221,12 +224,9 @@ func ResolveTeamScope(scope Scope, team *TeamFile, identities map[string]string)
 		teamIDs[r.ID] = true
 		sr, ok := available[r.ID]
 		if !ok {
-			return Scope{}, errorf("radar workspace add <PATH> --id "+r.ID, "team repo %q has no registered location", r.ID)
+			sr = ScopeRepo{ID: r.ID, Origin: SourceTeamFile, Missing: "team repo is not registered on this machine"}
 		}
-		if sr.Missing != "" {
-			return Scope{}, errorf("radar workspace add <PATH> --id "+r.ID, "team repo %q cannot be used: %s", r.ID, sr.Missing)
-		}
-		if identities[r.ID] != r.Identity {
+		if sr.Missing == "" && !member(sr, r.Identity) {
 			return Scope{}, errorf("radar workspace add <PATH> --id "+r.ID, "team repo %q identity differs from its registered repository", r.ID)
 		}
 		sr.TeamBase = r.Base
@@ -251,12 +251,17 @@ func ResolveTeamScope(scope Scope, team *TeamFile, identities map[string]string)
 func applyTeamOnly(out Scope) (Scope, error) {
 	if len(out.Only) > 0 {
 		keep := map[string]bool{}
+		only := []string{}
 		for _, id := range out.Only {
 			if !containsID(out.All, id) {
 				return Scope{}, out.unknown(id, "--only")
 			}
-			keep[id] = true
+			if !keep[id] {
+				keep[id] = true
+				only = append(only, id)
+			}
 		}
+		out.Only = only
 		selected := []ScopeRepo{}
 		for _, r := range out.Repos {
 			if keep[r.ID] {

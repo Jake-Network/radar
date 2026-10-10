@@ -31,6 +31,8 @@ type workspaceInvocation struct {
 	previous  *composition.Record
 	replay    *composition.Record
 	team      *composition.Team
+	// noTeam explains why a workspace with a home repo has no declared links.
+	noTeam string
 }
 
 func wsError(next, format string, args ...any) error {
@@ -116,9 +118,16 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 		}
 		with, withArgs = append(with, loc), append(withArgs, path)
 	}
+	// --only applies after team membership, so it is not given here.
 	scope, err := workspace.ResolveScope(workspace.ScopeInput{Registry: registry, Current: current, With: with, WithArgs: withArgs, Usable: a.usable})
-	if err != nil || scope == nil {
+	if err != nil {
 		return nil, err
+	}
+	if scope == nil {
+		if len(o.only) > 0 {
+			return nil, wsError("radar workspace add <PATH>", "--only limits a workspace run, but this repository is not in a workspace")
+		}
+		return nil, nil
 	}
 	// Resolve committed team membership before assigning CLI refs or bases.
 	home := ""
@@ -133,18 +142,15 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 	if err != nil {
 		return nil, err
 	}
+	if inv.team == nil && home != "" {
+		inv.noTeam = fmt.Sprintf("home repo %s has no committed %s on its base; no declared links to check", home, workspace.TeamPath)
+	}
 	scope.Only = o.only
 	var teamFile *workspace.TeamFile
-	identities := map[string]string{}
 	if inv.team != nil {
 		teamFile = inv.team.File
-		for _, r := range scope.Repos {
-			if r.Missing == "" {
-				identities[r.ID] = gitrepo.Identity(a.ctx, r.Path)
-			}
-		}
 	}
-	resolved, err := workspace.ResolveTeamScope(*scope, teamFile, identities)
+	resolved, err := workspace.ResolveTeamScope(*scope, teamFile, composition.Member(a.ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -369,6 +375,9 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 		g.Only = []string{}
 	}
 	g.CrossRepo = crossRepo{Status: "not_checked", Reason: perRepoOnly}
+	if inv.noTeam != "" {
+		g.CrossRepo.Reason = inv.noTeam
+	}
 	if o.verify {
 		g.CrossRepoExecution = &crossRepo{Status: "not_checked", Reason: perRepoOnly}
 	}
@@ -400,21 +409,15 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 		g.ReplayOf = inv.replay.RunID
 		g.RunID = inv.replay.RunID
 	}
-	g.ScopeSummary = scopeSummary(inv.scope, g.ReplayOf)
-	if len(g.Links) > 0 {
-		checked := 0
-		for _, l := range g.Links {
-			if l.Status == model.StatusPassed || l.Status == model.StatusFailed {
-				checked++
-			}
-		}
-		g.ScopeSummary = strings.Replace(g.ScopeSummary, "per-repo checks only · 0 cross-repo links checked", fmt.Sprintf("%d/%d cross-repo links checked", checked, len(g.Links)), 1)
-	}
+	g.ScopeSummary = scopeSummary(inv.scope, g.ReplayOf, g.Links)
 	unstable := configurationUnstable(configuration.Inputs)
 	errored := slices.ContainsFunc(g.Repos, func(r workspaceRepo) bool { return r.Verdict == gate.Error })
 	g.Next = workspaceNext(g.Verdict, o.verify, unstable, errored)
 	if inv.replay == nil {
 		rec := composition.NewRecord(inv.scope, inv.selection, results, g.Digest, string(g.Verdict), inv.team)
+		if inv.team != nil {
+			rec.Links = g.Links
+		}
 		if store, err := composition.OpenStore(inv.scope.Key); err != nil {
 			g.RecordError = err.Error()
 		} else if err = store.Save(&rec, func() any { g.RunID = rec.RunID; return g }); err != nil {
@@ -486,8 +489,19 @@ func againDiff(previous composition.Record, results []composition.Result) *again
 	return c
 }
 
-func scopeSummary(s workspace.Scope, replayOf string) string {
+// scopeSummary counts a link as checked when its candidate+candidate cell
+// reached a result: passed, failed, or passed with warnings.
+func scopeSummary(s workspace.Scope, replayOf string, links []composition.Link) string {
 	parts := []string{"per-repo checks only", "0 cross-repo links checked"}
+	if len(links) > 0 {
+		checked := 0
+		for _, l := range links {
+			if linkChecked(l.Status) {
+				checked++
+			}
+		}
+		parts = []string{fmt.Sprintf("%d/%d cross-repo links checked", checked, len(links))}
+	}
 	if s.Partial() {
 		parts = append(parts, fmt.Sprintf("partial workspace (%d/%d repos)", len(s.Repos), len(s.All)))
 	}
@@ -774,7 +788,13 @@ func shortDigest(d string) string {
 	return d
 }
 
-// Only candidate+candidate contributes to the development verdict.
+func linkChecked(s model.Status) bool {
+	return s == model.StatusPassed || s == model.StatusWarning || s == model.StatusFailed
+}
+
+// Only candidate+candidate contributes to the development verdict. A link
+// with only inferred risks (warning) is checked and does not block, like
+// warning findings of a single-repository gate.
 func applyWorkspaceLinks(g *workspaceReport) {
 	if len(g.Links) == 0 {
 		return
@@ -786,7 +806,7 @@ func applyWorkspaceLinks(g *workspaceReport) {
 		case model.StatusFailed:
 			v = gate.Fail
 			g.CrossRepo.Status = "failed"
-		case model.StatusPassed:
+		case model.StatusPassed, model.StatusWarning:
 		default:
 			v = gate.Blocked
 			if g.CrossRepo.Status != "failed" {
@@ -820,6 +840,8 @@ func renderWorkspaceLinks(w io.Writer, g workspaceReport) {
 		switch l.Status {
 		case model.StatusPassed:
 			fmt.Fprintf(w, "  ✓ link %s  %s → %s\n", l.ID, l.Producer, l.Consumer)
+		case model.StatusWarning:
+			fmt.Fprintf(w, "  ✓ link %s  %s → %s (warning: %s)\n", l.ID, l.Producer, l.Consumer, linkDetail(l))
 		case model.StatusFailed:
 			fmt.Fprintf(w, "  ✗ link %s  %s → %s: %s (candidate+candidate)\n", l.ID, l.Producer, l.Consumer, linkDetail(l))
 		default:

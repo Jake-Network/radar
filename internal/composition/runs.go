@@ -68,7 +68,8 @@ type Record struct {
 	Links     []Link               `json:"links,omitempty"`
 }
 
-// NewRecord captures the pinned state of results.
+// NewRecord captures the pinned state of results. The caller adds the
+// link results it reported, so they are not computed twice.
 func NewRecord(scope workspace.Scope, selection Selection, results []Result, digest, verdict string, teams ...*Team) Record {
 	rec := Record{Version: RecordVersion, Workspace: scope.Workspace, Key: scope.Key, Digest: digest, Verdict: verdict, Selection: selection, Repos: []RecordRepo{}}
 	for _, r := range results {
@@ -86,7 +87,6 @@ func NewRecord(scope workspace.Scope, selection Selection, results []Result, dig
 		copy.File = nil
 		rec.Team = &copy
 		rec.TeamHome = teams[0].locator
-		rec.Links = CheckLinks(results, teams[0])
 	}
 	return rec
 }
