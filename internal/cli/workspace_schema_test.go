@@ -12,7 +12,7 @@ import (
 )
 
 // conforms checks value against the JSON Schema subset the Radar schemas use:
-// type, required, properties, items, minItems, enum, const, pattern, minimum
+// type, required, properties, items, minItems, maxItems, enum, const, pattern, minimum
 // and local $ref. It keeps the published schema honest without a dependency.
 func conforms(root, schema map[string]any, value any, at string) error {
 	if ref, ok := schema["$ref"].(string); ok {
@@ -58,6 +58,9 @@ func conforms(root, schema map[string]any, value any, at string) error {
 		}
 		if min, ok := schema["minItems"].(float64); ok && float64(len(list)) < min {
 			return fmt.Errorf("%s: fewer than %v items", at, min)
+		}
+		if limit, ok := schema["maxItems"].(float64); ok && float64(len(list)) > limit {
+			return fmt.Errorf("%s: more than %v items", at, limit)
 		}
 		if items, ok := schema["items"].(map[string]any); ok {
 			for i, v := range list {

@@ -538,7 +538,7 @@ func agentBrief(full map[string]any) map[string]any {
 // command. Full reports stay available with detail=true or CLI --json.
 func compactWorkspace(full map[string]any) string {
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for each repository's full report.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "cross_repo", "cross_repo_execution", "again", "replay_of", "digest", "run_id", "record_error", "verdict", "next", "configuration_inputs"} {
+	for _, key := range []string{"version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "cross_repo", "cross_repo_execution", "again", "replay_of", "digest", "run_id", "record_error", "verdict", "next", "configuration_inputs", "team_file", "excluded_repos"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
@@ -580,6 +580,30 @@ func compactWorkspace(full map[string]any) string {
 		repos = append(repos, entry)
 	}
 	out["repos"] = repos
+	if raw, exists := full["links"]; exists {
+		links := []any{}
+		for _, item := range list(raw) {
+			l, _ := item.(map[string]any)
+			entry := map[string]any{"id": l["id"], "producer": l["producer"], "consumer": l["consumer"], "status": l["status"]}
+			cells := []any{}
+			for _, item := range list(l["cells"]) {
+				c, _ := item.(map[string]any)
+				if c["status"] != "passed" {
+					cells = append(cells, c)
+				}
+			}
+			entry["unverified_cells"] = cells
+			links = append(links, entry)
+		}
+		out["links"] = links
+	}
+	if raw, exists := full["suggested_links"]; exists {
+		suggestions := list(raw)
+		if len(suggestions) > 3 {
+			suggestions = suggestions[:3]
+		}
+		out["suggested_links"] = suggestions
+	}
 	data, err := json.Marshal(out)
 	if err != nil {
 		return "{}"

@@ -30,6 +30,7 @@ type workspaceInvocation struct {
 	bases     map[string]string
 	previous  *composition.Record
 	replay    *composition.Record
+	team      *composition.Team
 }
 
 func wsError(next, format string, args ...any) error {
@@ -92,7 +93,8 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 			inv.replay = &rec
 			inv.selection = rec.Selection
 			inv.scope = a.replayScope(registry, current, key, rec)
-			return inv, nil
+			inv.team, err = composition.LoadTeam(a.ctx, inv.scope, "", nil, &rec)
+			return inv, err
 		}
 		inv.previous = &rec
 		o.args, o.bases, o.with, o.only = rec.Selection.Targets, rec.Selection.Bases, rec.Selection.With, rec.Selection.Only
@@ -108,9 +110,45 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 		}
 		with, withArgs = append(with, loc), append(withArgs, path)
 	}
-	scope, err := workspace.ResolveScope(workspace.ScopeInput{Registry: registry, Current: current, With: with, WithArgs: withArgs, Only: o.only, Usable: a.usable})
+	scope, err := workspace.ResolveScope(workspace.ScopeInput{Registry: registry, Current: current, With: with, WithArgs: withArgs, Usable: a.usable})
 	if err != nil || scope == nil {
 		return nil, err
+	}
+	// Resolve committed team membership before assigning CLI refs or bases.
+	home := ""
+	if i := registry.Named(scope.Workspace); i >= 0 {
+		home = registry.Workspaces[i].Home
+	}
+	loadBases, err := scope.AssignBases(o.bases)
+	if err != nil {
+		return nil, err
+	}
+	inv.team, err = composition.LoadTeam(a.ctx, *scope, home, loadBases, nil)
+	if err != nil {
+		return nil, err
+	}
+	scope.Only = o.only
+	var teamFile *workspace.TeamFile
+	identities := map[string]string{}
+	if inv.team != nil {
+		teamFile = inv.team.File
+		for _, r := range scope.Repos {
+			if r.Missing == "" {
+				identities[r.ID] = gitrepo.Identity(a.ctx, r.Path)
+			}
+		}
+	}
+	resolved, err := workspace.ResolveTeamScope(*scope, teamFile, identities)
+	if err != nil {
+		return nil, err
+	}
+	scope = &resolved
+	if inv.team != nil && loadBases[inv.team.Home] == "" {
+		for i := range scope.Repos {
+			if scope.Repos[i].ID == inv.team.Home {
+				scope.Repos[i].TeamBase = inv.team.BaseRef
+			}
+		}
 	}
 	inv.scope = *scope
 	valid := func(t workspace.Target) bool {
@@ -236,6 +274,10 @@ type workspaceReport struct {
 	RepoCount          int                   `json:"repo_count"`
 	BranchCount        int                   `json:"branch_count"`
 	Repos              []workspaceRepo       `json:"repos"`
+	SuggestedLinks     []workspaceSuggestion `json:"suggested_links,omitempty"`
+	Links              []composition.Link    `json:"links,omitempty"`
+	TeamFile           *composition.Team     `json:"team_file,omitempty"`
+	ExcludedRepos      []workspace.ScopeRepo `json:"excluded_repos,omitempty"`
 	CrossRepo          crossRepo             `json:"cross_repo"`
 	CrossRepoExecution *crossRepo            `json:"cross_repo_execution,omitempty"`
 	Selection          composition.Selection `json:"selection"`
@@ -266,6 +308,13 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 	if err != nil {
 		return a.fail(wsError("rerun the same radar gate command once agents stop committing", "%v", err))
 	}
+	if inv.team != nil {
+		for _, r := range repos {
+			if r.ID == inv.team.Home && r.Error == "" && r.Base != inv.team.Base {
+				return a.fail(wsError("radar gate --again", "team configuration base moved during collection; rerun to read a consistent declaration"))
+			}
+		}
+	}
 	if inv.replay == nil && inv.named == nil {
 		branches, failures := 0, 0
 		for _, r := range repos {
@@ -286,7 +335,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 			options.Suite = testselection.ModeBalanced
 		}
 	}
-	results := composition.Build(a.ctx, repos, options)
+	results := composition.Build(a.ctx, repos, options, inv.team)
 	g := workspaceReport{Version: WorkspaceReportVersion, Workspace: inv.scope.Workspace, ScopeSource: inv.scope.Source, OneOff: inv.scope.OneOff, Only: inv.scope.Only, Configuration: configuration.Inputs, Selection: inv.selection, Repos: []workspaceRepo{}, Verdict: gate.Pass, ran: o.verify}
 	if g.Only == nil {
 		g.Only = []string{}
@@ -307,7 +356,15 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 		}
 	}
 	g.RepoCount = len(g.Repos)
-	g.Digest = composition.Digest(results)
+	g.TeamFile, g.ExcludedRepos = inv.team, inv.scope.Excluded
+	g.Links = composition.CheckLinks(results, inv.team)
+	applyWorkspaceLinks(&g)
+	if inv.team == nil {
+		for _, proposal := range composition.Suggestions(results) {
+			g.SuggestedLinks = append(g.SuggestedLinks, workspaceSuggestion{SuggestedLink: proposal, Command: suggestionCommand(proposal)})
+		}
+	}
+	g.Digest = composition.Digest(results, inv.team)
 	if inv.previous != nil {
 		g.Again = againDiff(*inv.previous, results)
 	}
@@ -316,10 +373,19 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 		g.RunID = inv.replay.RunID
 	}
 	g.ScopeSummary = scopeSummary(inv.scope, g.ReplayOf)
+	if len(g.Links) > 0 {
+		checked := 0
+		for _, l := range g.Links {
+			if l.Status == model.StatusPassed || l.Status == model.StatusFailed {
+				checked++
+			}
+		}
+		g.ScopeSummary = strings.Replace(g.ScopeSummary, "per-repo checks only · 0 cross-repo links checked", fmt.Sprintf("%d/%d cross-repo links checked", checked, len(g.Links)), 1)
+	}
 	unstable := configurationUnstable(configuration.Inputs)
 	g.Next = workspaceNext(g.Verdict, o.verify, unstable)
 	if inv.replay == nil {
-		rec := composition.NewRecord(inv.scope, inv.selection, results, g.Digest, string(g.Verdict))
+		rec := composition.NewRecord(inv.scope, inv.selection, results, g.Digest, string(g.Verdict), inv.team)
 		if store, err := composition.OpenStore(inv.scope.Key); err != nil {
 			g.RecordError = err.Error()
 		} else if err = store.Save(&rec, func() any { g.RunID = rec.RunID; return g }); err != nil {
@@ -568,7 +634,20 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 			}
 		}
 	}
-	fmt.Fprintf(w, "  ! cross-repo links: not checked — %s\n", g.CrossRepo.Reason)
+	if len(g.Links) == 0 {
+		fmt.Fprintf(w, "  ! cross-repo links: not checked — %s\n", g.CrossRepo.Reason)
+	} else {
+		renderWorkspaceLinks(w, g)
+	}
+	for _, suggestion := range g.SuggestedLinks[:min(3, len(g.SuggestedLinks))] {
+		fmt.Fprintf(w, "  · proposed link  %s → %s: %s (not checked)\n    %s\n", suggestion.Producer, suggestion.Consumer, suggestion.Candidate.Endpoint, suggestion.Command)
+	}
+	for _, r := range g.ExcludedRepos {
+		fmt.Fprintf(w, "  · %s  registered but not in the team file\n", r.ID)
+	}
+	if g.TeamFile != nil && g.TeamFile.Uncommitted {
+		fmt.Fprintf(w, "  ! %s:%s  uncommitted team file excluded; using the committed base declaration\n", g.TeamFile.Home, g.TeamFile.Path)
+	}
 	if g.CrossRepoExecution != nil {
 		fmt.Fprintf(w, "  ! cross-repo execution: not checked — %s\n", g.CrossRepoExecution.Reason)
 	}
@@ -618,6 +697,7 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 			}
 		}
 	}
+	leads = append(leads, workspaceLinkLeads(g)...)
 	if len(leads) > 0 {
 		fmt.Fprintln(w, "\nRepair leads (where to look, not proof of cause)")
 		for _, l := range leads {
@@ -661,4 +741,127 @@ func shortDigest(d string) string {
 		return d[:len("sha256:")+16]
 	}
 	return d
+}
+
+// Only candidate+candidate contributes to the development verdict.
+func applyWorkspaceLinks(g *workspaceReport) {
+	if len(g.Links) == 0 {
+		return
+	}
+	g.CrossRepo = crossRepo{Status: "passed", Reason: "declared cross-repo links checked statically"}
+	for _, l := range g.Links {
+		v := gate.Pass
+		switch l.Status {
+		case model.StatusFailed:
+			v = gate.Fail
+			g.CrossRepo.Status = "failed"
+		case model.StatusPassed:
+		default:
+			v = gate.Blocked
+			if g.CrossRepo.Status != "failed" {
+				g.CrossRepo.Status = "incomplete"
+			}
+		}
+		if rank(v) > rank(g.Verdict) {
+			g.Verdict = v
+		}
+	}
+}
+
+func linkDetail(l composition.Link) string {
+	c := l.Cells[3]
+	if c.Reason != "" {
+		return c.Reason
+	}
+	for _, f := range c.Findings {
+		if f.Severity == model.SeverityError {
+			return f.Explanation
+		}
+	}
+	if len(c.Findings) > 0 {
+		return c.Findings[0].Explanation
+	}
+	return "declared fields are compatible"
+}
+
+func renderWorkspaceLinks(w io.Writer, g workspaceReport) {
+	for _, l := range g.Links {
+		switch l.Status {
+		case model.StatusPassed:
+			fmt.Fprintf(w, "  ✓ link %s  %s → %s\n", l.ID, l.Producer, l.Consumer)
+		case model.StatusFailed:
+			fmt.Fprintf(w, "  ✗ link %s  %s → %s: %s (candidate+candidate)\n", l.ID, l.Producer, l.Consumer, linkDetail(l))
+		default:
+			fmt.Fprintf(w, "  ! link %s  not checked — %s\n", l.ID, linkDetail(l))
+		}
+		for _, warning := range l.Warnings {
+			fmt.Fprintf(w, "  · link %s  %s\n", l.ID, warning)
+		}
+		for _, i := range []int{1, 2} {
+			c := l.Cells[i]
+			if c.Status != model.StatusFailed {
+				continue
+			}
+			order := "producer first fails"
+			if i == 2 {
+				order = "consumer first fails"
+			}
+			reason := c.Reason
+			if reason == "" && len(c.Findings) > 0 {
+				reason = c.Findings[0].Explanation
+			}
+			fmt.Fprintf(w, "  ! link %s  %s → %s: %s — %s (%s producer + %s consumer; excluded from verdict)\n", l.ID, l.Producer, l.Consumer, order, reason, c.Producer, c.Consumer)
+		}
+	}
+}
+
+func workspaceLinkLeads(g workspaceReport) []string {
+	leads := []string{}
+	for _, l := range g.Links {
+		if l.Status != model.StatusFailed {
+			continue
+		}
+		for _, r := range g.Repos {
+			file, detail := "", ""
+			if r.ID == l.Producer {
+				file = l.ProducerPath
+				detail = linkDetail(l)
+			}
+			if r.ID == l.Consumer {
+				file = workspace.ConsumesPath
+				detail = "declares consumed fields"
+			}
+			if file == "" {
+				continue
+			}
+			matched := false
+			for _, b := range r.Branches {
+				if slices.Contains(b.Changed, file) {
+					leads = append(leads, fmt.Sprintf("  %s:%s  %s  %s", r.ID, b.Ref, file, detail))
+					matched = true
+				}
+			}
+			if !matched {
+				leads = append(leads, fmt.Sprintf("  %s:%s  %s  %s", r.ID, r.BaseRef, file, detail))
+			}
+		}
+	}
+	return leads
+}
+
+type workspaceSuggestion struct {
+	composition.SuggestedLink
+	Command string `json:"command"`
+}
+
+func suggestionCommand(p composition.SuggestedLink) string {
+	v := p.Candidate
+	command := "radar workspace connect " + shellArg(p.Producer+":"+v.SchemaPath+"#"+v.Pointer) + " " + shellArg(p.Consumer) + " --direction response"
+	if len(v.Fields) > 0 {
+		command += " --fields " + shellArg(strings.Join(v.Fields, ","))
+	}
+	if v.Consumer != "" {
+		command += " --source " + shellArg(v.Consumer)
+	}
+	return command
 }

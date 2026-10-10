@@ -1,25 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Radar workspace gate report",
-  "description": "radar gate --json for a workspace run (version 1). Each repository is combined and analyzed on its own; cross-repository links are not checked in this version. Single-repository gate reports keep their own format.",
+  "description": "radar gate --json for a workspace run (version 1). Declared cross-repository links are checked statically; runtime execution remains per repository. Single-repository reports keep their own format.",
   "type": "object",
-  "required": [
-    "version",
-    "workspace",
-    "scope_source",
-    "scope_summary",
-    "one_off",
-    "only",
-    "repo_count",
-    "branch_count",
-    "repos",
-    "cross_repo",
-    "selection",
-    "digest",
-    "run_id",
-    "verdict",
-    "next"
-  ],
+  "required": ["version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "repos", "cross_repo", "selection", "digest", "run_id", "verdict", "next"],
   "properties": {
     "version": {
       "const": 1
@@ -29,12 +13,12 @@
       "description": "Registered workspace name; empty for a one-off scope built only from --with."
     },
     "scope_source": {
-      "enum": ["registry", "--with", "replay"],
+      "enum": ["registry", "--with", "replay", "team file"],
       "description": "Where the set of repositories came from."
     },
     "scope_summary": {
       "type": "string",
-      "description": "The headline's scope statement, e.g. 'per-repo checks only · 0 cross-repo links checked · partial workspace (1/2 repos)'."
+      "description": "The headline's scope statement, e.g. 'per-repo checks only \u00b7 0 cross-repo links checked \u00b7 partial workspace (1/2 repos)'."
     },
     "one_off": {
       "type": "boolean",
@@ -42,17 +26,29 @@
     },
     "only": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Repo IDs this run was limited to with --only; empty when not limited."
     },
-    "repo_count": { "type": "integer", "minimum": 1 },
-    "branch_count": { "type": "integer", "minimum": 0 },
+    "repo_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "branch_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "repos": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/repo" }
+      "items": {
+        "$ref": "#/$defs/repo"
+      }
     },
-    "cross_repo": { "$ref": "#/$defs/not_checked" },
+    "cross_repo": {
+      "$ref": "#/$defs/cross_repo"
+    },
     "cross_repo_execution": {
       "$ref": "#/$defs/not_checked",
       "description": "Present with --run: tests ran per repository only."
@@ -62,12 +58,43 @@
       "description": "How inputs were chosen, with every repo spelled out; --again repeats it.",
       "required": ["mode", "targets", "bases", "with", "only", "all"],
       "properties": {
-        "mode": { "enum": ["auto", "named"] },
-        "targets": { "type": "array", "items": { "type": "string", "description": "REPO:REF" } },
-        "bases": { "type": "array", "items": { "type": "string", "description": "REPO:REF" } },
-        "with": { "type": "array", "items": { "type": "string", "description": "absolute path" } },
-        "only": { "type": "array", "items": { "type": "string" } },
-        "all": { "type": "array", "items": { "type": "string" }, "description": "Every repo ID in scope before --only." }
+        "mode": {
+          "enum": ["auto", "named"]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "REPO:REF"
+          }
+        },
+        "bases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "REPO:REF"
+          }
+        },
+        "with": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "absolute path"
+          }
+        },
+        "only": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "all": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Every repo ID in scope before --only."
+        }
       }
     },
     "again": {
@@ -75,11 +102,31 @@
       "description": "Present for --again: how the selection differs from the previous run.",
       "required": ["previous_run", "mode", "added", "removed", "moved"],
       "properties": {
-        "previous_run": { "type": "string" },
-        "mode": { "enum": ["auto", "named"] },
-        "added": { "type": "array", "items": { "type": "string" } },
-        "removed": { "type": "array", "items": { "type": "string" } },
-        "moved": { "type": "array", "items": { "type": "string" }, "description": "REPO:REF whose commit changed." }
+        "previous_run": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": ["auto", "named"]
+        },
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "moved": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "REPO:REF whose commit changed."
+        }
       }
     },
     "replay_of": {
@@ -95,15 +142,70 @@
       "type": "string",
       "description": "Recorded run (for --replay, the replayed run); empty when the record could not be saved."
     },
-    "record_error": { "type": "string" },
-    "configuration_inputs": { "type": "array", "items": { "type": "object" } },
+    "record_error": {
+      "type": "string"
+    },
+    "configuration_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
     "verdict": {
       "enum": ["pass", "fail", "blocked", "error"],
-      "description": "Worst repository verdict; blocked renders as NOT VERIFIED."
+      "description": "Worst repository or declared link verdict; blocked renders as NOT VERIFIED."
     },
     "next": {
       "type": "string",
       "description": "The next action; always ends with radar gate --again or radar gate --again --run."
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/link"
+      }
+    },
+    "suggested_links": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "team_file": {
+      "type": "object",
+      "required": ["home", "path", "blob", "uncommitted"],
+      "properties": {
+        "home": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "blob": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "uncommitted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "excluded_repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -111,42 +213,87 @@
       "type": "object",
       "required": ["status", "reason"],
       "properties": {
-        "status": { "const": "not_checked" },
-        "reason": { "type": "string" }
+        "status": {
+          "const": "not_checked"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     },
     "repo": {
       "type": "object",
       "required": ["id", "path", "common_dir", "origin", "base_ref", "base", "base_source", "selection_source", "branches", "dirty", "verdict"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
-        "path": { "type": "string" },
-        "common_dir": { "type": "string" },
-        "origin": { "enum": ["registry", "--with", "replay"] },
-        "base_ref": { "type": "string" },
-        "base": { "type": "string", "description": "Pinned base commit SHA; empty when it could not be resolved." },
-        "base_source": { "enum": ["auto", "named", ""] },
-        "selection_source": { "enum": ["auto: worktree", "named", "base only", ""] },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "path": {
+          "type": "string"
+        },
+        "common_dir": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": ["registry", "--with", "replay", "team file"]
+        },
+        "base_ref": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string",
+          "description": "Pinned base commit SHA; empty when it could not be resolved."
+        },
+        "base_source": {
+          "enum": ["auto", "named", "", "team file"]
+        },
+        "selection_source": {
+          "enum": ["auto: worktree", "named", "base only", ""]
+        },
         "branches": {
           "type": "array",
           "items": {
             "type": "object",
             "required": ["ref", "commit", "source", "changed"],
             "properties": {
-              "ref": { "type": "string" },
-              "commit": { "type": "string" },
-              "source": { "enum": ["auto: worktree", "named"] },
-              "changed": { "type": "array", "items": { "type": "string" } }
+              "ref": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "source": {
+                "enum": ["auto: worktree", "named"]
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
-        "skipped_branches": { "type": "array", "items": { "type": "string" } },
+        "skipped_branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "detached": {
           "type": "array",
           "items": {
             "type": "object",
             "required": ["path", "commit"],
-            "properties": { "path": { "type": "string" }, "commit": { "type": "string" } }
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              }
+            }
           }
         },
         "dirty": {
@@ -156,22 +303,123 @@
             "type": "object",
             "required": ["path", "selected", "staged", "unstaged", "untracked"],
             "properties": {
-              "path": { "type": "string" },
-              "branch": { "type": "string" },
-              "selected": { "type": "boolean" },
-              "staged": { "type": "array", "items": { "type": "string" } },
-              "unstaged": { "type": "array", "items": { "type": "string" } },
-              "untracked": { "type": "array", "items": { "type": "string" } },
-              "inspection_error": { "type": "string" }
+              "path": {
+                "type": "string"
+              },
+              "branch": {
+                "type": "string"
+              },
+              "selected": {
+                "type": "boolean"
+              },
+              "staged": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unstaged": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "untracked": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "inspection_error": {
+                "type": "string"
+              }
             }
           }
         },
-        "worktree_inspection_error": { "type": "string" },
-        "verdict": { "enum": ["pass", "fail", "blocked", "error"] },
-        "error": { "type": "string", "description": "Why this repository could not be checked." },
-        "next": { "type": "string", "description": "The one next action for error." },
-        "attribution": { "type": "object", "description": "Finding ID to the branches whose changed files the finding points at; a lead, not proof." },
-        "report": { "type": "object", "description": "The repository's integration report, as in the single-repository gate JSON." }
+        "worktree_inspection_error": {
+          "type": "string"
+        },
+        "verdict": {
+          "enum": ["pass", "fail", "blocked", "error"]
+        },
+        "error": {
+          "type": "string",
+          "description": "Why this repository could not be checked."
+        },
+        "next": {
+          "type": "string",
+          "description": "The one next action for error."
+        },
+        "attribution": {
+          "type": "object",
+          "description": "Finding ID to the branches whose changed files the finding points at; a lead, not proof."
+        },
+        "report": {
+          "type": "object",
+          "description": "The repository's integration report, as in the single-repository gate JSON."
+        }
+      }
+    },
+    "cross_repo": {
+      "type": "object",
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {
+          "enum": ["not_checked", "passed", "failed", "incomplete"]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["id", "producer", "consumer", "direction", "cells", "status"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "producer": {
+          "type": "string"
+        },
+        "consumer": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["passed", "failed", "incomplete"]
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "required": ["producer", "consumer", "status", "findings"],
+            "properties": {
+              "producer": {
+                "enum": ["base", "candidate"]
+              },
+              "consumer": {
+                "enum": ["base", "candidate"]
+              },
+              "status": {
+                "enum": ["passed", "failed", "incomplete"]
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     }
   }
