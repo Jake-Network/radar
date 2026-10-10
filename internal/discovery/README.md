@@ -6,7 +6,7 @@ registered endpoints with canonical local type relationships, and preserves
 proposed/inferred/unknown findings separately from accepted JSON/OpenAPI contracts.
 No imports, startup hooks, npm scripts or tests execute during discovery.
 
-See [supported patterns and trust limits](../../docs/DISCOVERY.md),
+See [supported patterns and trust limits](../../docs/CAPABILITIES.md#contract-discovery),
 [the representative project](../../examples/fastapi-typescript/README.md), and
 `python_resolve_test.go`, `typescript_resolve_test.go`, `quality_test.go`.
 

@@ -56,7 +56,8 @@ For change-aware proposals, add `--suggest-tests` to `radar check` and
 CLI with `--verify --suite recommended --allow-execution`. A versioned
 `--policy PATH` selects required checks; inspect `gate.verdict` and `coverage`
 separately. Recommendations neither execute code nor install dependencies, and
-MCP remains read-only. See [intelligent verification](../../docs/INTELLIGENT_VERIFICATION.md).
+MCP remains read-only. See [test selection](../../docs/TEST_SELECTION.md) and
+[verdicts and policies](../../docs/VERIFICATION_POLICY.md).
 
 MCP `radar_check` and `radar_merge_check` accept `policy`, `suggest_tests` and
 `detail`. Default responses summarize at most ten findings and eight proposed

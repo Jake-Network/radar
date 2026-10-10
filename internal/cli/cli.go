@@ -26,7 +26,7 @@ import (
 
 // Version is set at release time with -ldflags "-X .../internal/cli.Version=X.Y.Z";
 // `go install module@vX.Y.Z` builds report the module version instead.
-var Version = "0.4.0-dev"
+var Version = "0.1.0-dev"
 
 // releaseVersion matches tagged module versions, not VCS pseudo-versions
 // (v0.0.0-20261009072112-e5ed75a0bfa9) or dirty builds.

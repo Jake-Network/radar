@@ -1,97 +1,38 @@
 # Roadmap
 
-0. Foundation: CLI/configuration, SQLite transactions/migrations, graph, four language adapters, Git inspection, fixture and graph query. Gate: actual multilingual indexing/query test.
-1. Architecture MVP: versioned plan/schema, context bundle, Codex skill, explicit deltas, DAG, preflight. Gate: deliberately inconsistent export plan is rejected with evidence and uncertainty.
-2. Contract MVP: committed Git comparisons, explicit OpenAPI/JSON Schema consumer mapping, explainable changes and independent-change negatives. Gate: Python producer/TS consumer total → total_cents conflict detected without demo-specific logic.
-3. Verification: committed implementation checks, digest-bound local review, opt-in test evidence, explicit contract drift and task feedback. Gate: compliant/noncompliant fixtures distinguish pass/fail/unknown.
-4. Agent and team workflow (0.2): location-independent IDs and worktree-shared state, inferred import dependencies and `affected`, robust contract comparison (annotations, nullability, enums, allOf, YAML), test environment errors and more harnesses (pytest, jest, vitest, JUnit), assumption lifecycle, next steps, human output, MCP server, Claude Code hook/skill and a GitHub Actions example. Gate: the regression scenarios in IMPLEMENTATION_STATUS.md.
-5. Expansion (deferred): compiler semantic resolution, SCIP ingestion, Protobuf, incremental parsing, scalable graph queries, richer language contracts, agent notifications and interactive UI.
+Nothing here is scheduled. Items move into a release when there is a fixture
+that proves them and a failure case that shows the limit.
 
-Current acceptance evidence is maintained in IMPLEMENTATION_STATUS.md. Release readiness requires all relevant tests, limitations and installation checks; milestones are never inferred from document existence.
+## Next
 
-## Agent-native milestone (implemented bounded vertical slices)
+- **Watch mode.** Rerun the static gate while agents work, so conflicts show up
+  before the branches are finished.
+- **Observed attribution.** Rerun a failing test on subsets of the branches to
+  find which combination breaks it, instead of inferring it from imports.
+- **Windows binaries.** Handle `core.autocrlf` and long paths, then add Windows
+  to the release matrix.
+- **Workspace scenarios.** Run a declared test against every repository's
+  candidate at once, and a `--workspace FILE` mode for CI.
+- **Better TypeScript resolution.** Project references and package-based
+  `extends`.
 
-A: project setup and unified check; B: inspectable static discovery; C: private combined-branch preview and opt-in verification with the two-passing-branches demo; D: read-only MCP, bounded repair guidance and planning ownership/integration warnings; E: module path alignment, unpublished Linux artifact preparation and regression checks. See implementation status for actual current execution results.
+## Later
 
-Next: broaden imported FastAPI/TypeScript client resolution with scoped symbol evidence, expand recommendation precision with tested compiler/workspace relationships, and benchmark representative monorepos. Compiler semantics, runtime transport resolution, prose contradiction detection, multi-platform releases, signing and incremental caching remain deferred.
+- Symbol-level Python import analysis, so a change behind a package
+  `__init__` does not select every test.
+- Native selectors (Jest `--findRelatedTests`, Vitest `related`, Nx affected,
+  pytest-testmon), run under the same consent and environment rules as tests.
+- Java: Tree-sitter indexing, Maven and literal Gradle module roots, JUnit
+  selection. Planned before C/C++ because it fits the existing contract model
+  and JUnit reader.
+- C/C++: include edges per compilation configuration, `compile_commands.json`
+  as data, CTest and GoogleTest results.
+- Compiler-backed semantics (SCIP, go/types, rust-analyzer, tsc) and
+  incremental indexing.
+- Signed and notarized releases.
+- OS-level isolation for executed tests. Until then, use a disposable runner.
 
+## Out of scope
 
-## Intelligent verification milestone
-
-The current vertical slices separate selected gate evidence from analyzer
-coverage, add read-only test inventory/recommendation, and execute explicitly
-selected recommended commands on combined source. Reviewed plan criteria require
-exact candidate-bound observations; broad static discovery expansion remains a
-separate milestone and must not be implied by suite execution.
-
-Follow-up priority: measure recommendation false negatives on representative
-monorepos, improve supported import/contract resolution with inspectable evidence,
-and add reviewed candidate acceptance only when stale-source and ambiguity gates
-are tested. Secure execution isolation, automatic dependency provisioning,
-compiler semantics, signed releases and additional binary platforms remain deferred.
-
-## Verification trustworthiness milestone
-
-Implemented: contract obligations defined by the base manifest with explicit
-retirement (A); selection modes, grouping, command/time budgets and
-non-silent omissions (B); static runner readiness and missing-module
-environment errors (C, partial); labeled mutation evaluation on a fixture
-monorepo and Pallets Click (D); bounded `agent_brief` MCP summaries (E).
-
-Deferred:
-
-* Native selector adapters (Jest `--findRelatedTests`, Vitest `related`, Nx
-  affected, pytest-testmon). Each executes repository configuration and needs
-  installed dependencies, so it must run under the same authorization and
-  environment rules as tests; see TEST_SELECTION.md.
-* Symbol-level Python usage analysis (re-exports through package
-  `__init__`), the only way to reduce Click-style selections below all tests.
-* Rust and Jest/Vitest evaluation with real toolchains, and a monorepo-scale
-  benchmark.
-* Milestone F (real contract discovery: imported Pydantic models, APIRouter,
-  aliases, TypeScript re-exports and typed Axios consumers). It was not
-  started, so as not to compete with P0 work.
-
-## Adoption milestone (0.3)
-
-Implemented: `radar gate` as the single everyday command (zero-configuration
-worktree discovery and default base, branch attribution, one `next` command,
-`radar_gate` MCP tool, skills that call it first); default help limited to six
-commands with the toolkit under `radar help --all`; value-first README with the
-full reference moved to USAGE.md; TypeScript tsconfig `paths`/`baseUrl`
-(relative `extends`) and workspace package resolution; native release builds
-for linux/darwin × amd64/arm64 with a portable smoke test.
-**Superseded release behavior:** tag publication and Homebrew tap automation
-were replaced by manual protected publication and formula generation for review.
-Windows amd64 native packaging is configured; actual native execution remains
-unverified in the Linux development environment.
-
-Next: watch mode that re-runs the static gate while agents work, so conflicts
-surface before branches finish; failure attribution by re-running failing
-tests on subsets of branches (observed rather than inferred); notifications
-into agent terminals (for example `cmux notify`); compiler-backed TypeScript
-resolution for project references.
-
-## Future independent language slices
-
-- Java: Tree-sitter structural indexing and import dependencies, then native
-  Maven/Gradle project roots and JUnit test/evidence integration, with fixtures
-  and unsupported semantic coverage explicit.
-- C/C++: Tree-sitter structural indexing, include dependencies and compilation
-  database support, then CTest/GoogleTest selection and observed evidence.
-
-These are future vertical slices, not implementations in the current reliability,
-PR integration, Python/TypeScript discovery and native distribution milestones.
-
-## Reliability and adoption (0.4)
-
-Implemented locally: fail-closed default selected verification, interspersed gate
-flags, excluded dirty-worktree reporting, captured plan/policy stability,
-continuous PR-driver/workflow/packaging/installer checks, and reproducible
-candidate-versus-full-suite evaluation. See [validation](RADAR_0_4_VALIDATION.md)
-and [benchmark results and limits](BENCHMARKS_0_4.md).
-
-Native non-Linux execution and independent external runtime benchmarks remain
-unqualified until their configured environments execute successfully. Next
-language recommendation: Java before C/C++, with separate bounded vertical
-slices described in [LANGUAGE_EXPANSION](LANGUAGE_EXPANSION.md).
+- Installing dependencies or fetching from remotes.
+- Launching or orchestrating agents.

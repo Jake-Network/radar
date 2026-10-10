@@ -1,135 +1,111 @@
-# Native release qualification
+# Releasing
 
-Radar embeds Tree-sitter via CGO. A working GOOS/GOARCH cross-build is not native
-qualification. `scripts/release.py` checks the actual host, target and CGO setting,
-builds with trimpath, collects contributing dependency licenses, verifies the
-reported version and checks actual parsed symbols in Python, TypeScript, Go and
-Rust before creating an archive. Installed artifact smoke also checks index
-counts, agent setup dry-run and gate options following branch arguments.
-The existing Bash `release.sh [OUT] [VERSION]` entry point remains compatible.
-Python is a maintainer packaging dependency; installed binaries need no Go or C
-compiler. Source analysis needs Git, and optional test execution needs its runners.
+Radar embeds Tree-sitter through CGO, so every target is built and tested on a
+native runner. A cross-compiled binary is not treated as qualified.
 
-## Platform matrix
+## Targets
 
-| Target | Native build runner | Archive | Current qualification |
-|---|---|---|---|
-| Linux amd64 | Ubuntu 22.04, system C compiler | `radar-linux_amd64.tar.gz` | 0.4.0 hosted matrix passed |
-| macOS arm64 | macOS 15 Apple Silicon, Clang | `radar-darwin_arm64.tar.gz` | 0.4.0 hosted matrix passed |
-| Windows amd64 | Windows 2022, UCRT64 GCC | `radar-windows_amd64.zip` | Removed from the 0.4.0 matrix: tests fail on runner Git defaults (`core.autocrlf`, long paths) |
-| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` | 0.4.0 hosted matrix passed |
-| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` | 0.4.0 hosted matrix passed |
+| Target | Runner | Archive |
+| --- | --- | --- |
+| Linux amd64 | Ubuntu 22.04 | `radar-linux_amd64.tar.gz` |
+| Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` |
+| macOS arm64 | macOS 15, Apple Silicon | `radar-darwin_arm64.tar.gz` |
+| macOS amd64 | macOS 15, Intel | `radar-darwin_amd64.tar.gz` |
 
-No unvalidated placeholder binaries are created. Every native build's vet, full
-suite, race suite and installed artifact smoke are required; macOS failures are
-no longer informational. A platform failing those checks prevents collection and
-publication. Tool presence or a configured matrix is not an observed CI success.
+All four passed the hosted matrix for the pre-release `v0.4.0` tag. 0.1.0 is
+qualified by its own tag run. Windows amd64 can be packaged locally but is not
+in the matrix: tests fail on the runner's Git defaults (`core.autocrlf`, long
+paths), so no Windows binary is published.
 
-## Prepare assets locally
+Each target must pass vet, the full test suite, the race suite and a smoke test
+of the installed archive. If any target fails, nothing is collected or
+published.
 
-On the matching native host with Go, a C compiler, Git and Python:
+## First public release (0.1.0)
+
+Development used milestone numbers 0.1 to 0.4 and pushed a `v0.4.0` tag. It was
+never published as a GitHub release, but the Go module proxy cached it, and
+proxy versions are permanent. Without a retraction, `go install ...@latest`
+would keep resolving to v0.4.0. So `go.mod` retracts `[v0.4.0, v0.4.1]`, and
+because `go` reads retractions from the highest version, the retraction itself
+has to be published as v0.4.1. Never move or delete the `v0.4.0` tag; the
+checksum database already has it.
+
+Once the release commit with the `retract` directive is on `main` and CI has
+passed:
 
 ```sh
-CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets 0.3.0-rc.1
+git tag -a v0.4.1 -m "Retract pre-release v0.4.0" <release-commit>
+git push origin v0.4.1
+GOPROXY=https://proxy.golang.org go list -m github.com/Jake-Network/radar@v0.4.1
+git tag -a v0.1.0 -m "Radar 0.1.0" <release-commit>
+git push origin v0.1.0
+```
+
+The `v0.4.1` tag also starts an asset run. Cancel it if you like, and never
+dispatch it with `publish=true`. When the `v0.1.0` run has passed on every
+host, dispatch the release workflow on `v0.1.0` with `publish=true`. Then check
+that `GOPROXY=https://proxy.golang.org go list -m github.com/Jake-Network/radar@latest`
+reports v0.1.0 (the proxy can take a few minutes) and that the README install
+command works.
+
+When the version line reaches 0.4, skip v0.4.0 and v0.4.1 and use v0.4.2.
+
+## Building assets locally
+
+On the matching host, with Go, a C compiler, Git and Python:
+
+```sh
+CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets 0.1.0-rc.1
 python3 scripts/release-test.py
 python3 scripts/workflow-test.py
-python3 scripts/validate-release.py /tmp/radar-assets 0.3.0-rc.1
+python3 scripts/validate-release.py /tmp/radar-assets 0.1.0-rc.1
 bash scripts/install-release-test.sh
 ```
 
-On Windows, with native Go and UCRT64 GCC on PATH:
+On Windows, with Go and UCRT64 GCC on `PATH`, use `scripts/release.py`,
+`scripts/validate-release.py` and `scripts/install-release-test.ps1`. The
+installed-binary smoke test removes MinGW from `PATH` first, so an accidental
+GCC DLL dependency fails qualification.
 
-```powershell
-$env:CGO_ENABLED = '1'
-$env:CC = 'gcc'
-python scripts/release.py "$env:TEMP/radar-assets" 0.3.0-rc.1
-python scripts/validate-release.py "$env:TEMP/radar-assets" 0.3.0-rc.1
-./scripts/install-release-test.ps1
-```
+`release.py` checks the host, target and CGO setting, builds with `-trimpath`,
+verifies the reported version and parses real Python, TypeScript, Go and Rust
+symbols before archiving. Archives contain the binary, `LICENSE`,
+`VERSION.txt`, dependency notices, docs, schemas, examples and install
+scripts, with normalized metadata and a SHA-256 file for each archive.
 
-Windows external linking requests static compiler runtime libraries. Installed
-artifact smoke removes MSYS/MinGW compiler directories from PATH before launching
-Radar, so an accidentally required GCC DLL prevents qualification. Windows's
-system UCRT remains an OS dependency. Tests run against the archive executable,
-not merely an unarchived build.
+## Workflows
 
-Archives contain the correct executable name, LICENSE, VERSION.txt, dependency
-inventory, actual module notices, third_party notices, docs, schemas, examples
-and installation scripts. Sorted metadata avoids timestamps, owners, cache paths
-and build-directory leaks. SHA-256 files cover the exact archive bytes.
-`VERSION.txt` and `radar version` match the selected version without leading `v`.
+`ci.yml` runs on every push and pull request: gofmt, vet, unit and race tests,
+smoke and all demos, PR workflow regressions, benchmark harness tests, archive
+and installer tests, actionlint and a Windows installer job.
 
-## Controlled hosted workflow
+`release.yml` builds each archive on its native runner and collects them only
+after every host passes. A tag only prepares assets. Publishing needs a manual
+dispatch with `publish=true` on an existing tag, through the protected
+`release` environment. Configure required reviewers on that environment before
+the first publication. Checksums are verified again before
+`gh release create --verify-tag`.
 
-Every push and pull request runs Go formatting, vet, unit and race checks, all
-five demos and integration smoke, PR driver regressions, benchmark fixture
-regressions, archive metadata tests, offline Unix installer regressions, Linux
-native packaging and installed artifact validation. A separate Windows job
-executes native PowerShell installer regressions. Workflow syntax and expressions
-are checked by pinned actionlint v1.7.7; targeted regression checks enforce SHA
-action pins, read-only default tokens, no persisted checkout credentials and
-manual publication guards. GitHub branch protection must require these CI jobs;
-the repository files alone do not configure branch protection or environment
-reviewers. Native Windows packaging still runs in the release qualification
-matrix, while the ordinary CI Windows job tests the installer using local fixtures.
+The Homebrew formula is generated as a release asset for review. Nothing pushes
+to a tap. Signing, notarization and provenance attestations are not set up.
 
-`.github/workflows/release.yml` builds each artifact on its native runner, then
-collects only after every host's required tests and smoke pass. Tags **prepare**
-assets only. A manual workflow dispatch on an already existing version tag with
-`publish=true` requests publication through the `release` environment.
-Configure that environment with required maintainers and protected tag rules
-before enabling publication. No script here creates a tag or pushes a branch.
-The job verifies checksums again before `gh release create --verify-tag`.
+Branch protection and environment reviewers are GitHub settings; the files in
+this repository do not configure them.
 
-The Homebrew formula is generated as a reviewable asset; the workflow does not
-push to a tap. Maintainers may review and update their tap separately. Hosted
-Actions, release creation, authentic downloads and Homebrew installation remain
-unverified until actual runs and published assets exist. Artifact attestations
-and signing/notarization are not currently enabled; checksums provide integrity,
-not an independent publisher authentication mechanism.
-
-## Installation and runtime limits
-
-From a reviewed checkout, use an explicit published version:
+## Installing and runtime limits
 
 ```sh
 bash scripts/install-release.sh --version vX.Y.Z --dir "$HOME/.local/bin"
-# --force replaces an existing binary only after successful validation.
 ```
 
-```powershell
-./scripts/install-release.ps1 -Version vX.Y.Z
-# Default: $env:LOCALAPPDATA/Radar/bin; -Directory overrides; -Force replaces.
-```
+`--force` replaces an existing binary, and only after the new one validates.
+Installers check the OS and CPU, the checksum and the archive layout, extract
+only the binary and never edit `PATH`.
 
-Installers validate OS/CPU and exact checksum name, reject traversal and special
-archive members, extract only the named executable as a stream, check version,
-retain the original notice archive, and preserve existing executables on failure.
-Windows rejects directory junctions/symlinks in installation paths and replaces
-files atomically. No administrator privileges are required for default paths.
-Installers do not silently edit PATH.
-
-Linux hosted release baseline is glibc 2.35+; musl/Alpine and older glibc need a
-source build. A local archive inherits its local host's libc and must not be
-advertised as the Ubuntu baseline. macOS deployment target is 11.0; Developer ID
-signing/notarization are not configured. Windows arm64 is unsupported for binary
-installation. Windows process timeout currently kills the direct process; child
-process-tree termination is not qualified, so executable verification on Windows
-has that explicit limitation. Read-only embedded parsing is the platform smoke.
-
-The 0.4 local qualification on 2026-10-09 used Linux x86_64, Go 1.26.8,
-GCC 13.3.0 and glibc 2.39. Native `0.4.0-dev` packaging and unpacked checksum,
-version metadata, notice preservation, actual parser symbols and CLI smoke
-passed. Archive metadata regressions cover all five artifact formats; this is
-format validation, not macOS/Windows/arm64 executable evidence. Unix installer
-regressions are now host-aware and required on Linux and macOS release runners;
-only Linux execution was available locally. PowerShell was unavailable, so the
-Windows installer and executable remain unverified for this milestone. No release
-was published and no tag was created.
-
-If CGO build fails, verify `go env CGO_ENABLED` and native compiler availability;
-setting target variables does not install a compiler. If verification blocks,
-prepare the declared test environment rather than treating runner absence as a
-passing suite. `radar doctor` reports available tools without enabling semantic
-indexing. Source fallback: `go build -trimpath -o radar ./cmd/radar` (`radar.exe` on
-Windows), using a compiler for the actual host.
+- Linux binaries need glibc 2.35 or newer. On musl or older glibc, build from
+  source.
+- The macOS deployment target is 11.0.
+- If a CGO build fails, check `go env CGO_ENABLED` and that a native C compiler
+  is installed. Setting `GOOS`/`GOARCH` does not install one.
+- Source build: `go build -trimpath -o radar ./cmd/radar`.
