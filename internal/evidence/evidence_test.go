@@ -438,7 +438,12 @@ func TestWrapperUnavailable(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, argv := range [][]string{{"./gradlew", "test"}, {"./mvnw", "test"}, {"mvn", "test"}, {"go", "test"}} {
+	for _, argv := range [][]string{{"./gradlew", "test"}, {"./mvnw", "test"}} {
+		if why := WrapperUnavailable(dir, argv); why == "" {
+			t.Fatalf("empty distribution cache accepted: %v", argv)
+		}
+	}
+	for _, argv := range [][]string{{"mvn", "test"}, {"go", "test"}} {
 		if why := WrapperUnavailable(dir, argv); why != "" {
 			t.Fatalf("%v: %q", argv, why)
 		}

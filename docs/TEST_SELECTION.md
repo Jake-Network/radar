@@ -39,6 +39,14 @@ the default build compiles; others are inventoried as unsupported.
   applies, so Radar runs it only when that distribution is already in
   `GRADLE_USER_HOME` or `MAVEN_USER_HOME` (`~/.gradle`, `~/.m2`); otherwise
   the command is `environment_unavailable`. A JVM must be on `PATH` either way.
+  Availability requires the pinned URL's cache entry and launcher, rather
+  than an archive-name directory: Gradle also needs its completion marker;
+  Apache Maven's JAR wrapper needs a committed wrapper JAR and its retained
+  archive. Maven `distributionType=only-script` uses its distinct URL hash
+  and direct Maven home layout; an absent type is treated as the JAR variant.
+  Only default cache bases/paths and plain ASCII HTTP(S) ZIP URLs are
+  supported. Custom cache configuration, forced downloads/unpacking, URL
+  escaping for Maven's shell wrapper and unknown variants remain unavailable.
 - Java commands run in separate private snapshots of the same candidate commit
   and tree, so upstream modules, separate tiers, and command chunks cannot
   reuse an earlier command's reports.
