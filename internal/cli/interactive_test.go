@@ -3,6 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,5 +71,77 @@ func TestInteractiveOutsideRepositoryShowsHelp(t *testing.T) {
 	out := interact(t, t.TempDir(), "")
 	if !strings.Contains(out, "not inside a Git repository") || !strings.Contains(out, "Usage: radar <command>") {
 		t.Fatal(out)
+	}
+}
+
+func TestInteractiveFromSubdirectoryUsesRepositoryRoot(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	sub := filepath.Join(root, "src")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	out := interact(t, sub, "1\nq\n")
+	for _, want := range []string{"Worktree branches beyond main: agent-backend", "Radar gate: PASS (static)", "(exit 0)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestInteractiveRunShowsEveryWorkspaceRepositoryBeforeConsent(t *testing.T) {
+	s := newShop(t)
+	s.register()
+
+	out := interact(t, s.orders, "3\nn\nq\n")
+	for _, want := range []string{`Workspace "shop" — radar gate checks every repository in it:`, "radar gate --run will run tests in:", "orders    agent/api + agent/rounding (this repository)", "payments  agent/client", "Run tests? [y/N]"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "$ radar gate --run") {
+		t.Fatal("declined run dispatched:\n" + out)
+	}
+	// Branches picked in this repository leave the others at their base,
+	// where --run executes nothing; the confirmation says so.
+	out = interact(t, s.orders, "2\n1\n3\nn\nq\n")
+	if !strings.Contains(out, "orders    agent/api (this repository)") || !strings.Contains(out, "payments  base only — no branches here, so no tests run") {
+		t.Fatal(out)
+	}
+}
+
+// steppedReader returns one line per read and runs a hook before the line
+// at the same index, so a test can change the repository mid-dialog.
+type steppedReader struct {
+	lines []string
+	hooks map[int]func()
+	next  int
+}
+
+func (r *steppedReader) Read(b []byte) (int, error) {
+	if r.next >= len(r.lines) {
+		return 0, io.EOF
+	}
+	if h := r.hooks[r.next]; h != nil {
+		h()
+	}
+	n := copy(b, r.lines[r.next])
+	r.next++
+	return n, nil
+}
+
+func TestInteractiveRunAbortsWhenScopeChangesAfterConsent(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	in := &steppedReader{lines: []string{"3\n", "y\n", "q\n"}, hooks: map[int]func(){1: func() {
+		agent("agent-late", map[string]string{"frontend.ts": "export const QUANTITY = 3;\n"})
+	}}}
+	var out, errs bytes.Buffer
+	if code := Interactive(context.Background(), root, in, &out, &errs); code != 0 {
+		t.Fatal(code, errs.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "changed after you confirmed; nothing ran") || strings.Contains(text, "$ radar gate --run") {
+		t.Fatal(text)
 	}
 }

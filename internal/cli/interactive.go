@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Jake-Network/radar/internal/composition"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/project"
 	"github.com/Jake-Network/radar/internal/termui"
@@ -26,9 +28,14 @@ const maxListedBranches = 30
 func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.Writer) int {
 	p := palette{on: termui.Color(out, termui.Auto, os.Getenv)}
 	out = styled(out, p.on)
+	// Gate requires the repository top level as --root, so a menu opened in a
+	// subdirectory works on the repository that contains it.
 	root, err := project.Root(dir)
 	if err == nil {
-		_, err = gitrepo.TopLevel(ctx, root)
+		root, err = gitrepo.TopLevel(ctx, root)
+	}
+	if err == nil {
+		root, err = project.Root(root)
 	}
 	if err != nil {
 		fmt.Fprintf(out, "%s not inside a Git repository. cd into a project and run radar again.\n", p.yellow("Radar:"))
@@ -54,7 +61,7 @@ func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.W
 				s.dispatch(append([]string{"gate"}, picked...)...)
 			}
 		case "3":
-			if s.confirmRun() {
+			if s.confirmRun(s.selected) {
 				s.dispatch(append([]string{"gate", "--run"}, s.selected...)...)
 			}
 		case "4":
@@ -80,11 +87,98 @@ type session struct {
 	worktree    []string // worktree branches with commits beyond base (gate's default)
 	others      []string // other local branches with commits beyond base
 	selected    []string // branches chosen in the picker; empty means gate's default
+	workspace   string   // workspace name when gate checks several repositories
+	scope       []target // what `radar gate` with the current selection checks
+}
+
+// target is one repository a gate run checks and the branches it combines
+// there. A repository with no branches takes part at its base only, and
+// --run executes nothing in it.
+type target struct {
+	repo     string
+	current  bool
+	branches []string
+	problem  string
+}
+
+// targets resolves what `radar gate ARGS` checks with gate's own scope rules:
+// every repository of this repository's workspace, or this repository alone.
+func (s *session) targets(args []string) (string, []target, error) {
+	a := &app{ctx: s.ctx, root: s.root, out: io.Discard, errout: io.Discard}
+	inv, err := a.workspaceInvocation(options{args: args})
+	if err != nil {
+		return "", nil, err
+	}
+	if inv == nil {
+		if s.base == "" {
+			return "", nil, errors.New("no main, master or trunk branch found")
+		}
+		baseSHA, err := gitrepo.Resolve(s.ctx, s.root, s.base)
+		if err != nil {
+			return "", nil, err
+		}
+		refs, _, err := a.gateBranches(args, s.base, baseSHA)
+		if err != nil {
+			return "", nil, err
+		}
+		return "", []target{{repo: filepath.Base(s.root), current: true, branches: refs}}, nil
+	}
+	repos, err := composition.Collect(s.ctx, composition.Request{Scope: inv.scope, Named: inv.named, Bases: inv.bases})
+	if err != nil {
+		return "", nil, err
+	}
+	out := []target{}
+	for _, r := range repos {
+		t := target{repo: r.ID, current: r.ID == inv.scope.Current, problem: r.Error}
+		for _, b := range r.Branches {
+			t.branches = append(t.branches, b.Ref)
+		}
+		out = append(out, t)
+	}
+	return inv.scope.Workspace, out, nil
+}
+
+func sameTargets(a, b []target) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].repo != b[i].repo || a[i].problem != b[i].problem || strings.Join(a[i].branches, "\x00") != strings.Join(b[i].branches, "\x00") {
+			return false
+		}
+	}
+	return true
+}
+
+// printTargets lists each repository with the branches gate combines there.
+func (s *session) printTargets(targets []target, run bool) {
+	width := 0
+	for _, t := range targets {
+		width = max(width, len(t.repo))
+	}
+	for _, t := range targets {
+		name := t.repo + strings.Repeat(" ", width-len(t.repo))
+		detail := s.p.cyan(strings.Join(t.branches, " + "))
+		switch {
+		case t.problem != "":
+			detail = s.p.mark("!") + " " + t.problem
+		case len(t.branches) == 0 && run:
+			detail = s.p.dim("base only — no branches here, so no tests run")
+		case len(t.branches) == 0:
+			detail = s.p.dim("base only")
+		}
+		current := ""
+		if t.current && len(targets) > 1 {
+			current = s.p.dim(" (this repository)")
+		}
+		fmt.Fprintf(s.out, "    %s  %s%s\n", s.p.bold(name), detail, current)
+	}
 }
 
 // refresh rereads branches so commits made while the menu is open are seen.
 func (s *session) refresh() {
 	s.base, s.worktree, s.others = gitrepo.DefaultBranch(s.ctx, s.root), nil, nil
+	s.workspace, s.scope, _ = s.targets(s.selected)
 	if s.base == "" {
 		return
 	}
@@ -126,6 +220,10 @@ func (s *session) menu() {
 	}
 	if len(s.selected) > 0 {
 		fmt.Fprintf(w, "  Selected:  %s\n", p.cyan(strings.Join(s.selected, ", ")))
+	}
+	if s.workspace != "" {
+		fmt.Fprintf(w, "\n  Workspace %q — radar gate checks every repository in it:\n", s.workspace)
+		s.printTargets(s.scope, false)
 	}
 	target := "worktree branches"
 	if len(s.selected) > 0 {
@@ -204,11 +302,29 @@ func (s *session) pick() []string {
 	return picked
 }
 
-func (s *session) confirmRun() bool {
-	fmt.Fprintf(s.out, "%s This runs the repository's tests with your permissions in a private copy of the combined branches\n", s.p.mark("!"))
-	fmt.Fprintln(s.out, "  (not an OS sandbox). Your checkout and branches are not changed.")
+// confirmRun shows exactly which repositories and branches `radar gate
+// --run ARGS` will test, resolved with gate's own scope rules, and asks.
+// Nothing runs when the scope cannot be resolved or changes before the
+// command starts.
+func (s *session) confirmRun(args []string) bool {
+	_, shown, err := s.targets(args)
+	if err != nil {
+		fmt.Fprintf(s.out, "%s Cannot tell what radar gate --run would test: %v\nNothing ran.\n", s.p.mark("!"), err)
+		return false
+	}
+	fmt.Fprintf(s.out, "%s radar gate --run will run tests in:\n", s.p.mark("!"))
+	s.printTargets(shown, true)
+	fmt.Fprintln(s.out, "  Tests run with your permissions in a private copy of the combined branches")
+	fmt.Fprintln(s.out, "  (not an OS sandbox). Your checkouts and branches are not changed.")
 	answer, ok := s.prompt(s.p.bold("Run tests? [y/N] "))
-	return ok && (strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"))
+	if !ok || !(strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")) {
+		return false
+	}
+	if _, now, err := s.targets(args); err != nil || !sameTargets(shown, now) {
+		fmt.Fprintf(s.out, "%s The repositories or branches changed after you confirmed; nothing ran. Review the list and choose again.\n", s.p.mark("!"))
+		return false
+	}
+	return true
 }
 
 // dispatch echoes the equivalent command so the CLI is learnable, then runs
