@@ -245,7 +245,7 @@ func TestJUnitReportDirectory(t *testing.T) {
 		t.Fatal("malformed report in directory accepted")
 	}
 	allowed := map[string]bool{"reports": true}
-	if !declaredArtifact(allowed, "reports/TEST-a.xml") || !declaredArtifact(allowed, "reports") || declaredArtifact(allowed, "reports2/TEST-a.xml") || declaredArtifact(allowed, "src/a.go") {
+	if !declaredArtifact(allowed, "reports/TEST-a.xml") || !declaredArtifact(allowed, "reports") || declaredArtifact(allowed, "reports2/TEST-a.xml") || declaredArtifact(allowed, "src/a.go") || declaredArtifact(allowed, "reports/helper.py") || declaredArtifact(allowed, "reports/nested/TEST-a.xml") {
 		t.Fatal("declared report directory exemption")
 	}
 }
@@ -403,5 +403,58 @@ func TestMissingModuleIsEnvironmentErrorNotFailure(t *testing.T) {
 	mixed := "E   ModuleNotFoundError: No module named 'yaml'\n====== 1 failed, 3 passed, 1 error in 0.20s ======\n"
 	if environmentFailure(pytest, []byte(mixed)) {
 		t.Fatal("observed failures hidden")
+	}
+}
+
+// The report can cover only part of a runner's output; already observed
+// failures still block both generic execution and plan-bound records.
+func TestPartialJUnitPreservesObservedFailures(t *testing.T) {
+	needPython(t)
+	const source = `import unittest
+from pathlib import Path
+class Inner(unittest.TestCase):
+ def test_bad(self): self.fail('failure')
+unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Inner))
+del Inner
+class Outer(unittest.TestCase):
+ def test_good(self):
+  Path('report.xml').write_text('<testsuite><testcase name="good"/></testsuite>')
+`
+	for _, mode := range []string{"observation", "candidate", "snapshot"} {
+		t.Run(mode, func(t *testing.T) {
+			root := fixture(t, map[string]string{"test_nested.py": source})
+			argv := []string{"python3", "-m", "unittest", "test_nested"}
+			var status model.Status
+			var failed int
+			switch mode {
+			case "observation":
+				r, e := ObserveCandidateReport(context.Background(), root, ".", argv, "report.xml", 10*time.Second)
+				if e != nil {
+					t.Fatal(e)
+				}
+				status, failed = r.Status, r.TestsFailed
+			case "candidate":
+				c := candidateCheckpoint(t, root)
+				p := reviewedPlan(root, c, argv, ".")
+				p.Acceptance[0].Rule.JUnit = "report.xml"
+				review(&p)
+				r, e := RunCandidate(context.Background(), root, c, p, argv, ".", 10*time.Second)
+				if e != nil {
+					t.Fatal(e)
+				}
+				status, failed = r.Record.Status, r.Record.TestsFailed
+			case "snapshot":
+				p := plan(argv)
+				p.Acceptance[0].Rule.JUnit = "report.xml"
+				r, e := Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+				if e != nil {
+					t.Fatal(e)
+				}
+				status, failed = r.Status, r.TestsFailed
+			}
+			if status != model.StatusFailed || failed != 1 {
+				t.Fatalf("partial report erased observed failure: status=%s failed=%d", status, failed)
+			}
+		})
 	}
 }
