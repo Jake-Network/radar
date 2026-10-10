@@ -28,6 +28,7 @@ type CandidateObservation struct {
 	OutputDigest string             `json:"output_digest"`
 	FailedCases  []string           `json:"failed_cases,omitempty"`
 	Locations    []model.Provenance `json:"locations,omitempty"`
+	Diagnosis    *Diagnosis         `json:"diagnosis,omitempty"`
 }
 
 var failedCase = regexp.MustCompile(`(?m)^(?:FAIL|ERROR): ([A-Za-z_][A-Za-z0-9_]*) \(([A-Za-z_][A-Za-z0-9_.]*)\)$`)
@@ -134,5 +135,8 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 	// boundary. These are observations of explicitly trusted execution.
 	if environmentFailure(argv, data) {
 		r.Status = model.StatusError
+	}
+	if r.Status != model.StatusPassed && r.Status != model.StatusFailed && r.TestsRun == 0 && r.TestsFailed == 0 {
+		r.Diagnosis = diagnose(argv, r.ExitCode, data)
 	}
 }

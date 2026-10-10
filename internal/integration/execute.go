@@ -102,8 +102,11 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			if len(ev.Observation.FailedCases) > 0 {
 				f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
 			}
+			if d := ev.Observation.Diagnosis; d != nil {
+				f.Explanation += " Cause: " + d.Message + "."
+			}
 			f.ID = model.StableID(r.CandidateTree, executionOptions.CWD, strings.Join(executionOptions.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
-			f.Remediation = "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
+			f.Remediation = executionRemediation(ev)
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
 		}
@@ -285,6 +288,28 @@ func unavailable(root string, c testselection.Command) string {
 		return "runner " + tool + " is not on PATH"
 	}
 	return ""
+}
+
+// executionRemediation fits the repair advice to what was observed: only a
+// failed test points at the combined source; a missing runner, a timeout or
+// an unrecognized result points at the environment or the command.
+func executionRemediation(ev ExecutionEvidence) string {
+	d := ev.Observation.Diagnosis
+	switch {
+	case ev.Status == model.StatusFailed:
+		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
+	case d.Environment():
+		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies only committed files and never installs dependencies), then rerun the same gate. The combined source was not tested.", d.Name)
+	case d != nil:
+		return fmt.Sprintf("If %s is a third-party dependency, install it where you run radar and rerun the same gate; if it is part of this repository, check whether a branch renamed or removed it.", d.Name)
+	case ev.Status == model.StatusTimeout:
+		return "The command did not finish in time. Check it for a hang, or raise --timeout if the suite is slow, then rerun the same gate."
+	case ev.ExecutionError != "":
+		return "Radar could not run or check the command (" + ev.ExecutionError + "). Fix that, then rerun the same gate."
+	case ev.Status == model.StatusError:
+		return "The command stopped before reporting any test result. Run it yourself in a checkout of the combined branches to see its output (Radar keeps only a digest), fix the environment or the command, then rerun the same gate."
+	}
+	return "The command finished without a test result Radar recognizes. Make sure it runs tests with a supported runner or writes a declared JUnit report, then rerun the same gate."
 }
 
 func aggregateExecution(current, next model.Status) model.Status {

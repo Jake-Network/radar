@@ -129,6 +129,32 @@
             "tests_skipped": {
               "type": "integer",
               "minimum": 0
+            },
+            "diagnosis": {
+              "description": "Why a command produced no test outcome, when its output matched a known shape. A fixed sentence with a bounded name; raw output is never stored.",
+              "type": "object",
+              "required": [
+                "kind",
+                "name",
+                "message"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "runner_missing",
+                    "command_missing",
+                    "module_missing"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
             }
           }
         },

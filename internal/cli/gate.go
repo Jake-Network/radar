@@ -153,6 +153,8 @@ func (a *app) gate(o options) int {
 		g.Next = "resolve the missing evidence above, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
 	case configurationUnstable(configuration.Inputs):
 		g.Next = "restore stable configuration, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+	case r.Gate.Verdict == gate.Error && missingRunner(r.Executions) != "":
+		g.Next = "install " + missingRunner(r.Executions) + " where you run radar, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
 	case r.Gate.Verdict == gate.Error:
 		g.Next = "resolve the reported analysis or execution error and rerun the same gate."
 	case !o.verify:
@@ -264,11 +266,17 @@ func (g *gateReport) attribute() {
 			paths = append(paths, r.Conflicts...)
 		}
 		if strings.HasPrefix(f.Code, "integration_execution_") {
+			environment := false
 			for _, ev := range r.Executions {
 				// integration names the command and directory exactly this way.
 				if strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
 					paths = append(paths, testFiles[ev.SelectionID]...)
+					environment = environment || ev.Observation.Diagnosis.Environment()
 				}
+			}
+			// A missing runner says nothing about which branch is at fault.
+			if environment {
+				continue
 			}
 			reached := []string{}
 			for _, p := range paths {
@@ -393,8 +401,12 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 			fmt.Fprintln(w, "\n"+p.bold("Problems"))
 		}
 		explanation, cases, _ := strings.Cut(readableExplanation(f.Explanation, r.Executions, p), " Failed cases: ")
+		explanation, cause, _ := strings.Cut(explanation, " Cause: ")
 		fmt.Fprintf(w, "  %s %s\n", p.mark("✗"), p.paint("1;31", f.Code))
 		fmt.Fprintf(w, "    %s\n", explanation)
+		if cause != "" {
+			fmt.Fprintf(w, "    cause: %s\n", p.yellow(strings.TrimSuffix(cause, ".")))
+		}
 		if cases != "" {
 			fmt.Fprintf(w, "    failed cases: %s\n", p.red(cases))
 		}
@@ -489,6 +501,8 @@ func gateHeadline(g gateReport, ran bool) string {
 		switch {
 		case r.Gate.Verdict == gate.Fail && c.Status == model.StatusFailed:
 			reasons = append(reasons, gateLabel(c, r))
+		case r.Gate.Verdict == gate.Error && (c.Status == model.StatusError || c.Status == model.StatusTimeout):
+			reasons = append(reasons, strings.ToLower(gateCheckName(c.ID)))
 		case r.Gate.Verdict == gate.Blocked && c.Status != model.StatusPassed:
 			state := "not verified"
 			if c.Status == model.StatusIncomplete {
@@ -505,6 +519,13 @@ func gateHeadline(g gateReport, ran bool) string {
 	case gate.Blocked:
 		if len(reasons) > 0 {
 			return "required evidence is missing: " + strings.Join(reasons, ", ")
+		}
+	case gate.Error:
+		if names := missingRunner(r.Executions); names != "" {
+			return "the tests could not run; not installed: " + names
+		}
+		if len(reasons) > 0 {
+			return "could not complete: " + strings.Join(reasons, ", ") + " (see Problems)"
 		}
 	case gate.Pass:
 		if !ran {
@@ -541,6 +562,18 @@ func readableExplanation(text string, executions []integration.ExecutionEvidence
 		}
 	}
 	return text
+}
+
+// missingRunner names the runners or programs the selected commands could
+// not find, when that is why they produced no test result.
+func missingRunner(executions []integration.ExecutionEvidence) string {
+	names := []string{}
+	for _, ev := range executions {
+		if d := ev.Observation.Diagnosis; d.Environment() && !slices.Contains(names, d.Name) {
+			names = append(names, d.Name)
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func renderLeads(leads []gateLead, p palette) string {
