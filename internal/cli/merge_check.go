@@ -104,7 +104,8 @@ func (a *app) mergeCheck(o options) int {
 		Configuration []ConfigurationInput `json:"configuration_inputs,omitempty"`
 	}{r, configuration.Inputs}
 	a.report(report, func(w io.Writer) {
-		fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
+		p := paletteOf(w)
+		fmt.Fprintf(w, "%s %s — %s\n", p.bold("Gate:"), p.verdict(r.Gate.Verdict, string(r.Gate.Verdict)), r.Gate.Explanation)
 		fmt.Fprintf(w, "Analysis: %s\nBase: %s\n", r.Status, r.Base)
 		if o.output != "" && configurationUnstable(configuration.Inputs) {
 			fmt.Fprintln(w, "Evidence output omitted: selected configuration changed. Restore stable artifacts and rerun.")
@@ -115,7 +116,7 @@ func (a *app) mergeCheck(o options) int {
 		renderProposal(w, r.VerificationProposal)
 		renderSelection(w, r.Selection)
 		for _, c := range r.Checks {
-			fmt.Fprintf(w, "  %-12s %s: %s\n", c.Status, c.ID, c.Explanation)
+			fmt.Fprintf(w, "  %s%s %s: %s\n", p.status(c.Status, string(c.Status)), strings.Repeat(" ", max(0, 12-len(c.Status))), c.ID, c.Explanation)
 		}
 		for _, p := range r.Conflicts {
 			fmt.Fprintf(w, "  Conflict: %s\n", p)

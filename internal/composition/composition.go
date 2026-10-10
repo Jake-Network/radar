@@ -335,6 +335,13 @@ func Build(ctx context.Context, repos []Repo, o integration.Options, teams ...*T
 		res := Result{Repo: r}
 		if r.Error == "" {
 			ro := o
+			if o.Progress != nil {
+				id := r.ID
+				ro.Progress = func(s integration.Step) {
+					s.Repo = id
+					o.Progress(s)
+				}
+			}
 			if len(r.Branches) == 0 {
 				ro.Verify, ro.AllowExecution, ro.Suite, ro.Command = false, false, "", nil
 			}
@@ -359,6 +366,9 @@ func Build(ctx context.Context, repos []Repo, o integration.Options, teams ...*T
 
 func build(ctx context.Context, res *Result, o integration.Options, team *Team) *integration.Report {
 	r := &res.Repo
+	if o.Progress != nil {
+		o.Progress(integration.Step{Stage: integration.StageCombine})
+	}
 	c, err := integration.BuildCandidate(ctx, r.Path, r.Base, commits(r.Branches))
 	defer c.Close()
 	var unsupported *integration.UnsupportedEntryError

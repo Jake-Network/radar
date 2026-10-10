@@ -155,6 +155,21 @@ func WorktreeBranches(ctx context.Context, root string) ([]string, error) {
 	return out, nil
 }
 
+// LocalBranches lists local branch names in ref order.
+func LocalBranches(ctx context.Context, root string) ([]string, error) {
+	b, err := run(ctx, root, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, nil
+}
+
 // DefaultBranch guesses the integration base: the local counterpart of
 // origin/HEAD, then main, master or trunk. It returns "" when none exists.
 func DefaultBranch(ctx context.Context, root string) string {

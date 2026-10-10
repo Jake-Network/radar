@@ -45,7 +45,9 @@ implements JSON pointers for every package. `indexer` coordinates
 `languages`, `contracts` and `graph`; `planning` owns plan values, DAGs and context;
 `verification` checks observed implementations; `evidence` owns opt-in subprocess
 execution; `storage` owns SQLite schema migration and transactions. `git` provides
-bounded, read-only revision access. `project` locates state: a linked worktree
+bounded, read-only revision access. `termui` decides whether human output may be styled (terminal detection,
+`--color`, `NO_COLOR`/`FORCE_COLOR`, Windows console setup); styling lives only in the CLI
+renderers and never reaches JSON or MCP output. `project` locates state: a linked worktree
 without its own `.radar` uses the main worktree's state. Keep new rules in analysis packages and CLI
 presentation in the CLI rather than growing the entry point.
 

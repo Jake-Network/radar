@@ -396,5 +396,5 @@ func renderConnect(w io.Writer, c connectResult) {
 		root := filepath.Dir(filepath.Dir(entry.path))
 		fmt.Fprintf(w, "  git -C %s add %s && git -C %s commit -m %s\n", shellArg(root), entry.rel, shellArg(root), shellArg("Declare link "+id))
 	}
-	fmt.Fprintf(w, "Commit both files before gate reads the declarations.\n\nNext: %s\n", next)
+	fmt.Fprintf(w, "Commit both files before gate reads the declarations.\n\n%s %s\n", paletteOf(w).bold("Next:"), paletteOf(w).next(next))
 }

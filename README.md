@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/radar-logo.svg" width="96" alt="Radar logo: a radar scope whose sweep has found where two branches meet"></p>
+
 # Radar
 
 **Two agents. Two green branches. One broken merge. Radar catches it before you merge.**
@@ -10,22 +12,43 @@ the combination, runs selected tests when authorized, and provides repair leads.
 It is a local CLI. It needs no API key, sends no telemetry, and never touches
 your branches.
 
+<p align="center"><img src="docs/assets/gate-run.svg" alt="radar gate --run in a terminal: FAIL, 1 of 1 test command failed on the combined tree, with the failing case, the branch to look at and the next command" width="860"></p>
+
+<details>
+<summary>The same report as plain text</summary>
+
 ```console
 $ radar gate --run
-Radar gate: FAIL — 2 branch(es) onto main @ cecea977bdde
+Radar gate: FAIL — 1 of 1 test command failed on the combined tree
+2 branches onto main @ e4d5f9ed44f0
 
-  agent-backend   172789253204  1 file(s) changed
-  agent-frontend  480351edc8ad  1 file(s) changed
+  agent-backend   2b02738cceb2  1 file changed
+  agent-frontend  93f3399937e6  1 file changed
 
-  ✓  branches merge without conflicts
-  ✓  no breaking contract change found
-  ✗  tests on the combined tree did not pass
+  ✓ Merge           branches merge without conflicts
+  ✓ Contracts       no breaking contract change found
+  ✗ Tests           1 of 1 test command failed on the combined tree
+  ? Test selection  incomplete — 1 changed file has no related test
+  policy supported-integration requires textual_merge, no_breaking_contracts, integration_execution, test_selection
 
-  ✗ integration_execution_failed: … Failed cases: test_checkout.T.test_budget
+Problems
+  ✗ integration_execution_failed
+    Combined verification command python3 -m unittest discover -s . -p test_checkout.py (in .) returned failed (exit 1).
+    failed cases: test_checkout.Checkout.test_budget
     look at (import-based lead): agent-backend (backend.py)
+    fix: Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant.
+
+Tests (balanced): ran 1 of 1 selected command
+  ✗ python3 -m unittest discover -s . -p test_checkout.py  (in .; 1 recognized test)
+  Test files: 1 inventoried, 1 selected (relationships are not behavioral coverage)
+  ? Uncovered changes (no established test relationship): frontend.ts
+    Resolve with supported tests, review --suite full, or explicitly select a limited --policy.
 
 Next: repair on the branches above, commit, then rerun: radar gate --run
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
 ```
+
+</details>
 
 ## Install
 
@@ -61,6 +84,18 @@ From the main checkout, after your agents have committed on their branches:
 radar gate          # combine every worktree branch; conflicts, contract breaks, tests to run
 radar gate --run    # also run those tests on the combined tree
 ```
+
+Run bare `radar` in a terminal for a menu that lists the branches beyond the
+base, lets you pick which to combine, and dispatches the same commands (it
+prints each one). Tests run only after you confirm. When stdin or stdout is not
+a terminal, bare `radar` prints help as before.
+
+On a terminal the report is colored (green pass, red fail, yellow for anything
+unknown, incomplete or not run) and `radar gate` shows live progress on stderr;
+every mark (✓ ✗ ? !) and word stays in the text, so nothing depends on color.
+Pipes, files, CI logs, `--json` and the MCP server get plain output. Use
+`--color auto|always|never`; `NO_COLOR` turns color off and `FORCE_COLOR` turns
+it on for pipes. `--json` is never styled.
 
 The default execution gate blocks when changed files lack an established test
 relationship, inventory is incomplete, or required execution evidence is missing.

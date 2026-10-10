@@ -29,7 +29,8 @@ func setupCommand() command {
 			for _, d := range r.Diagnostics {
 				fmt.Fprintln(w, d)
 			}
-			fmt.Fprintln(w, "Next: radar check --base main; no API credentials required.")
+			p := paletteOf(w)
+			fmt.Fprintf(w, "%s %s; no API credentials required.\n", p.bold("Next:"), p.command("radar gate"))
 		})
 		return 0
 	}}

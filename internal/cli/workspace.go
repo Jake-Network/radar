@@ -114,10 +114,10 @@ func (a *app) workspaceAdd(current workspace.Location, path string, o options) i
 			fmt.Fprintf(w, "Added %s (%s) to workspace %q.\n", result.Repo.ID, result.Repo.Path, result.Workspace)
 		}
 		for _, warning := range warnings {
-			fmt.Fprintf(w, "  ! %s\n", warning)
+			fmt.Fprintf(w, "  %s %s\n", paletteOf(w).mark("!"), warning)
 		}
 		fmt.Fprintln(w, "Radar recorded paths only: no remote access, no installs, no tests.")
-		fmt.Fprintln(w, "\nNext: radar gate")
+		fmt.Fprintf(w, "\n%s %s\n", paletteOf(w).bold("Next:"), paletteOf(w).command("radar gate"))
 	})
 	return 0
 }
@@ -148,7 +148,7 @@ func (a *app) workspaceRemove(current workspace.Location, id string) int {
 		if deleted {
 			fmt.Fprintf(w, "Workspace %q has no repositories left and was removed.\n", name)
 		}
-		fmt.Fprintf(w, "\nNext: %s\n", next)
+		fmt.Fprintf(w, "\n%s %s\n", paletteOf(w).bold("Next:"), paletteOf(w).next(next))
 	})
 	return 0
 }
@@ -186,7 +186,7 @@ func (a *app) workspaceShow(current workspace.Location) int {
 		next := "radar workspace add <PATH>"
 		a.report(map[string]any{"workspace": nil, "next": next}, func(w io.Writer) {
 			fmt.Fprintln(w, "This repository is not in a workspace; radar gate checks it alone.")
-			fmt.Fprintf(w, "\nNext: %s\n", next)
+			fmt.Fprintf(w, "\n%s %s\n", paletteOf(w).bold("Next:"), paletteOf(w).next(next))
 		})
 		return 0
 	}
@@ -269,19 +269,19 @@ func (a *app) workspaceShow(current workspace.Location) int {
 				fmt.Fprintf(w, "    dirty:       %s (%s): %d uncommitted, excluded from candidates\n", d.Path, label, d.Count())
 			}
 			for _, warning := range r.Warnings {
-				fmt.Fprintf(w, "    ! %s\n", warning)
+				fmt.Fprintf(w, "    %s %s\n", paletteOf(w).mark("!"), warning)
 			}
 			if r.Next != "" {
-				fmt.Fprintf(w, "      next: %s\n", r.Next)
+				fmt.Fprintf(w, "      next: %s\n", paletteOf(w).next(r.Next))
 			}
 		}
 		if len(runs) > 0 {
 			fmt.Fprintln(w, "\nRecent runs:")
 			for _, r := range runs {
-				fmt.Fprintf(w, "  %s  %s  %s\n", r.RunID, r.CreatedAt, verdictMark[r.Verdict])
+				fmt.Fprintf(w, "  %s  %s  %s\n", r.RunID, r.CreatedAt, paletteOf(w).verdict(r.Verdict, verdictMark[r.Verdict]))
 			}
 		}
-		fmt.Fprintln(w, "\nNext: radar gate")
+		fmt.Fprintf(w, "\n%s %s\n", paletteOf(w).bold("Next:"), paletteOf(w).command("radar gate"))
 	})
 	return 0
 }

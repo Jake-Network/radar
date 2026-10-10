@@ -107,7 +107,7 @@ func TestGateExecutableVerificationScenarios(t *testing.T) {
 						}
 					}
 					humanCode, out, errs := run(t, root, args...)
-					if humanCode != tc.code || !strings.Contains(out, tc.text) || !strings.Contains(out, "recognized test(s)") || !strings.Contains(out, "not behavioral coverage") {
+					if humanCode != tc.code || !strings.Contains(out, tc.text) || !strings.Contains(out, "recognized test") || !strings.Contains(out, "not behavioral coverage") {
 						t.Fatalf("human code=%d\n%s\n%s", humanCode, out, errs)
 					}
 				})

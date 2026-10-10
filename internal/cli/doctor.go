@@ -5,7 +5,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"strings"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/languages"
@@ -29,24 +29,46 @@ func (a *app) doctor(_ options) int {
 		result["git_diagnostic"] = "selected root is inside a larger Git repository; checkpoint analysis requires repository top-level root"
 	}
 	a.report(result, func(w io.Writer) {
-		fmt.Fprintf(w, "Radar %s\nRoot:        %s\nState:       %s (initialized: %v)\n", Version, a.root, a.stateRoot, stateErr == nil)
+		p := paletteOf(w)
+		line := func(label, value string) {
+			fmt.Fprintf(w, "  %s%s %s\n", p.bold(label), strings.Repeat(" ", max(0, 14-len(label))), value)
+		}
+		available := func(n string) bool { return tools[n].(map[string]any)["available"].(bool) }
+		toolList := func(list []string) string {
+			parts := []string{}
+			for _, n := range list {
+				if available(n) {
+					parts = append(parts, p.mark("✓")+" "+n)
+				} else {
+					parts = append(parts, p.mark("✗")+" "+p.dim(n))
+				}
+			}
+			return strings.Join(parts, "  ")
+		}
+		fmt.Fprintf(w, "%s %s\n\n", brand(p, "Radar doctor"), p.dim(Version))
 		if info.Root != "" {
-			fmt.Fprintf(w, "Git:         %s @ %s (dirty: %v)\n", info.Branch, info.Head, info.Dirty)
+			state := "clean"
+			if info.Dirty {
+				state = p.yellow("uncommitted changes")
+			}
+			line("Repository", fmt.Sprintf("%s @ %s (%s)", p.cyan(info.Branch), short(info.Head), state))
+		} else {
+			line("Repository", p.mark("✗")+" not a Git repository")
 		}
 		if d, ok := result["git_diagnostic"]; ok {
-			fmt.Fprintf(w, "Git note:    %v\n", d)
+			line("Git note", fmt.Sprintf("%s %v", p.mark("!"), d))
 		}
-		fmt.Fprintln(w, "Languages:   TypeScript/JavaScript, Python, Go, Rust (structural; semantic analysis unavailable)")
-		sort.Strings(names)
-		fmt.Fprint(w, "Tools:      ")
-		for _, n := range names {
-			mark := "-"
-			if tools[n].(map[string]any)["available"].(bool) {
-				mark = "+"
-			}
-			fmt.Fprintf(w, " %s%s", mark, n)
+		line("Root", a.root)
+		if stateErr == nil {
+			line("State", a.stateRoot+"/.radar")
+		} else {
+			line("State", "not initialized "+p.dim("(radar gate works without it; radar init enables plan, evidence and graph commands)"))
 		}
-		fmt.Fprintln(w, "\nTelemetry:   none; cloud inference: none")
+		line("Languages", "TypeScript/JavaScript, Python, Go, Rust "+p.dim("(structural parsing; no semantic analysis)"))
+		line("Git", toolList([]string{"git"}))
+		line("Test runners", toolList([]string{"python3", "node", "go", "cargo"}))
+		line("Index tools", toolList([]string{"rust-analyzer", "scip-typescript", "scip-python"})+" "+p.dim("(detected only; they do not enable semantic analysis)"))
+		line("Privacy", "no telemetry, no cloud inference")
 	})
 	return 0
 }

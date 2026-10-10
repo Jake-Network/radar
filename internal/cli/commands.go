@@ -49,7 +49,7 @@ type command struct {
 }
 
 func planFlag(fs *flag.FlagSet, o *options) {
-	fs.StringVar(&o.plan, "plan", "", "structured plan path")
+	fs.StringVar(&o.plan, "plan", "", "structured plan `PATH`")
 }
 func refFlag(fs *flag.FlagSet, o *options, usage string) {
 	fs.StringVar(&o.ref, "ref", "", usage)
@@ -171,22 +171,101 @@ func lookup(name string) (command, bool) {
 	return command{}, false
 }
 
+// helpCopy is the everyday help: a short line for the command list, worked
+// examples and the safety notes a person needs before running the command.
+var helpCopy = map[string]struct {
+	brief    string
+	examples [][2]string
+	notes    []string
+}{
+	"gate": {brief: "Combine branches and tell whether they work together",
+		examples: [][2]string{
+			{"radar gate", "check every worktree branch with commits beyond the base"},
+			{"radar gate agent-a agent-b", "combine only the named branches"},
+			{"radar gate --run", "also run the related tests on the combined tree"},
+			{"radar gate --run --suite full", "run the whole supported test inventory (within --max-commands)"},
+			{"radar gate --with ../payments", "check another repository in the same run"},
+		},
+		notes: []string{
+			"Without --run, Radar reads committed Git objects only and runs no repository code.",
+			"With --run, selected tests run with your permissions in a private copy of the combined\nbranches (not an OS sandbox). Your checkout and branches are never changed.",
+			"Exit codes: 0 pass, 1 fail (with --run or --policy also not verified), 2 error.",
+		}},
+	"workspace": {brief: "Group repositories so gate checks them together",
+		examples: [][2]string{
+			{"radar workspace add ../payments", "register a sibling repository with this one"},
+			{"radar workspace show", "list the repositories radar gate will check"},
+		}},
+	"check": {brief: "Analyze changed files, dependency impact and contracts",
+		examples: [][2]string{
+			{"radar check --base main", "analyze the working tree against main"},
+			{"radar check --base main --suggest-tests", "also recommend tests (nothing runs)"},
+		}},
+	"discover": {brief: "Propose contract relationships, with evidence",
+		examples: [][2]string{{"radar discover", "list proposed producer/consumer relationships; accepted bindings are never changed"}}},
+	"setup": {brief: "Install project-local agent skills and MCP config",
+		examples: [][2]string{
+			{"radar setup --agent claude --dry-run", "show what would be written"},
+			{"radar setup --agent both", "configure Codex and Claude Code for this project"},
+		}},
+	"doctor": {brief: "Check tools, languages and repository state"},
+	"mcp":    {brief: "Serve Radar tools to coding agents over MCP (stdio)"},
+}
+
 func (c command) usageText(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s [--root DIR] [--json]\n\n%s\n", c.usage, c.summary)
+	p := paletteOf(w)
+	fmt.Fprintf(w, "%s %s [--root DIR] [--json]\n\n%s\n", p.bold("Usage:"), c.usage, c.summary)
+	copy := helpCopy[c.name]
+	if len(copy.examples) > 0 {
+		fmt.Fprintln(w, "\n"+p.bold("Examples:"))
+		width := 0
+		for _, e := range copy.examples {
+			width = max(width, len(e[0]))
+		}
+		for _, e := range copy.examples {
+			fmt.Fprintf(w, "  %s%s  %s\n", p.command(e[0]), strings.Repeat(" ", width-len(e[0])), p.dim(e[1]))
+		}
+	}
+	if len(copy.notes) > 0 {
+		fmt.Fprintln(w)
+		for _, n := range copy.notes {
+			fmt.Fprintln(w, n)
+		}
+	}
 	if c.flags == nil {
 		return
 	}
 	fs := flag.NewFlagSet(c.name, flag.ContinueOnError)
 	c.flags(fs, &options{})
-	fmt.Fprintln(w, "\nFlags:")
-	visible := flag.NewFlagSet(c.name, flag.ContinueOnError)
+	type row struct{ left, usage string }
+	rows, width := []row{}, 0
 	fs.VisitAll(func(f *flag.Flag) {
-		if !slices.Contains(c.advancedFlags, f.Name) {
-			visible.Var(f.Value, f.Name, f.Usage)
+		if slices.Contains(c.advancedFlags, f.Name) {
+			return
 		}
+		name, usage := flag.UnquoteUsage(f)
+		left := "--" + f.Name
+		if name != "" {
+			left += " " + name
+		}
+		if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" && !strings.Contains(usage, "default") {
+			usage += " (default " + f.DefValue + ")"
+		}
+		rows = append(rows, row{left, usage})
+		width = max(width, len(left))
 	})
-	visible.SetOutput(w)
-	visible.PrintDefaults()
+	width = min(width, 24)
+	fmt.Fprintln(w, "\n"+p.bold("Flags:"))
+	for _, r := range rows {
+		if len(r.left) > width {
+			fmt.Fprintf(w, "  %s\n  %s  %s\n", p.cyan(r.left), strings.Repeat(" ", width), r.usage)
+			continue
+		}
+		fmt.Fprintf(w, "  %s%s  %s\n", p.cyan(r.left), strings.Repeat(" ", width-len(r.left)), r.usage)
+	}
+	if len(c.advancedFlags) > 0 {
+		fmt.Fprintln(w, "\nMore flags: radar help --all")
+	}
 }
 
 // advancedUsage lists flags and subcommands kept out of the everyday help.
@@ -198,43 +277,80 @@ var advancedUsage = [][2]string{
 	{"radar workspace connect PRODUCER CONSUMER_REPO --fields a,b --direction request|response [--id ID] [--source PATH] [--into repo:PATH]", "declare a cross-repository contract; commit both written files before gate"},
 }
 
+// helpGroups orders the everyday commands by what a person is doing.
+var helpGroups = []struct {
+	title    string
+	commands []string
+}{
+	{"Everyday", []string{"gate", "workspace", "check", "discover", "doctor"}},
+	{"Agent setup", []string{"setup", "mcp"}},
+}
+
+const tagline = "Know whether your agents' branches work together before you merge them."
+
 func printHelp(w io.Writer, all bool) {
-	fmt.Fprintln(w, "Radar — know whether your agents' branches work together before you merge them.")
-	fmt.Fprintln(w, "\nUsage: radar <command> [flags] [--root DIR] [--json]")
+	p := paletteOf(w)
+	if p.on {
+		printLogo(w, p, "radar "+Version, tagline)
+	} else {
+		fmt.Fprintln(w, "Radar — "+strings.ToLower(tagline[:1])+tagline[1:])
+	}
+	fmt.Fprintln(w, "\n"+p.bold("Usage:")+" radar <command> [flags] [--root DIR] [--json] [--color auto|always|never]")
+
+	section := func(title string) { fmt.Fprintln(w, "\n"+p.bold(title)) }
+	example := func(cmd, what string) {
+		fmt.Fprintf(w, "  %s%s  %s\n", p.command(cmd), strings.Repeat(" ", max(0, 33-len(cmd))), p.dim(what))
+	}
+	section("Start here")
+	example("radar", "interactive menu (in a terminal)")
+	example("radar gate", "check every worktree branch together; runs no code")
+	example("radar gate --run", "…and run the related tests on the combined tree")
+	example("radar workspace add ../other-repo", "check several repositories together")
+
 	width := 0
 	for _, c := range commands {
 		width = max(width, len(c.name))
 	}
-	list := func(advanced bool) (n int) {
-		for _, c := range commands {
-			if c.advanced == advanced {
-				fmt.Fprintf(w, "  %-*s  %s\n", width, c.name, c.summary)
-				n++
+	line := func(c command) {
+		text := c.summary
+		if b := helpCopy[c.name].brief; b != "" && !all {
+			text = b
+		}
+		fmt.Fprintf(w, "  %s%s  %s\n", p.cyan(c.name), strings.Repeat(" ", width-len(c.name)), text)
+	}
+	for _, g := range helpGroups {
+		section(g.title)
+		for _, name := range g.commands {
+			if c, ok := lookup(name); ok {
+				line(c)
 			}
 		}
-		return n
 	}
-	fmt.Fprintln(w, "\nCommands:")
-	list(false)
-	if all {
-		fmt.Fprintln(w, "\nAdvanced (merge-check flags, plans, evidence, contracts, graph):")
-		list(true)
-		fmt.Fprintln(w, "\nAdvanced workspace flags and subcommands:")
-		for _, u := range advancedUsage {
-			fmt.Fprintf(w, "  %-28s  %s\n", u[0], u[1])
+	advanced := 0
+	for _, c := range commands {
+		if c.advanced {
+			advanced++
 		}
-	} else {
-		n := 0
+	}
+	if all {
+		section("Advanced (merge-check flags, plans, evidence, contracts, graph)")
 		for _, c := range commands {
 			if c.advanced {
-				n++
+				line(c)
 			}
 		}
-		fmt.Fprintf(w, "\n%d advanced commands (plans, evidence, contracts, graph queries): radar help --all\n", n)
+		section("Advanced workspace flags and subcommands")
+		for _, u := range advancedUsage {
+			fmt.Fprintf(w, "  %s  %s\n", p.cyan(fmt.Sprintf("%-28s", u[0])), u[1])
+		}
+	} else {
+		section("More")
+		fmt.Fprintf(w, "  %d advanced commands (plans, evidence, contracts, graph queries): %s\n", advanced, p.command("radar help --all"))
 	}
-	fmt.Fprintln(w, "\nStart here:  radar gate            # combine every worktree branch, check, suggest tests")
-	fmt.Fprintln(w, "             radar gate --run      # ...and run those tests on the combined tree")
-	fmt.Fprintln(w, "             radar workspace add ../other-repo   # check several repositories together")
-	fmt.Fprintln(w, "\nRun `radar help COMMAND` for flags. Exit codes: 0 ok, 1 a check failed or required evidence is missing, 2 error.")
-	fmt.Fprintln(w, "No telemetry, no LLM calls, never modifies your branches. Repository code runs only with --run / --allow-execution.")
+	fmt.Fprintf(w, "  Flags and examples for one command: %s\n", p.command("radar help COMMAND"))
+
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%s  0 ok · 1 a check failed or required evidence is missing · 2 error\n", p.dim("Exit codes"))
+	fmt.Fprintf(w, "%s     local only: no telemetry, no LLM calls; never modifies your branches.\n", p.dim("Privacy"))
+	fmt.Fprintln(w, "            Repository code runs only with --run / --allow-execution.")
 }
