@@ -1,6 +1,33 @@
 package workspace
 
-import "strings"
+import (
+	"github.com/Jake-Network/radar/internal/jsonptr"
+	"github.com/Jake-Network/radar/internal/pathutil"
+	"strings"
+)
+
+// Producer identifies a schema in a workspace repository.
+type Producer struct{ Repo, Path, Pointer string }
+
+// ParseProducer parses repo:path#pointer without performing Git or file I/O.
+func ParseProducer(value string) (Producer, error) {
+	repo, rest, ok := strings.Cut(value, ":")
+	if !ok {
+		return Producer{}, errorf("use <REPO>:<PATH>#<POINTER>", "producer %q needs a repo ID and path", value)
+	}
+	if err := ValidID(repo); err != nil {
+		return Producer{}, errorf("use a valid repo ID", "producer: %s", err)
+	}
+	p, pointer, _ := strings.Cut(rest, "#")
+	clean, err := pathutil.RepoRelative(p)
+	if err != nil || clean == "." || strings.Contains(p, ":") {
+		return Producer{}, errorf("use a repository-relative schema file", "producer %q has an invalid schema path", value)
+	}
+	if err := jsonptr.Validate(pointer); err != nil {
+		return Producer{}, errorf("use an RFC 6901 JSON pointer", "producer %q: %s", value, err)
+	}
+	return Producer{Repo: repo, Path: clean, Pointer: pointer}, nil
+}
 
 // Target is one positional gate argument: REF names a ref of the current
 // repository and REPO:REF a ref of that workspace repository. Git ref names

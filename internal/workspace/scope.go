@@ -14,6 +14,7 @@ const (
 	SourceRegistry = "registry"
 	SourceWith     = "--with"
 	SourceReplay   = "replay"
+	SourceTeamFile = "team file"
 )
 
 // Error is an invocation error that ends with one next action.
@@ -41,6 +42,7 @@ type ScopeRepo struct {
 	CommonDir string `json:"common_dir"`
 	Origin    string `json:"origin"`
 	Missing   string `json:"missing,omitempty"`
+	TeamBase  string `json:"team_base,omitempty"`
 }
 
 // Scope is the resolved set of repositories one gate run checks.
@@ -58,8 +60,9 @@ type Scope struct {
 	Only []string
 	All  []string
 	// Current is the ID of the repository radar runs in.
-	Current string
-	Repos   []ScopeRepo
+	Current  string
+	Repos    []ScopeRepo
+	Excluded []ScopeRepo
 }
 
 // Partial reports whether --only excluded repositories.

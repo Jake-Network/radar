@@ -27,6 +27,7 @@ type Registry struct {
 // Workspace names a group of repositories checked together.
 type Workspace struct {
 	Name  string `json:"name"`
+	Home  string `json:"home,omitempty"`
 	Repos []Repo `json:"repos"`
 }
 
@@ -102,6 +103,9 @@ func (r Registry) Validate() error {
 				return fmt.Errorf("repository %s is in workspaces %q and %q; a repository belongs to one workspace", repo.CommonDir, other, w.Name)
 			}
 			common[repo.CommonDir] = w.Name
+		}
+		if w.Home != "" && !ids[w.Home] {
+			return fmt.Errorf("workspace %q home repo %q is not registered", w.Name, w.Home)
 		}
 	}
 	return nil

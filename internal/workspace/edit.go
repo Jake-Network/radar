@@ -123,6 +123,9 @@ func (r *Registry) Remove(current Location, id string) (string, Repo, error) {
 	w := &r.Workspaces[wi]
 	for i, repo := range w.Repos {
 		if repo.ID == id {
+			if w.Home == id {
+				w.Home = ""
+			}
 			w.Repos = append(w.Repos[:i], w.Repos[i+1:]...)
 			name := w.Name
 			if len(w.Repos) == 0 {
