@@ -91,6 +91,23 @@ func TestWrapperPinnedDistribution(t *testing.T) {
 			if why := WrapperUnavailable(root, argv); why != "" {
 				t.Fatalf("ready distribution rejected: %s", why)
 			}
+			if tool != "maven-only" {
+				// Java follows directory symlinks when counting distribution
+				// roots. A second root invalidates the install and may download.
+				link := filepath.Join(cache, "second-root")
+				if err := os.Symlink(dist, link); err != nil {
+					t.Fatal(err)
+				}
+				if why := WrapperUnavailable(root, argv); why == "" {
+					t.Fatal("extra symlink distribution root accepted")
+				}
+				if err := os.Remove(link); err != nil {
+					t.Fatal(err)
+				}
+				if why := WrapperUnavailable(root, argv); why != "" {
+					t.Fatalf("ready distribution after symlink removal: %s", why)
+				}
+			}
 			write(property, strings.Replace(properties, "https://", "https://mirror.", 1), 0644)
 			if why := WrapperUnavailable(root, argv); why == "" {
 				t.Fatal("another URL with same archive name reused cache")
