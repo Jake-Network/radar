@@ -258,3 +258,26 @@ func connectText(t *testing.T, root string, args ...string) string {
 	}
 	return out.String()
 }
+
+func TestWorkspaceConnectDefaultIDSeparatesProducerDocuments(t *testing.T) {
+	s := newShop(t)
+	s.register()
+	put(t, s.orders, "openapi.json", connectSchema)
+	put(t, s.orders, "other.json", connectSchema)
+	first := []string{"workspace", "connect", "orders:openapi.json#", "payments", "--fields", "total", "--direction", "response"}
+	second := append([]string(nil), first...)
+	second[2] = "orders:other.json#"
+	a := invoke(t, s.orders, 0, first...)
+	b := invoke(t, s.orders, 0, second...)
+	if a["id"] == b["id"] {
+		t.Fatal("different documents share default link id", a, b)
+	}
+	data, e := os.ReadFile(filepath.Join(s.orders, workspace.TeamPath))
+	if e != nil {
+		t.Fatal(e)
+	}
+	team, e := workspace.ParseTeam(data)
+	if e != nil || len(team.Links) != 2 {
+		t.Fatalf("links overwritten: %+v %v", team, e)
+	}
+}

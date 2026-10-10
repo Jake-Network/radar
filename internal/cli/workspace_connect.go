@@ -46,11 +46,14 @@ func (a *app) workspaceConnect(current workspace.Location, producer, consumer st
 	}
 	id := o.id
 	if id == "" {
-		id = p.Repo + "-" + consumer + "-" + o.direction
-		if len(id) > 64 {
-			sum := sha256.Sum256([]byte(id))
-			id = fmt.Sprintf("%s-%x", id[:55], sum[:4])
+		prefix := p.Repo + "-" + consumer + "-" + o.direction
+		if len(prefix) > 55 {
+			prefix = prefix[:55]
 		}
+		// Separate documents/pointers of the same repo pair must not replace
+		// one another when users accept multiple discovery proposals.
+		sum := sha256.Sum256([]byte(producer + "\x00" + consumer + "\x00" + o.direction))
+		id = fmt.Sprintf("%s-%x", prefix, sum[:4])
 	}
 	if err = workspace.ValidID(id); err != nil {
 		return a.fail(wsError("radar help --all", "%v", err))
