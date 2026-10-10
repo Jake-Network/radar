@@ -110,8 +110,26 @@ radar gate --again --run           # same selection on the latest commits, with 
 ```
 
 Each repository is combined and checked on its own, in its own private Git
-state. Links between repositories are not checked yet, and the headline says
-so: `per-repo checks only · 0 cross-repo links checked`. `--with PATH` adds a
+state. Declare a link to check producer schema changes against fields expected
+by a consumer in another repository:
+
+```sh
+radar workspace connect orders:openapi.json#/components/schemas/Order payments \
+  --fields total,status --direction response --source src/order.ts
+```
+
+This writes `.radar/workspace.json` in the home repository and
+`.radar/consumes.json` in the consumer. Commit both files as the command directs.
+The gate reads the team declaration from the home repository's base commit and
+checks base/candidate combinations; the candidate+candidate cell determines
+the link verdict. `cross_repo.status: passed` is evidence for the declared,
+supported static links, not runtime interoperability. Missing or unsupported
+inputs remain unverified. Without a team file, the gate reports
+`per-repo checks only · 0 cross-repo links checked` and may suggest links for
+explicit review. `.radar/contracts.json` declares links within one repository;
+workspace links cross repositories.
+
+`--with PATH` adds a
 repository for one run, and `radar workspace show` lists what `radar gate` would
 check. The registry lives in your user configuration directory and run records
 in your user cache, never in a repository. A repository outside any workspace

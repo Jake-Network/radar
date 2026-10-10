@@ -21,9 +21,20 @@ In a workspace (`radar workspace add PATH` groups repositories on this
 machine), the same command checks every workspace repository, each combined on
 its own. Name branches in several repositories as `radar gate
 orders:agent/api payments:agent/client`; unnamed repositories take part at
-their base. Links between repositories are not checked yet (`cross_repo` says
-so), so never present per-repository passes as proof that the repositories
-work together.
+their base. Declared workspace links compare producer schemas with consumer
+fields across base/candidate combinations. Only `cross_repo.status: passed`
+is evidence that the declared, supported static links passed; per-repository
+passes alone do not establish cross-repository compatibility. Check `links`
+for incomplete inputs and intermediate-cell failures. Runtime behavior and
+rollout safety remain unverified by these static checks. `suggested_links` are
+proposals and never affect the verdict. To declare one, use the CLI
+`radar workspace connect PRODUCER CONSUMER_REPO --fields a,b --direction response`
+(with `request` for request contracts and optional `--source PATH` / `--into repo:PATH`),
+then commit the home repository's `.radar/workspace.json` and the consumer's
+`.radar/consumes.json`. Gate reads the committed home base declaration; replay
+pins the recorded base and team blob. `.radar/contracts.json` describes links
+within a repository; workspace links cross repositories. MCP does not expose
+`connect`.
 
 For feature design and verification:
 

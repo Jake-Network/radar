@@ -1,10 +1,10 @@
 # Radar 여러 repo·브랜치 검증 (workspace)
 
-> **상태: 1단계("선택과 결합")만 구현됨.** 아래 사양에서 2단계(연결), 3단계(실행 시나리오), 4단계(CI)로 표시된 명령·옵션·설정은 아직 없다. 구현된 명령은 `radar gate`의 `repo:ref`, `--base [repo:]REF`, `--with`, `--only`, `--again`, `--replay`와 `radar workspace add/remove/show`다.
+> **상태: 1·2단계("선택과 결합", "repo 간 연결") 구현됨.** 구현된 명령은 `radar gate`의 `repo:ref`, `--base [repo:]REF`, `--with`, `--only`, `--again`, `--replay`와 `radar workspace add/remove/show/connect`다. 아래 3단계(실행 시나리오), 4단계(CI)와 `--workspace FILE`은 향후 사양이며 구현된 CLI에 노출하지 않는다.
 >
 > 이 문서는 `docs/plans/MSA_MULTI_REPO.md`(초기 기획)를 대체한다.
 >
-> **진행 상황(2026-10-10):** 1단계는 PR #5(`workspace-stage1`)로 리뷰 중이다. 2단계는 아직 시작하지 않았다. 2단계의 현재 상태, 코드 지도, 확정 결정, 구현 계획, 필수 테스트는 [plans/WORKSPACE_STAGE2.md](plans/WORKSPACE_STAGE2.md)에 있다. 새 세션은 그 문서부터 읽는다.
+> **진행 상황(2026-10-10):** 2단계의 작업 계획과 완료 근거는 [plans/WORKSPACE_STAGE2.md](plans/WORKSPACE_STAGE2.md)에 있다. 구현 결정은 아래 절이 정본이다. 정적 연결 검사는 선언한 schema 의미와 필드에 한정하며 repo 간 런타임 호환성을 보증하지 않는다.
 
 ## 1단계 구현 결정
 
@@ -29,7 +29,7 @@
 13. **실행 기록을 저장하지 못해도 판정과 exit code는 바뀌지 않는다.** `! run not recorded` 줄과 JSON `record_error`로 알린다.
 14. **`--with`와 `workspace add`의 상대 경로는 repo 루트 기준이다**(`--root`를 주면 그 디렉터리 기준).
 
-## 2단계 확정 결정 (2026-10-10, 아직 구현되지 않음)
+## 2단계 구현 결정 (2026-10-10)
 
 1. **팀 파일:** 레지스트리에 home repo를 기록하고, home repo의 기준 브랜치 커밋에서 `.radar/workspace.json`을 읽는다.
 2. **멤버 불일치:** 범위는 팀 파일을 따른다. 레지스트리에만 있는 repo는 빼고 `· registered but not in the team file` 줄로 알린다.
@@ -37,7 +37,14 @@
 4. **후보 연결 제안:** 변경이 있는 repo 쌍에서 찾은 후보만 최대 3개 보여 주고, 각각에 확정 명령 한 줄을 붙인다. 나머지는 JSON에만 둔다.
 5. **`consumes.json`:** `fields`는 v1 `contracts.json` 표기(점 경로, `[]`)를 쓰고 `FieldOverlaps`를 재사용한다. `source`가 없으면 `·` 참고 줄로만 알린다.
 
-구현 계획과 작업 전에 확인할 작은 결정은 [plans/WORKSPACE_STAGE2.md](plans/WORKSPACE_STAGE2.md)에 있다.
+6. **home 선택:** 첫 `connect`의 현재 repo를 home으로 기록한다. home이 없고 등록 repo들의 기준 커밋 중 정확히 하나에 팀 파일이 있으면 그것을 사용한다. 둘 이상이면 오류다. gate는 레지스트리에 home을 쓰지 않는다.
+7. **repo identity:** 팀 파일에는 `gitrepo.Identity`의 root commit 집합(`git:<sha>+…`)을 기록한다. remote URL이나 체크아웃 경로에 의존하지 않으며 identity 불일치는 ERROR다.
+8. **형식:** workspace report와 레지스트리의 version은 1을 유지한다. 팀 파일과 소비 기대 파일의 알 수 없는 필드는 오류로 처리한다.
+9. **연결 방향과 source:** `connect --direction request|response`는 필수다. `--source PATH`는 선택이며 소비 repo 상대 경로다. 수동으로 선언한 링크의 direction이 없으면 변경을 risk로 분류한다.
+10. **기준과 replay:** 기준 우선순위는 CLI `--base` → 팀 파일의 repo별 `base` → 자동 기준 탐색이다. 팀 파일은 home의 고정된 기준 commit에서 읽고 blob OID를 기록한다. replay는 기록된 home 기준 commit과 blob을 검증하여 당시 선언을 읽는다. 작업 트리 팀 파일 변경은 반영하지 않고 경고한다.
+11. **제안의 범위와 순서:** 팀 파일이 없는 gate에서, 서로 다른 repo 쌍 중 적어도 한쪽에 선택된 브랜치가 있는 경우만 제안한다. literal endpoint와 확정된 HTTP method가 같아야 하며 타입 이름만으로 연결하지 않는다. 소비 필드 수 내림차순, 동률은 producer ID·consumer ID·candidate ID 순이다. text/MCP는 최대 3개, JSON은 전체를 제공한다. 제안은 판정과 exit code에 영향을 주지 않는다.
+12. **판정 범위:** `cross_repo.status: passed`만 선언된 repo 간 정적 연결 검사의 통과 근거다. 후보+후보 칸이 개발 판정을 결정하고, 중간 칸 실패는 참고다. 분석 불가·의무 삭제·축소는 NOT VERIFIED로 남긴다. 이것은 배포 순서나 실제 HTTP 동작의 검증이 아니다.
+13. **help와 MCP:** `connect`와 전용 플래그는 `radar help --all` 계층에 둔다. MCP는 연결 요약과 제안만 제공하며 `connect`를 노출하지 않는다.
 
 ---
 
@@ -117,11 +124,11 @@
 |---|---|---|
 | 위치 | `<os.UserConfigDir>/radar/workspaces.json`, `RADAR_CONFIG_DIR`로 override | 홈 repo의 `.radar/workspace.json` |
 | 커밋 | 하지 않음 (기계마다 다름) | 함 |
-| 내용 | workspace 이름, repo ID → 경로, common git dir | repo ID, remote 식별, 기준, 연결, 시나리오, 정책 |
+| 내용 | workspace 이름, home repo, repo ID → 경로, common git dir | repo ID, Git identity, 기준, 연결, retirement |
 | 경로 | 절대 경로 | 경로 없음. 모든 파일 참조는 `repo:path` |
 
 - 하나의 repo(common git dir)는 하나의 workspace에만 속한다. 원칙 2.2-1을 지키기 위해서다.
-- 레지스트리는 `workspace add/remove`만 쓴다. 원자적 rename과 lock 파일을 사용한다. `gate`는 레지스트리를 읽기만 한다. 여러 에이전트가 동시에 `gate`를 실행해도 안전해야 한다.
+- 레지스트리는 `workspace add/remove`와 첫 `connect`의 home 기록만 쓴다. 원자적 rename과 lock 파일을 사용한다. `gate`는 레지스트리를 읽기만 한다. 여러 에이전트가 동시에 `gate`를 실행해도 안전해야 한다.
 - 팀 파일은 기존 `.radar/contracts.json`처럼 **커밋된 내용**을 읽는다. 커밋하지 않은 변경은 반영하지 않고 경고로 표시한다.
 - 팀 파일이 있으면 범위는 팀 파일의 repo 목록이다. 레지스트리는 경로만 제공한다. 팀 파일에 있는데 레지스트리에 위치가 없는 repo는 `radar workspace add <경로> --id payments`로 안내한다.
 
@@ -132,7 +139,7 @@ radar gate [repo:ref | ref ...] [--base [repo:]REF] [--with PATH] [--only REPO] 
 radar workspace add PATH [--id ID] [--name NAME]   # 1단계. 첫 실행 시 현재 repo + PATH로 workspace 생성
 radar workspace remove REPO                         # 1단계
 radar workspace show                                # 1단계. 해석 결과를 보여주고 검사는 하지 않음
-radar workspace connect PRODUCER CONSUMER_REPO --fields a,b [--direction request|response] [--id ID]   # 2단계
+radar workspace connect PRODUCER CONSUMER_REPO --fields a,b --direction request|response [--id ID] [--source PATH] [--into repo:PATH]   # 2단계
 ```
 
 - `workspace add`
@@ -184,7 +191,7 @@ Radar gate: PASS (static) — workspace "shop" · 2 repos · 3 branches · repo�
 다음: radar gate --again --run
 ```
 
-2단계 이후의 실패 출력 예(참고용, 1단계에서 구현하지 않음):
+2단계의 실패 출력 구조 예(실제 문구는 영어):
 
 ```text
 Radar gate: FAIL — workspace "shop" · 2 repos · 3 branches
@@ -238,7 +245,7 @@ Radar gate: FAIL — workspace "shop" · 2 repos · 3 branches
   - 개발 판정은 `후보+후보` 칸이다. 중간 칸 실패는 `!`로 표시하되 rollout 정책이 없으면 판정에 넣지 않는다.
   - 분석할 수 없는 구조는 "확인 안 함 — <이유>"다. 연결이 선언돼 있으면 `NOT VERIFIED`다.
 - 연결 삭제·축소는 기준 커밋의 선언과 비교한다. 기존 obligation 처리와 같은 방식이다.
-- **후보 연결 제안:** 무설정 `gate` 출력에 "repo 사이에서 찾은 후보 연결"과 확정 명령 한 줄을 보여준다. 기존 `discovery.Compare`를 repo 간으로 확장한다. 별도 `discover` 명령은 만들지 않는다. 제안은 확정 전까지 판정에 영향을 주지 않는다.
+- **후보 연결 제안:** 무설정 `gate` 출력에 "repo 사이에서 찾은 후보 연결"과 확정 명령 한 줄을 보여준다. `discovery.MatchAcross`가 별도 repo의 발견 결과를 짝짓는다. repo 간 전용 `discover` 명령은 만들지 않는다. 제안은 확정 전까지 판정에 영향을 주지 않는다.
 - `services` 개념, 별도 소비자 JSON schema, enum/타입 처리 범위 선언은 2단계에 넣지 않는다.
 
 ## 2.13 실행 시나리오 — 3단계
