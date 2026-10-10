@@ -39,6 +39,9 @@ the default build compiles; others are inventoried as unsupported.
   applies, so Radar runs it only when that distribution is already in
   `GRADLE_USER_HOME` or `MAVEN_USER_HOME` (`~/.gradle`, `~/.m2`); otherwise
   the command is `environment_unavailable`. A JVM must be on `PATH` either way.
+- Java commands run in separate private snapshots of the same candidate commit
+  and tree, so upstream modules, separate tiers, and command chunks cannot
+  reuse an earlier command's reports.
 - Classes of one module merge into one command. Results come from the module's
   `target/surefire-reports` or `build/test-results/test` (default locations
   only); with no report, the run is not counted as passed.
