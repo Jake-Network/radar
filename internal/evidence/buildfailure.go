@@ -36,10 +36,15 @@ var (
 	sourceSymbol  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:]{0,99}$`)
 )
 
-// sourcePath accepts compiler paths that name repository files: relative,
-// without parent traversal. Absolute paths point into toolchains, module
-// caches or registries, which are the environment's.
-func sourcePath(p string) (string, bool) {
+// sourcePath accepts compiler paths that name repository files: relative to
+// the execution directory without parent traversal, or absolute inside it
+// (javac and CMake-driven compilers print absolute snapshot paths). Other
+// absolute paths point into toolchains, module caches or registries, which
+// are the environment's. dir is empty when no execution directory is known.
+func sourcePath(dir, p string) (string, bool) {
+	if p != "" && dir != "" && filepath.IsAbs(p) {
+		return insidePath(dir, p)
+	}
 	if p == "" || filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) || (len(p) > 1 && p[1] == ':') {
 		return "", false
 	}
@@ -50,11 +55,30 @@ func sourcePath(p string) (string, bool) {
 	return clean, true
 }
 
+// insidePath makes an absolute compiler path relative to dir, also through
+// dir's resolved form (macOS reports /private/var for /var temporaries).
+func insidePath(dir, p string) (string, bool) {
+	bases := []string{dir}
+	if resolved, e := filepath.EvalSymlinks(dir); e == nil && resolved != dir {
+		bases = append(bases, resolved)
+	}
+	for _, base := range bases {
+		rel, e := filepath.Rel(base, filepath.Clean(p))
+		if e != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if clean, e := pathutil.RepoRelative(filepath.ToSlash(rel)); e == nil {
+			return clean, true
+		}
+	}
+	return "", false
+}
+
 // goBuildErrors reads compiler errors from `go test -json` build-output
 // events. It returns nothing unless a package build failed, every reported
 // error is free of dependency or toolchain problems, and at least one names a
 // repository source file.
-func goBuildErrors(data []byte) []sourceBuildError {
+func goBuildErrors(data []byte, dir string) []sourceBuildError {
 	failed := false
 	var errs []sourceBuildError
 	for _, line := range bytes.Split(data, []byte{'\n'}) {
@@ -77,7 +101,7 @@ func goBuildErrors(data []byte) []sourceBuildError {
 			if m == nil || len(errs) >= maxBuildErrors {
 				continue
 			}
-			path, ok := sourcePath(m[1])
+			path, ok := sourcePath(dir, m[1])
 			if !ok {
 				continue
 			}
@@ -98,7 +122,7 @@ func goBuildErrors(data []byte) []sourceBuildError {
 // cargoBuildErrors reads rustc errors when cargo reports that a crate could
 // not compile. Each error's first "-->" line locates it; errors located
 // outside the repository (registry crates) make the failure environmental.
-func cargoBuildErrors(text string) []sourceBuildError {
+func cargoBuildErrors(text, dir string) []sourceBuildError {
 	if !cargoCompile.MatchString(text) {
 		return nil
 	}
@@ -114,7 +138,7 @@ func cargoBuildErrors(text string) []sourceBuildError {
 			if loc == nil {
 				continue
 			}
-			path, ok := sourcePath(loc[1])
+			path, ok := sourcePath(dir, loc[1])
 			if !ok {
 				return nil
 			}

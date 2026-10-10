@@ -39,7 +39,7 @@ type Rule struct {
 	Setup [][]string `json:"setup,omitempty"` // commands run before Command in the snapshot
 	Env   []string   `json:"env,omitempty"`   // caller environment variable names passed through
 	Link  []string   `json:"link,omitempty"`  // untracked dependency paths linked from the checkout
-	JUnit string     `json:"junit,omitempty"` // snapshot-relative JUnit XML report
+	JUnit string     `json:"junit,omitempty"` // snapshot-relative JUnit XML report or TEST-*.xml directory
 }
 
 // Assumption statuses. Open assumptions keep verification unknown; accepted

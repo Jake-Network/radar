@@ -122,6 +122,9 @@ func compactCommand(raw any) map[string]any {
 	if tier, ok := c["tier"]; ok {
 		out["tier"] = tier
 	}
+	if junit, ok := c["junit"]; ok {
+		out["junit"] = junit
+	}
 	if argv, ok := c["command"].([]any); ok {
 		out["argument_count"] = len(argv)
 		if len(argv) > 8 {

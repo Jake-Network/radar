@@ -24,7 +24,7 @@ const goBuildFailedOutput = `{"ImportPath":"example.com/m [example.com/m.test]",
 
 func TestGoBuildFailureIsSourceFailure(t *testing.T) {
 	argv := []string{"go", "test", "-json", "."}
-	r := harnessCounts(argv, []byte(goBuildFailedOutput))
+	r := harnessCounts(argv, []byte(goBuildFailedOutput), "")
 	if len(r.BuildErrors) != 1 || r.BuildErrors[0] != (sourceBuildError{Path: "args.go", Line: 149, Symbol: "commandNameMatches"}) {
 		t.Fatalf("build errors %+v", r.BuildErrors)
 	}
@@ -61,7 +61,7 @@ func TestGoBuildFailureEnvironmentNegatives(t *testing.T) {
 	}
 	argv := []string{"go", "test", "-json", "./..."}
 	for name, output := range cases {
-		r := harnessCounts(argv, []byte(output))
+		r := harnessCounts(argv, []byte(output), "")
 		if len(r.BuildErrors) != 0 {
 			t.Errorf("%s: attributed to source: %+v", name, r.BuildErrors)
 		}
@@ -70,7 +70,7 @@ func TestGoBuildFailureEnvironmentNegatives(t *testing.T) {
 		}
 	}
 	// Without -json the output is not structured evidence.
-	if r := harnessCounts([]string{"go", "test", "."}, []byte(goBuildFailedOutput)); len(r.BuildErrors) != 0 {
+	if r := harnessCounts([]string{"go", "test", "."}, []byte(goBuildFailedOutput), ""); len(r.BuildErrors) != 0 {
 		t.Fatal("non-JSON go test recognized")
 	}
 }
@@ -83,7 +83,7 @@ func TestCargoBuildFailure(t *testing.T) {
 		"12 |     parse_total(x)\n" +
 		"\n" +
 		"error: could not compile `demo` (lib test) due to 1 previous error\n"
-	r := harnessCounts([]string{"cargo", "test"}, []byte(source))
+	r := harnessCounts([]string{"cargo", "test"}, []byte(source), "")
 	if len(r.BuildErrors) != 1 || r.BuildErrors[0] != (sourceBuildError{Path: "src/lib.rs", Line: 12, Symbol: "parse_total"}) {
 		t.Fatalf("cargo build errors %+v", r.BuildErrors)
 	}
@@ -93,12 +93,51 @@ func TestCargoBuildFailure(t *testing.T) {
 	registry := "error[E0308]: mismatched types\n" +
 		"  --> /home/u/.cargo/registry/src/index.crates.io-1/openssl-sys-0.9.1/src/lib.rs:3:5\n" +
 		"error: could not compile `openssl-sys` (lib) due to 1 previous error\n"
-	if r := harnessCounts([]string{"cargo", "test"}, []byte(registry)); len(r.BuildErrors) != 0 {
+	if r := harnessCounts([]string{"cargo", "test"}, []byte(registry), ""); len(r.BuildErrors) != 0 {
 		t.Fatalf("registry crate failure attributed to source: %+v", r.BuildErrors)
 	}
 	buildScript := "error: failed to run custom build command for `openssl-sys v0.9.1`\n"
-	if r := harnessCounts([]string{"cargo", "test"}, []byte(buildScript)); len(r.BuildErrors) != 0 {
+	if r := harnessCounts([]string{"cargo", "test"}, []byte(buildScript), ""); len(r.BuildErrors) != 0 {
 		t.Fatal("build script failure attributed to source")
+	}
+}
+
+// Compilers driven by build tools print absolute paths inside the private
+// snapshot; only those, not toolchain or cache paths, name repository source.
+func TestAbsoluteSnapshotPaths(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if e := os.Symlink(dir, link); e != nil {
+		t.Fatal(e)
+	}
+	inside := filepath.Join(dir, "src", "lib.rs")
+	cases := []struct {
+		dir, path, want string
+		ok              bool
+	}{
+		{dir, inside, "src/lib.rs", true},
+		{link, inside, "src/lib.rs", true}, // reported through the resolved directory
+		{dir, "src/lib.rs", "src/lib.rs", true},
+		{"", inside, "", false},
+		{dir, dir, "", false},
+		{dir, filepath.Join(dir, "..", "outside.rs"), "", false},
+		{dir, "/home/u/.cargo/registry/src/x/lib.rs", "", false},
+		{dir, "../outside.rs", "", false},
+	}
+	for _, c := range cases {
+		got, ok := sourcePath(c.dir, c.path)
+		if got != c.want || ok != c.ok {
+			t.Errorf("sourcePath(%q, %q) = %q, %t", c.dir, c.path, got, ok)
+		}
+	}
+	source := "error[E0425]: cannot find function `parse_total` in this scope\n" +
+		" --> " + inside + ":12:5\n" +
+		"error: could not compile `demo` (lib test) due to 1 previous error\n"
+	if r := harnessCounts([]string{"cargo", "test"}, []byte(source), dir); len(r.BuildErrors) != 1 || r.BuildErrors[0].Path != "src/lib.rs" {
+		t.Fatalf("absolute snapshot path not attributed: %+v", r.BuildErrors)
+	}
+	if r := harnessCounts([]string{"cargo", "test"}, []byte(source), t.TempDir()); len(r.BuildErrors) != 0 {
+		t.Fatalf("path outside the execution directory attributed: %+v", r.BuildErrors)
 	}
 }
 

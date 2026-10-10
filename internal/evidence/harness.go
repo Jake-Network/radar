@@ -54,8 +54,9 @@ func uses(argv []string, tool string) bool {
 }
 
 // harnessCounts recognizes explicit results from supported harnesses, never
-// arbitrary success output.
-func harnessCounts(argv []string, data []byte) harnessResult {
+// arbitrary success output. dir is the command's working directory, used to
+// read absolute compiler paths; empty accepts only relative ones.
+func harnessCounts(argv []string, data []byte, dir string) harnessResult {
 	if len(argv) < 2 {
 		return harnessResult{}
 	}
@@ -63,7 +64,7 @@ func harnessCounts(argv []string, data []byte) harnessResult {
 	name := filepath.Base(argv[0])
 	switch {
 	case name == "go" && argv[1] == "test":
-		return goTest(argv, data)
+		return goTest(argv, data, dir)
 	case isUnittest(argv):
 		return unittest(text)
 	case uses(argv, "pytest") || uses(argv, "py.test"):
@@ -75,12 +76,12 @@ func harnessCounts(argv []string, data []byte) harnessResult {
 	case name == "node" && slices.Contains(argv[1:], "--test"):
 		return nodeTest(text)
 	case name == "cargo" && argv[1] == "test":
-		return cargo(text)
+		return cargo(text, dir)
 	}
 	return harnessResult{}
 }
 
-func goTest(argv []string, data []byte) harnessResult {
+func goTest(argv []string, data []byte, dir string) harnessResult {
 	r := harnessResult{Harness: "go-test-json"}
 	if !slices.Contains(argv[2:], "-json") {
 		return harnessResult{}
@@ -103,7 +104,7 @@ func goTest(argv []string, data []byte) harnessResult {
 			r.Skipped++
 		}
 	}
-	r.BuildErrors = goBuildErrors(data)
+	r.BuildErrors = goBuildErrors(data, dir)
 	return r
 }
 
@@ -194,7 +195,7 @@ func nodeTest(text string) harnessResult {
 	return r
 }
 
-func cargo(text string) harnessResult {
+func cargo(text, dir string) harnessResult {
 	r := harnessResult{Harness: "cargo-test"}
 	for _, m := range cargoSummary.FindAllStringSubmatch(text, -1) {
 		passed, _ := strconv.Atoi(m[1])
@@ -204,15 +205,20 @@ func cargo(text string) harnessResult {
 		r.Failed += failed
 		r.Skipped += ignored
 	}
-	r.BuildErrors = cargoBuildErrors(text)
+	r.BuildErrors = cargoBuildErrors(text, dir)
 	return r
 }
 
 const maxJUnitBytes = 16 << 20
 
+// maxJUnitFiles bounds the per-class reports read from a report directory.
+const maxJUnitFiles = 4096
+
 // readJUnit parses a JUnit XML report written by the command inside the
 // snapshot. Every <testcase> counts; <failure>/<error> fail it and <skipped>
-// skips it. Any framework with a JUnit reporter is therefore supported.
+// skips it. Any framework with a JUnit reporter is therefore supported. A
+// directory (Maven Surefire, Gradle) contributes its regular TEST-*.xml files,
+// without recursion or symlinks, within the same total byte bound.
 func readJUnit(dest, report string) (harnessResult, error) {
 	clean, err := pathutil.RepoRelative(report)
 	if err != nil {
@@ -222,15 +228,80 @@ func readJUnit(dest, report string) (harnessResult, error) {
 	if err != nil {
 		return harnessResult{}, err
 	}
-	f, err := os.Open(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return harnessResult{}, err
 	}
+	if !info.IsDir() {
+		f, err := os.Open(path)
+		if err != nil {
+			return harnessResult{}, err
+		}
+		defer f.Close()
+		return parseJUnit(io.LimitReader(f, maxJUnitBytes))
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return harnessResult{}, err
+	}
+	total := harnessResult{Harness: "junit"}
+	var remaining int64 = maxJUnitBytes
+	files, cases := 0, 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.Type().IsRegular() || !strings.HasPrefix(name, "TEST-") || !strings.HasSuffix(name, ".xml") {
+			continue
+		}
+		if files++; files > maxJUnitFiles {
+			return harnessResult{}, errors.New("JUnit report directory exceeds file limit")
+		}
+		r, n, err := readJUnitFile(filepath.Join(path, name), remaining)
+		if err != nil {
+			return harnessResult{}, err
+		}
+		remaining -= n
+		total.Run += r.Run
+		total.Failed += r.Failed
+		total.Skipped += r.Skipped
+		cases += r.Run + r.Skipped
+	}
+	if cases == 0 {
+		return harnessResult{}, errors.New("JUnit report directory contains no test cases")
+	}
+	return total, nil
+}
+
+// readJUnitFile counts one report within the remaining byte budget and
+// returns the bytes it consumed.
+func readJUnitFile(path string, remaining int64) (harnessResult, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return harnessResult{}, 0, err
+	}
 	defer f.Close()
-	return parseJUnit(io.LimitReader(f, maxJUnitBytes))
+	info, err := f.Stat()
+	if err != nil {
+		return harnessResult{}, 0, err
+	}
+	if info.Size() > remaining {
+		return harnessResult{}, 0, errors.New("JUnit reports exceed byte limit")
+	}
+	r, _, err := countJUnit(io.LimitReader(f, remaining))
+	return r, info.Size(), err
 }
 
 func parseJUnit(reader io.Reader) (harnessResult, error) {
+	r, cases, err := countJUnit(reader)
+	if err != nil {
+		return harnessResult{}, err
+	}
+	if cases == 0 {
+		return harnessResult{}, errors.New("JUnit report contains no test cases")
+	}
+	return r, nil
+}
+
+func countJUnit(reader io.Reader) (harnessResult, int, error) {
 	r := harnessResult{Harness: "junit"}
 	d := xml.NewDecoder(reader)
 	inCase, failed, skipped, cases := false, false, false, 0
@@ -240,7 +311,7 @@ func parseJUnit(reader io.Reader) (harnessResult, error) {
 			break
 		}
 		if err != nil {
-			return harnessResult{}, err
+			return harnessResult{}, 0, err
 		}
 		switch t := token.(type) {
 		case xml.StartElement:
@@ -268,10 +339,7 @@ func parseJUnit(reader io.Reader) (harnessResult, error) {
 			}
 		}
 	}
-	if cases == 0 {
-		return harnessResult{}, errors.New("JUnit report contains no test cases")
-	}
-	return r, nil
+	return r, cases, nil
 }
 
 var missingModule = regexp.MustCompile(`(?m)^(?:E\s+)?ModuleNotFoundError: No module named`)

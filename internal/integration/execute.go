@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 
@@ -72,6 +73,7 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		executionOptions := o
 		executionOptions.Command = selection.Command
 		executionOptions.CWD = selection.CWD
+		executionOptions.report = selection.JUnit
 		if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
 			executionOptions.Timeout = time.Until(deadline)
 		}
@@ -172,7 +174,7 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 			ev.PlanRecord = &runResult.Record
 		}
 	} else {
-		observation, observeErr = evidence.ObserveCandidateAt(ctx, root, o.CWD, o.Command, o.Timeout)
+		observation, observeErr = evidence.ObserveCandidateReport(ctx, root, o.CWD, o.Command, o.report, o.Timeout)
 	}
 	ev.Observation = observation
 	ev.Status = observation.Status
@@ -188,7 +190,11 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	ev.DurationMS = time.Since(started).Milliseconds()
 	sourceCtx, sourceCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer sourceCancel()
-	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, evidence.CandidateArtifacts(o.Plan))
+	artifacts := evidence.CandidateArtifacts(o.Plan)
+	if o.report != "" && !match {
+		artifacts = append(artifacts, path.Join(o.CWD, o.report))
+	}
+	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, artifacts)
 	if sourceErr != nil {
 		ev.SourceAfterExecution = "unknown"
 		if ev.Status != model.StatusFailed {

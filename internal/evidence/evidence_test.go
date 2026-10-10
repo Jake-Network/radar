@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/planning"
 )
 
@@ -187,7 +188,7 @@ func TestHarnessCounts(t *testing.T) {
 		{[]string{"true"}, "Ran 500 tests in 1s", 0, 0, 0},
 	}
 	for _, tc := range cases {
-		got := harnessCounts(tc.argv, []byte(tc.output))
+		got := harnessCounts(tc.argv, []byte(tc.output), "")
 		if got.Run != tc.run || got.Failed != tc.failed || got.Skipped != tc.skip {
 			t.Errorf("%v got %+v want run=%d failed=%d skipped=%d", tc.argv, got, tc.run, tc.failed, tc.skip)
 		}
@@ -201,6 +202,79 @@ func TestHarnessCounts(t *testing.T) {
 		t.Fatal("empty junit accepted")
 	}
 }
+
+// Surefire and Gradle write one TEST-*.xml per class into a directory.
+func TestJUnitReportDirectory(t *testing.T) {
+	dest := t.TempDir()
+	reports := filepath.Join(dest, "target", "surefire-reports")
+	if err := os.MkdirAll(reports, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(reports, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("TEST-a.AppTest.xml", `<testsuite><testcase name="a"/><testcase name="b"><failure/></testcase></testsuite>`)
+	write("TEST-a.OtherTest.xml", `<testsuite><testcase name="c"><skipped/></testcase><testcase name="d"/></testsuite>`)
+	write("a.AppTest.txt", "Tests run: 99")
+	write("testng-results.xml", `<testsuite><testcase name="ignored"/></testsuite>`)
+	outside := filepath.Join(t.TempDir(), "TEST-outside.xml")
+	if err := os.WriteFile(outside, []byte(`<testsuite><testcase name="x"/></testsuite>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(reports, "TEST-link.xml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(reports, "TEST-nested.xml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, err := readJUnit(dest, "target/surefire-reports")
+	if err != nil || r.Run != 3 || r.Failed != 1 || r.Skipped != 1 || r.Harness != "junit" {
+		t.Fatalf("directory report %+v %v", r, err)
+	}
+	empty := filepath.Join(dest, "empty")
+	if err := os.Mkdir(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readJUnit(dest, "empty"); err == nil {
+		t.Fatal("empty report directory accepted")
+	}
+	write("TEST-broken.xml", "<testsuite><testcase>")
+	if _, err := readJUnit(dest, "target/surefire-reports"); err == nil {
+		t.Fatal("malformed report in directory accepted")
+	}
+	allowed := map[string]bool{"reports": true}
+	if !declaredArtifact(allowed, "reports/TEST-a.xml") || !declaredArtifact(allowed, "reports") || declaredArtifact(allowed, "reports2/TEST-a.xml") || declaredArtifact(allowed, "src/a.go") {
+		t.Fatal("declared report directory exemption")
+	}
+}
+
+// A runner whose output has no counts is observed through the report it is
+// known to write; a report present before the run cannot stand in for it.
+func TestObserveCandidateReport(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip(err)
+	}
+	root := fixture(t, map[string]string{"mod/README": "x\n"})
+	writes := []string{"sh", "-c", `mkdir -p out && printf '<testsuite><testcase name="a"/><testcase name="b"><failure/></testcase></testsuite>' > out/TEST-a.xml && exit 1`}
+	r, err := ObserveCandidateReport(context.Background(), root, "mod", writes, "out", 30*time.Second)
+	if err != nil || r.Status != model.StatusFailed || r.TestsRun != 2 || r.TestsFailed != 1 || r.Harness != "junit" {
+		t.Fatalf("observation %+v %v", r, err)
+	}
+	if _, err = ObserveCandidateReport(context.Background(), root, "mod", writes, "out", 30*time.Second); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale report accepted: %v", err)
+	}
+	silent := []string{"sh", "-c", "exit 0"}
+	r, err = ObserveCandidateReport(context.Background(), root, ".", silent, "missing", 30*time.Second)
+	if err != nil || r.Status != model.StatusUnknown || r.TestsRun != 0 {
+		t.Fatalf("missing report observation %+v %v", r, err)
+	}
+	if _, err = ObserveCandidateReport(context.Background(), root, ".", silent, "../out", 30*time.Second); err == nil {
+		t.Fatal("escaping report path accepted")
+	}
+}
+
 func TestBuildFailureIsErrorNotTestFailure(t *testing.T) {
 	needPython(t)
 	root := fixture(t, map[string]string{"test_example.py": "import missing_dependency\n"})

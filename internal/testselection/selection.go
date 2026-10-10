@@ -61,6 +61,9 @@ type Command struct {
 	Tier string `json:"tier,omitempty"`
 	// GroupedFrom lists the per-file candidate IDs merged into this command.
 	GroupedFrom []string `json:"grouped_from,omitempty"`
+	// JUnit is the CWD-relative report file or TEST-*.xml directory the
+	// runner writes, for runners whose output carries no test counts.
+	JUnit string `json:"junit,omitempty"`
 }
 type Proposal struct {
 	Omitted     []Omission   `json:"omitted,omitempty"`

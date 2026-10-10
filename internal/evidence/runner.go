@@ -180,7 +180,7 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	content := out.b.Bytes()
 	r.OutputDigest = hex.EncodeToString(out.sum())
 	r.OutputTail = string(append(setupOut.tailBytes(), out.tailBytes()...))
-	result := harnessCounts(argv, content)
+	result := harnessCounts(argv, content, testDir)
 	if spec.JUnit != "" {
 		if junit, err := readJUnit(testDir, spec.JUnit); err == nil {
 			result = junit

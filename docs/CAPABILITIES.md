@@ -84,8 +84,8 @@ the reference fixture.
 
 Recognized result formats: `go test -json`, `python -m unittest`, `pytest`,
 Jest, Vitest, `node --test`, `cargo test`, and any JUnit XML report declared
-with `junit`. Inventory and selection are described in
-[TEST_SELECTION](TEST_SELECTION.md).
+with `junit`: one file, or a directory of `TEST-*.xml` files. Inventory and
+selection are described in [TEST_SELECTION](TEST_SELECTION.md).
 
 ## Plans
 

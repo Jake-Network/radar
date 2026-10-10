@@ -149,7 +149,7 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 		if count > maxSnapshotFiles*2 {
 			return errors.New("candidate input inventory exceeds file limit")
 		}
-		if !d.IsDir() && !tracked[rel] && !allowed[rel] && !indexer.ExcludedPath(rel) {
+		if !d.IsDir() && !tracked[rel] && !declaredArtifact(allowed, rel) && !indexer.ExcludedPath(rel) {
 			state.Matches = false
 			fmt.Fprintf(hash, "untracked:%s\x00", rel)
 		}
@@ -160,6 +160,17 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 	}
 	state.Digest = hex.EncodeToString(hash.Sum(nil))
 	return state, nil
+}
+
+// declaredArtifact reports whether rel is a declared JUnit report or a file
+// inside a declared report directory.
+func declaredArtifact(allowed map[string]bool, rel string) bool {
+	for dir := rel; dir != "." && dir != "/" && dir != ""; dir = filepath.ToSlash(filepath.Dir(dir)) {
+		if allowed[dir] {
+			return true
+		}
+	}
+	return false
 }
 
 func executionDirectory(root, cwd string) (string, error) {
@@ -384,7 +395,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		return finish(model.StatusError), nil
 	}
 	r.ExitCode = state.ExitCode()
-	counts := harnessCounts(argv, out.b.Bytes())
+	counts := harnessCounts(argv, out.b.Bytes(), dir)
 	// Preserve observed failures even when the additionally declared report
 	// cannot be read. Missing report coverage cannot erase a failing test.
 	r.TestsRun = counts.Run
@@ -434,8 +445,9 @@ func ValidateCandidate(r Record, root string, c CandidateCheckpoint, p planning.
 	return nil
 }
 
-// CandidateArtifacts enumerates only exact declared JUnit output paths. It does
-// not exempt tracked inputs or arbitrary directories from source validation.
+// CandidateArtifacts enumerates only exact declared JUnit output paths, which
+// may be report directories. It does not exempt tracked inputs or undeclared
+// directories from source validation.
 func CandidateArtifacts(p *planning.Plan) []string {
 	var result []string
 	if p == nil {
