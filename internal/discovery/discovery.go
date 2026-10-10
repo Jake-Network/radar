@@ -174,6 +174,7 @@ func Discover(ctx context.Context, root, ref string) (Report, error) {
 	}
 	r.Diagnostics = append(r.Diagnostics, consumerDiagnostics...)
 	schemaByID := map[string]Schema{}
+	matchedConsumers := make([]bool, len(consumers))
 	for _, s := range r.Schemas {
 		schemaByID[s.ID] = s
 	}
@@ -184,7 +185,7 @@ func Discover(ctx context.Context, root, ref string) (Report, error) {
 			continue
 		}
 		found := false
-		for _, consumer := range consumers {
+		for i, consumer := range consumers {
 			if consumer.endpoint != ep.url || (consumer.method != "" && ep.method != "" && consumer.method != ep.method) {
 				continue
 			}
@@ -208,6 +209,7 @@ func Discover(ctx context.Context, root, ref string) (Report, error) {
 			}
 			r.Candidates = append(r.Candidates, c)
 			found = true
+			matchedConsumers[i] = true
 			if strings.HasSuffix(schema.Path, ".json") && c.Evidence != model.Unknown && len(fields) > 0 {
 				r.ProposedManifest.Bindings = append(r.ProposedManifest.Bindings, contracts.Binding{ID: c.ID, Schema: schema.Path, Pointer: schema.Pointer, Producer: c.Producer, Consumer: c.Consumer, Fields: fields, Direction: "response"})
 			}
@@ -216,6 +218,18 @@ func Discover(ctx context.Context, root, ref string) (Report, error) {
 			r.Candidates = append(r.Candidates, Candidate{ID: model.StableID(ep.schema, ep.url), Producer: ep.location.Path, Contract: ep.schema, Endpoint: ep.url, Method: ep.method, Fields: schema.Fields, Evidence: model.Proposed, Locations: []model.Provenance{schema.Evidence, ep.location}, Ambiguities: []string{"No supported typed consumer could be resolved."}})
 		}
 	}
+	for i, consumer := range consumers {
+		if matchedConsumers[i] {
+			continue
+		}
+		fields := append([]string{}, consumer.fields...)
+		sort.Strings(fields)
+		r.Consumers = append(r.Consumers, ConsumerUse{Path: consumer.path, Endpoint: consumer.endpoint, Method: consumer.method, Type: consumer.typePath + "#" + consumer.typeName, Fields: fields, Locations: append([]model.Provenance{}, consumer.locations...)})
+	}
+	sort.Slice(r.Consumers, func(i, j int) bool {
+		a, b := r.Consumers[i], r.Consumers[j]
+		return model.StableID(a.Path, a.Endpoint, a.Method, a.Type) < model.StableID(b.Path, b.Endpoint, b.Method, b.Type)
+	})
 	sort.Slice(r.ProposedManifest.Bindings, func(i, j int) bool { return r.ProposedManifest.Bindings[i].ID < r.ProposedManifest.Bindings[j].ID })
 	sort.Slice(r.Schemas, func(i, j int) bool { return r.Schemas[i].ID < r.Schemas[j].ID })
 	sort.Slice(r.Candidates, func(i, j int) bool { return r.Candidates[i].ID < r.Candidates[j].ID })
