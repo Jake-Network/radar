@@ -77,7 +77,27 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
 			executionOptions.Timeout = time.Until(deadline)
 		}
-		ev := execute(executionCtx, temp, *r, executionOptions)
+		// JVM commands can share a report directory across tiers or chunks,
+		// and Maven -am also writes upstream reports. Each command needs fresh
+		// artifacts from the same immutable candidate, not an earlier run.
+		commandRoot := temp
+		var isolated *Candidate
+		if selection.Framework == "maven" || selection.Framework == "gradle" {
+			var err error
+			isolated, err = BuildCandidate(executionCtx, temp, r.CandidateCommit, nil)
+			if err != nil {
+				return fmt.Errorf("isolate Java verification: %w", err)
+			}
+			if isolated.Commit != r.CandidateCommit || isolated.Tree != r.CandidateTree {
+				_ = isolated.Close()
+				return fmt.Errorf("isolated Java verification candidate does not match the selected commit and tree")
+			}
+			commandRoot = isolated.Dir
+		}
+		ev := execute(executionCtx, commandRoot, *r, executionOptions)
+		if isolated != nil {
+			_ = isolated.Close()
+		}
 		ev.SelectionID = selection.ID
 		// Selection identity is also bound into the serialized artifact digest.
 		ev.ID = ""

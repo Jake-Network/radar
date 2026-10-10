@@ -337,3 +337,46 @@ func TestCandidateSetupCompileErrorIsSourceFailure(t *testing.T) {
 		t.Fatalf("diagnosis %+v locations %+v", d, run.Observation.Locations)
 	}
 }
+
+func TestCandidateJUnitDirectoryDoesNotExemptSourceInputs(t *testing.T) {
+	needPython(t)
+	for _, extra := range []string{"none", "source", "nested", "symlink"} {
+		t.Run(extra, func(t *testing.T) {
+			root := fixture(t, map[string]string{"README": "fixture"})
+			c := candidateCheckpoint(t, root)
+			script := "from pathlib import Path; Path('reports').mkdir(); "
+			switch extra {
+			case "source":
+				script += "Path('reports/new_module.py').write_text('VALUE = 42'); import reports.new_module; assert reports.new_module.VALUE == 42; "
+			case "nested":
+				script += "Path('reports/nested').mkdir(); Path('reports/nested/TEST-ignored.xml').write_text('<testsuite><testcase/></testsuite>'); "
+			case "symlink":
+				script += "Path('reports/TEST-link.xml').symlink_to('../README'); "
+			}
+			script += "Path('reports/TEST-ok.xml').write_text('<testsuite><testcase name=\"ok\"/></testsuite>')"
+			argv := []string{"python3", "-c", script}
+			p := reviewedPlan(root, c, argv, ".")
+			p.Acceptance[0].Rule.JUnit = "reports"
+			review(&p)
+			r, e := RunCandidate(context.Background(), root, c, p, argv, ".", 10*time.Second)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if extra == "none" {
+				if r.Record.Status != model.StatusPassed || !r.Record.Candidate.SourceUnchanged {
+					t.Fatalf("fresh directory report rejected: %+v", r.Record)
+				}
+				if e := ValidateCandidate(r.Record, root, c, p, "criterion", argv); e != nil {
+					t.Fatal(e)
+				}
+			} else {
+				if r.Record.Status != model.StatusUnknown || r.Record.Candidate.SourceUnchanged {
+					t.Fatalf("untracked input certified as candidate evidence: %+v", r.Record)
+				}
+				if e := ValidateCandidate(r.Record, root, c, p, "criterion", argv); e == nil {
+					t.Fatal("mutated candidate evidence accepted")
+				}
+			}
+		})
+	}
+}

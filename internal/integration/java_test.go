@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -147,5 +148,65 @@ func TestJavaCommittedReportIsRejected(t *testing.T) {
 	}
 	if !stale {
 		t.Fatalf("stale report not reported: %+v", r.Executions)
+	}
+}
+
+func TestJavaGroupedCommandsUseFreshReports(t *testing.T) {
+	root := javaFixture(t)
+	gitTest(t, root, "checkout", "-q", "rename")
+	for i := 0; i < 201; i++ {
+		name := fmt.Sprintf("Extra%dTest", i)
+		put(t, root, "core/src/test/java/com/shop/"+name+".java", "package com.shop;\nclass "+name+" { @Test void ok() {} }\n")
+	}
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "add test classes")
+	gitTest(t, root, "checkout", "-q", "baseline")
+	o := Options{Base: "baseline", Branches: []string{"rename"}, Verify: true, AllowExecution: true, Suite: "recommended", Timeout: time.Minute}
+	r, err := Preview(context.Background(), root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreCommands, coreFiles := 0, 0
+	for _, command := range r.Selection.Commands {
+		if slices.Contains(command.Command, "core") {
+			coreCommands++
+			coreFiles += len(command.TestFiles)
+		}
+	}
+	if coreCommands != 2 || coreFiles != 202 {
+		t.Fatalf("expected two core chunks covering 202 classes, got %d commands and %d files", coreCommands, coreFiles)
+	}
+	for _, ev := range r.Executions {
+		t.Logf("args=%d status=%v error=%q", len(ev.Command), ev.Status, ev.ExecutionError)
+	}
+	if r.Gate.Verdict != gate.Pass {
+		t.Fatalf("valid selected Java tests blocked: %+v", r.Gate)
+	}
+}
+
+func TestJavaRequiredAndOptionalCommandsUseFreshReports(t *testing.T) {
+	root := javaFixture(t)
+	gitTest(t, root, "checkout", "-q", "baseline")
+	put(t, root, "core/src/test/java/com/other/UnrelatedTest.java", "package com.other;\nclass UnrelatedTest { @Test void ok() {} }\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "add unrelated package test")
+	gitTest(t, root, "branch", "newbase")
+	gitTest(t, root, "checkout", "-qb", "validchange")
+	put(t, root, "core/src/main/java/com/shop/Inventory.java", "package com.shop;\npublic class Inventory { public int reserve(int n) { return n + 1; } }\n")
+	gitTest(t, root, "commit", "-qam", "change body")
+	gitTest(t, root, "checkout", "-q", "newbase")
+	o := Options{Base: "newbase", Branches: []string{"validchange"}, Verify: true, AllowExecution: true, Suite: "recommended", Timeout: time.Minute}
+	r, err := Preview(context.Background(), root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Selection.Commands) != 2 || r.Selection.Commands[0].Tier != "required" || r.Selection.Commands[1].Tier != "optional" {
+		t.Fatalf("expected separate required and optional commands: %+v", r.Selection.Commands)
+	}
+	for _, ev := range r.Executions {
+		t.Logf("command=%v status=%v error=%q", ev.Command, ev.Status, ev.ExecutionError)
+	}
+	if r.Gate.Verdict != gate.Pass {
+		t.Fatalf("valid selected Java tests blocked: %+v", r.Gate)
 	}
 }
