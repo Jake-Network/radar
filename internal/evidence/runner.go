@@ -162,6 +162,9 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 			r.Status = model.StatusError
 			if runCtx.Err() != nil {
 				r.Status = model.StatusTimeout
+			} else if len(harnessCounts(step, setupOut.b.Bytes(), testDir).BuildErrors) > 0 {
+				// The setup build stopped on compiler errors in repository source.
+				r.Status = model.StatusFailed
 			}
 			r.OutputDigest = hex.EncodeToString(setupOut.sum())
 			r.OutputTail = string(setupOut.tailBytes())

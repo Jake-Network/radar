@@ -321,3 +321,133 @@ func TestSurefireSummaryAndMissingJVM(t *testing.T) {
 		t.Fatalf("JVM diagnosis outside a JVM build %+v", d)
 	}
 }
+
+// gccCompileOutput is `ctest --build-and-test` through CMake's Makefiles for a
+// file that calls a member another branch renamed (shape captured from GCC 13
+// and GNU Make 4.3).
+func gccCompileOutput(dir string) string {
+	src := filepath.Join(dir, "src", "restock.cpp")
+	return "Internal cmake changing into directory: " + filepath.Join(dir, "build", "radar-ctest") + "\n" +
+		"[ 50%] Building CXX object CMakeFiles/shop.dir/src/restock.cpp.o\n" +
+		src + ": In function 'int drain(shop::Inventory&)':\n" +
+		src + ":3:12: error: 'class shop::Inventory' has no member named 'reserve'\n" +
+		"    3 |   return i.reserve(9);\n" +
+		"      |            ^~~~~~~\n" +
+		"gmake[2]: *** [CMakeFiles/shop.dir/build.make:90: CMakeFiles/shop.dir/src/restock.cpp.o] Error 1\n" +
+		"gmake[1]: *** [CMakeFiles/Makefile2:85: CMakeFiles/shop.dir/all] Error 2\n" +
+		"gmake: *** [Makefile:91: all] Error 2\n"
+}
+
+func ccSourceTree(t *testing.T, files ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, f := range files {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		if e := os.MkdirAll(filepath.Dir(p), 0o755); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte("\n"), 0o644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	return dir
+}
+
+func TestCCBuildFailureIsSourceFailure(t *testing.T) {
+	dir := ccSourceTree(t, "src/restock.cpp", "src/legacy.c", "src/main.cc")
+	ctestArgv := []string{"ctest", "--build-and-test", ".", "build/radar-ctest", "--build-generator", "Unix Makefiles", "--test-command", "ctest"}
+	for _, c := range []struct {
+		name   string
+		argv   []string
+		output string
+		want   sourceBuildError
+	}{
+		{"gcc through ctest", ctestArgv, gccCompileOutput(dir), sourceBuildError{Path: "src/restock.cpp", Line: 3, Symbol: "reserve"}},
+		{"gcc through cmake --build", []string{"cmake", "--build", "build"}, gccCompileOutput(dir), sourceBuildError{Path: "src/restock.cpp", Line: 3, Symbol: "reserve"}},
+		{"bare make", []string{"make"}, gccCompileOutput(dir), sourceBuildError{Path: "src/restock.cpp", Line: 3, Symbol: "reserve"}},
+		{"clang member", []string{"ninja", "-C", "build"}, "FAILED: CMakeFiles/shop.dir/src/restock.cpp.o\n" + filepath.Join(dir, "src", "restock.cpp") + ":3:12: error: no member named 'reserve' in 'shop::Inventory'\n1 error generated.\nninja: build stopped: subcommand failed.\n", sourceBuildError{Path: "src/restock.cpp", Line: 3, Symbol: "reserve"}},
+		{"relative C implicit declaration", []string{"make", "-C", "."}, "cc -c src/legacy.c\nsrc/legacy.c:7:5: error: implicit declaration of function 'reserve' [-Wimplicit-function-declaration]\nmake: *** [Makefile:4: legacy.o] Error 1\n", sourceBuildError{Path: "src/legacy.c", Line: 7, Symbol: "reserve"}},
+		{"gcc undeclared", []string{"gcc", "-c", "src/legacy.c"}, "src/legacy.c:9:3: error: 'stock_limit' undeclared (first use in this function)\n", sourceBuildError{Path: "src/legacy.c", Line: 9, Symbol: "stock_limit"}},
+		{"located undefined reference", []string{"make"}, "/usr/bin/ld: CMakeFiles/shop.dir/src/main.cc.o: in function `main':\n" + filepath.Join(dir, "src", "main.cc") + ":12: undefined reference to `shop::Inventory::reserve(int)'\ncollect2: error: ld returned 1 exit status\n", sourceBuildError{Path: "src/main.cc", Line: 12, Symbol: "shop::Inventory::reserve"}},
+	} {
+		r := harnessCounts(c.argv, []byte(c.output), dir)
+		if len(r.BuildErrors) != 1 || r.BuildErrors[0] != c.want {
+			t.Fatalf("%s: build errors %+v", c.name, r.BuildErrors)
+		}
+		if s := outcome(false, 2, r, false, c.argv, []byte(c.output)); s != model.StatusFailed {
+			t.Fatalf("%s: classified %s", c.name, s)
+		}
+	}
+	obs := CandidateObservation{Status: model.StatusFailed, ExitCode: 8}
+	decorateCandidateObservation(&obs, ctestArgv, []byte(gccCompileOutput(dir)), dir, dir, ".")
+	if obs.Diagnosis == nil || obs.Diagnosis.Kind != "build_failed" || obs.Diagnosis.Name != "reserve" || len(obs.Locations) != 1 || obs.Locations[0].Path != "src/restock.cpp" {
+		t.Fatalf("diagnosis %+v locations %+v", obs.Diagnosis, obs.Locations)
+	}
+}
+
+func TestCCBuildFailureEnvironmentNegatives(t *testing.T) {
+	dir := ccSourceTree(t, "src/restock.cpp", "build/_deps/fmt-src/include/fmt/core.h", "src/main.cc")
+	compile := gccCompileOutput(dir)
+	cases := map[string]string{
+		"system header":         "/usr/include/c++/13/bits/stl_vector.h:1287:7: error: no matching function for call to 'construct'\n",
+		"missing system header": filepath.Join(dir, "src", "restock.cpp") + ":1:10: fatal error: openssl/ssl.h: No such file or directory\ncompilation terminated.\n",
+		"missing header clang":  filepath.Join(dir, "src", "restock.cpp") + ":1:10: fatal error: 'openssl/ssl.h' file not found\n",
+		"missing library":       compile + "/usr/bin/ld: cannot find -lssl: No such file or directory\n",
+		"cmake configure":       "CMake Error at CMakeLists.txt:3 (find_package):\n  Could NOT find GTest (missing: GTEST_LIBRARY)\n" + compile,
+		"no compiler":           "CMake Error at CMakeLists.txt:2 (project):\n  No CMAKE_CXX_COMPILER could be found.\n",
+		"dependency source":     filepath.Join(dir, "build", "_deps", "fmt-src", "include", "fmt", "core.h") + ":10:3: error: 'consteval' was not declared in this scope\n",
+		"absent file":           filepath.Join(dir, "src", "gone.cpp") + ":3:1: error: 'x' was not declared in this scope\n",
+		"outside directory":     strings.ReplaceAll(compile, dir, "/opt/other"),
+		"relative escape":       "../vendor/a.c:1:1: error: 'x' undeclared\n",
+		"unlocated reference":   "/usr/bin/ld: CMakeFiles/shop.dir/src/main.cc.o: in function `main':\nmain.cc:(.text+0x1d): undefined reference to `shop::Inventory::reserve(int)'\ncollect2: error: ld returned 1 exit status\n",
+		"bad standard flag":     compile + "c++: error: unrecognized command-line option '-std=c++29'\n",
+		"compiler crash":        compile + "c++: internal compiler error: Segmentation fault signal terminated program cc1plus\n",
+		"not a build driver":    compile,
+	}
+	for name, output := range cases {
+		argv := []string{"cmake", "--build", "build"}
+		if name == "not a build driver" {
+			argv = []string{"python3", "build.py"}
+		}
+		r := harnessCounts(argv, []byte(output), dir)
+		if len(r.BuildErrors) != 0 {
+			t.Errorf("%s: attributed to source: %+v", name, r.BuildErrors)
+		}
+		if s := outcome(false, 2, r, false, argv, []byte(output)); s != model.StatusError {
+			t.Errorf("%s: classified %s", name, s)
+		}
+	}
+	// Like a failed Python import, a missing header may be a branch's rename,
+	// so it is diagnosed but not called the environment's.
+	for _, output := range []string{cases["missing system header"], cases["missing header clang"]} {
+		d := diagnose([]string{"cmake", "--build", "build"}, 2, []byte(output))
+		if d == nil || d.Kind != "module_missing" || d.Name != "openssl/ssl.h" || d.Environment() {
+			t.Fatalf("missing header diagnosis %+v", d)
+		}
+	}
+}
+
+func TestCTestAndGoogleTestSummaries(t *testing.T) {
+	ctestOutput := "Test project /tmp/x/build\n    Start 1: inventory\n1/3 Test #1: inventory ........   Passed    0.01 sec\n2/3 Test #2: slow .............***Skipped   0.00 sec\n3/3 Test #3: restock ..........***Failed    0.01 sec\n\n" +
+		"67% tests passed, 1 tests failed out of 3\n\nTotal Test time (real) =   0.03 sec\n\nThe following tests did not run:\n\t  2 - slow (Skipped)\n\nThe following tests FAILED:\n\t  3 - restock (Failed)\n"
+	for _, argv := range [][]string{{"ctest", "--test-dir", "build"}, {"make", "test"}} {
+		r := harnessCounts(argv, []byte(ctestOutput), "")
+		if r.Harness != "ctest" || r.Run != 2 || r.Failed != 1 || r.Skipped != 1 {
+			t.Fatalf("%v: ctest totals %+v", argv, r)
+		}
+	}
+	if r := harnessCounts([]string{"ctest", "--test-dir", "build"}, []byte("100% tests passed, 0 tests failed out of 2\n"), ""); r.Run != 2 || r.Failed != 0 || outcome(false, 0, r, false, nil, nil) != model.StatusPassed {
+		t.Fatalf("passing ctest %+v", r)
+	}
+	if r := harnessCounts([]string{"ctest", "--test-dir", "build"}, []byte("No tests were found!!!\n"), ""); r.Run != 0 || outcome(false, 0, r, false, []string{"ctest"}, nil) == model.StatusPassed {
+		t.Fatalf("ctest without tests passed %+v", r)
+	}
+	gtestOutput := "[==========] Running 4 tests from 1 test suite.\n[==========] 4 tests from 1 test suite ran. (0 ms total)\n[  PASSED  ] 2 tests.\n[  SKIPPED ] 1 test, listed below:\n[  SKIPPED ] Inventory.Slow\n[  FAILED  ] 1 test, listed below:\n[  FAILED  ] Inventory.Reserve\n\n 1 FAILED TEST\n"
+	r := harnessCounts([]string{"./build/inventory_test", "--gtest_brief=1"}, []byte(gtestOutput), "")
+	if r.Harness != "gtest" || r.Run != 3 || r.Failed != 1 || r.Skipped != 1 {
+		t.Fatalf("gtest totals %+v", r)
+	}
+	if r := harnessCounts([]string{"./build/inventory_test"}, []byte(gtestOutput), ""); r.Harness != "" {
+		t.Fatalf("bare binary output recognized %+v", r)
+	}
+}

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
@@ -226,6 +228,88 @@ func javaBuildErrors(text, dir string) []sourceBuildError {
 			}
 		}
 		// Maven repeats each error in its goal failure summary.
+		if seen[e] {
+			continue
+		}
+		seen[e] = true
+		if len(errs) < maxBuildErrors {
+			errs = append(errs, e)
+		}
+	}
+	return errs
+}
+
+const ccFile = `(.+?\.(?:c|cc|cpp|cxx|c\+\+|h|hh|hpp|hxx|h\+\+|ipp|tpp|inl))`
+
+var (
+	// GCC and Clang: FILE:LINE[:COL]: [fatal ]error: MESSAGE. GNU ld with
+	// debug information: FILE:LINE: undefined reference to `SYMBOL'.
+	ccError     = regexp.MustCompile(`^` + ccFile + `:([0-9]+):(?:[0-9]+:)? (?:fatal )?error: (.*)$`)
+	ccLinkError = regexp.MustCompile("^" + ccFile + ":([0-9]+):? undefined reference to [`']([^'`]+)'")
+	ccSymbols   = []*regexp.Regexp{
+		regexp.MustCompile(`'([A-Za-z_][A-Za-z0-9_:]{0,99})' was not declared in this scope`),
+		regexp.MustCompile(`'([A-Za-z_][A-Za-z0-9_]{0,99})' undeclared`),
+		regexp.MustCompile(`has no member named '([A-Za-z_][A-Za-z0-9_]{0,99})'`),
+		regexp.MustCompile(`no member named '([A-Za-z_][A-Za-z0-9_]{0,99})'`),
+		regexp.MustCompile(`use of undeclared identifier '([A-Za-z_][A-Za-z0-9_:]{0,99})'`),
+		regexp.MustCompile(`implicit declaration of function '([A-Za-z_][A-Za-z0-9_]{0,99})'`),
+		regexp.MustCompile(`'([A-Za-z_][A-Za-z0-9_:]{0,99})' is not a member of`),
+		regexp.MustCompile(`'([A-Za-z_][A-Za-z0-9_]{0,99})' does not name a type`),
+		regexp.MustCompile(`unknown type name '([A-Za-z_][A-Za-z0-9_]{0,99})'`),
+	}
+	// Missing headers, libraries, compilers and build programs, CMake
+	// configuration failures and toolchain crashes are the environment's,
+	// or cannot be told apart from it; a build mentioning one is never
+	// attributed to the source.
+	ccEnvironment = regexp.MustCompile(`No such file or directory|file not found|cannot find -l|library not found|ld: cannot find|CMake Error|Could NOT find|No CMAKE_[A-Z_]+_COMPILER could be found|unable to find a build program|CMAKE_MAKE_PROGRAM is not set|command not found|unrecognized command[- ]line option|unknown argument|invalid value '[^']*' in '-std=|cannot execute|internal compiler error|Killed signal terminated program`)
+)
+
+// ccBuildErrors reads GCC and Clang errors, and GNU ld undefined references
+// that carry a source line, located in existing repository source. A path
+// outside the execution directory (system headers), in a generated or
+// dependency directory (build/, FetchContent sources), or that does not
+// exist where it is said to be makes the failure unattributable. An
+// undefined reference without a line (no debug information) is not located.
+func ccBuildErrors(text, dir string) []sourceBuildError {
+	if ccEnvironment.MatchString(text) {
+		return nil
+	}
+	var errs []sourceBuildError
+	seen := map[sourceBuildError]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, "\r")
+		m, link := ccError.FindStringSubmatch(line), false
+		if m == nil {
+			m, link = ccLinkError.FindStringSubmatch(line), true
+		}
+		if m == nil {
+			continue
+		}
+		path, ok := sourcePath(dir, m[1])
+		if !ok || indexer.ExcludedPath(path) {
+			return nil
+		}
+		if dir != "" {
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(path))); err != nil {
+				return nil
+			}
+		}
+		n, _ := strconv.Atoi(m[2])
+		e := sourceBuildError{Path: path, Line: n}
+		if link {
+			// Demangled C++ names carry their parameter list.
+			symbol, _, _ := strings.Cut(m[3], "(")
+			if sourceSymbol.MatchString(symbol) {
+				e.Symbol = symbol
+			}
+		} else {
+			for _, re := range ccSymbols {
+				if s := re.FindStringSubmatch(m[3]); s != nil {
+					e.Symbol = s[1]
+					break
+				}
+			}
+		}
 		if seen[e] {
 			continue
 		}

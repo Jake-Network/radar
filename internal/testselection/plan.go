@@ -378,6 +378,7 @@ func fullSuite(p Proposal) []Command {
 	type key struct{ framework, root string }
 	seen := map[key][]string{}
 	runs := map[key]*javaRun{}
+	ctests := map[key][]string{}
 	var order []key
 	tools := map[string]bool{}
 	for _, c := range p.Commands {
@@ -391,6 +392,9 @@ func fullSuite(p Proposal) []Command {
 		seen[k] = append(seen[k], t.Path)
 		if t.java != nil {
 			runs[k] = t.java
+		}
+		if t.ctest != nil {
+			ctests[k] = t.ctest
 		}
 	}
 	for _, k := range order {
@@ -438,6 +442,11 @@ func fullSuite(p Proposal) []Command {
 				continue
 			}
 			argv, cwd, junit = run.argv(k.framework, true), run.cwd, run.junit
+		case "ctest":
+			if ctests[k] == nil {
+				continue
+			}
+			argv, junit = append([]string(nil), ctests[k]...), ctestReport
 		default:
 			continue
 		}
@@ -445,8 +454,11 @@ func fullSuite(p Proposal) []Command {
 		if !known {
 			lookPath := func(tool string) bool { _, err := exec.LookPath(tool); return err == nil }
 			available = lookPath(argv[0])
-			if junit != "" {
+			switch k.framework {
+			case "maven", "gradle":
 				available = javaToolAvailable(argv, lookPath)
+			case "ctest":
+				available = ctestToolAvailable(lookPath)
 			}
 		}
 		c := Command{Command: argv, CWD: cwd, Framework: k.framework, Tier: TierRequired, TestFiles: unique(seen[k]), Affected: []string{}, Priority: 50, ToolAvailable: available, JUnit: junit, EvidenceReasons: []Reason{{Code: "full_suite", Explanation: "Whole discovered suite for this framework and package root; the runner's configuration selects tests.", Evidence: model.Inferred}}}

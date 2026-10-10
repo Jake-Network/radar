@@ -238,3 +238,93 @@ func TestJavaImportResolution(t *testing.T) {
 		t.Errorf("unexpected edges: %v", got)
 	}
 }
+
+func indexTree(t *testing.T, files map[string]string) map[string]string {
+	t.Helper()
+	root := t.TempDir()
+	for p, content := range files {
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Index(context.Background(), root, "WORKTREE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, e := range s.Edges {
+		if e.Kind == "DEPENDS_ON" {
+			if e.Provenance.Evidence != model.Inferred {
+				t.Fatalf("edge provenance %+v", e.Provenance)
+			}
+			got[strings.TrimPrefix(e.From, "file:")+" -> "+strings.TrimPrefix(e.To, "file:")] = e.Provenance.Method
+		}
+	}
+	return got
+}
+
+func TestIncludeResolution(t *testing.T) {
+	got := indexTree(t, map[string]string{
+		"CMakeLists.txt":           "project(shop)\n",
+		"include/shop/inventory.h": "#pragma once\nnamespace shop { class Inventory { public: int reserve(int); }; }\n",
+		"src/inventory.cpp":        "#include \"shop/inventory.h\"\nint shop::Inventory::reserve(int n) { return n; }\n",
+		"src/util/strings.h":       "int trim(void);\n",
+		"src/util/strings.c":       "#include \"strings.h\"\nint trim(void) { return 0; }\n",
+		"src/app/main.c":           "#include \"util/strings.h\"\n#include <stdio.h>\n#include <string.h>\nint main(void) { return trim(); }\n",
+		"src/string.h":             "/* shadows nothing: system includes do not search here */\n",
+		"tests/inventory_test.cpp": "#include <shop/inventory.h>\n#include \"missing.h\"\nint main() { return 0; }\n",
+		"lib/CMakeLists.txt":       "project(lib)\n",
+		"lib/include/both.h":       "int both(void);\n",
+		"lib/src/both.h":           "int both(void);\n",
+		"lib/tools/use.c":          "#include \"both.h\"\n",
+		"pair/codec.h":             "int encode(void);\n",
+		"pair/codec.c":             "int encode(void) { return 1; }\n",
+		"pair/codec.cpp":           "int encode() { return 1; }\n",
+	})
+	want := map[string]string{
+		"src/inventory.cpp -> include/shop/inventory.h":        "import_path_resolution:cpp",
+		"src/util/strings.c -> src/util/strings.h":             "import_path_resolution:c",
+		"src/app/main.c -> src/util/strings.h":                 "import_path_resolution:c",
+		"tests/inventory_test.cpp -> include/shop/inventory.h": "import_path_resolution:cpp",
+		"include/shop/inventory.h -> src/inventory.cpp":        "header_source_pairing:cpp",
+		"src/util/strings.h -> src/util/strings.c":             "header_source_pairing:c",
+	}
+	for edge, method := range want {
+		if got[edge] != method {
+			t.Errorf("%s: got %q want %q", edge, got[edge], method)
+		}
+	}
+	for edge := range got {
+		if _, ok := want[edge]; !ok {
+			t.Errorf("unexpected edge %s (%s)", edge, got[edge])
+		}
+	}
+}
+
+func TestCompileCommandsIncludeDirs(t *testing.T) {
+	got := indexTree(t, map[string]string{
+		"compile_commands.json": `[
+  {"directory": "/home/ci/work/shop/build", "file": "/home/ci/work/shop/app/main.cpp", "command": "c++ -I/home/ci/work/shop/third/api -isystem /usr/include/boost -Ilocal -c ../app/main.cpp"},
+  {"directory": "/elsewhere", "file": "/elsewhere/unknown.cpp", "arguments": ["c++", "-I", "/elsewhere/include"]}
+]`,
+		"app/main.cpp":      "#include <api.h>\n#include \"gen.h\"\nint main() {}\n",
+		"third/api/api.h":   "int api();\n",
+		"build/local/gen.h": "int gen();\n",
+		"app/other.cpp":     "#include <api.h>\n",
+	})
+	if got["app/main.cpp -> third/api/api.h"] != "import_path_resolution:cpp" {
+		t.Errorf("compile_commands include dir unused: %v", got)
+	}
+	if _, ok := got["app/other.cpp -> third/api/api.h"]; ok {
+		t.Errorf("include dirs leaked to a file without a compile entry: %v", got)
+	}
+	for edge := range got {
+		if strings.Contains(edge, "build/") {
+			t.Errorf("excluded build directory resolved: %s", edge)
+		}
+	}
+}

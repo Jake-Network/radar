@@ -26,10 +26,13 @@ type resolver struct {
 	ambiguousPackages map[string]bool
 	javaTypes         map[string][]string // declared package + "." + file stem -> files
 	javaPackages      map[string][]string // declared package -> files
+	language          map[string]string   // indexed source -> adapter language
+	compileCommands   []compileCommands
+	ccIncludes        map[string][]string // compiled file -> include directories (ccresolve.go)
 }
 
 func newResolver() *resolver {
-	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}, javaTypes: map[string][]string{}, javaPackages: map[string][]string{}}
+	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}, javaTypes: map[string][]string{}, javaPackages: map[string][]string{}, language: map[string]string{}}
 }
 
 // addManifest records build configuration consulted by import resolution.
@@ -41,13 +44,15 @@ func (r *resolver) addManifest(p string, content []byte) {
 		r.addPackage(p, content)
 	case base == "jsconfig.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json"):
 		r.addTSConfig(p, content)
+	case base == "compile_commands.json":
+		r.compileCommands = append(r.compileCommands, compileCommands{p, content})
 	}
 }
 
 // isManifest reports whether addManifest reads the path.
 func isManifest(p string) bool {
 	base := path.Base(p)
-	return base == "go.mod" || base == "package.json" || base == "jsconfig.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
+	return base == "go.mod" || base == "package.json" || base == "jsconfig.json" || base == "compile_commands.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
 }
 
 func (r *resolver) addSource(p string, parsed languages.Result) {
@@ -55,6 +60,9 @@ func (r *resolver) addSource(p string, parsed languages.Result) {
 	dir := path.Dir(p)
 	r.byDir[dir] = append(r.byDir[dir], p)
 	r.imports[p] = parsed.Imports
+	if len(parsed.Nodes) > 0 {
+		r.language[p] = parsed.Nodes[0].Language
+	}
 	// A public top-level Java type lives in the file named after it. Types in
 	// the unnamed package cannot be imported, so they are not recorded.
 	if strings.HasSuffix(p, ".java") && parsed.Package != "" {
@@ -103,7 +111,7 @@ func (r *resolver) edges(repository, revision string) []model.Edge {
 			}
 		}
 	}
-	return out
+	return append(out, r.pairingEdges(repository, revision, seen)...)
 }
 
 func (r *resolver) resolve(importer string, imp languages.Import) []string {
@@ -118,6 +126,8 @@ func (r *resolver) resolve(importer string, imp languages.Import) []string {
 		return r.rust(importer, imp.Module)
 	case "java":
 		return r.java(imp.Module)
+	case "c", "cpp":
+		return r.include(importer, imp)
 	}
 	return nil
 }

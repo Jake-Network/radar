@@ -14,9 +14,10 @@ type Diagnosis struct {
 	// Kind is runner_missing (python -m RUNNER could not find RUNNER, or a
 	// Maven/Gradle wrapper found no JVM),
 	// command_missing (the shell could not find a program), module_missing
-	// (an import failed: a dependency absent from this environment, or a
-	// module a branch renamed or removed) or build_failed (the compiler
-	// rejected repository source; Name is the undefined symbol or the file).
+	// (an import or #include failed: a dependency absent from this
+	// environment, or a module or header a branch renamed or removed) or
+	// build_failed (the compiler rejected repository source; Name is the
+	// undefined symbol or the file).
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Message string `json:"message"`
@@ -35,6 +36,8 @@ var (
 	nodeMissing    = regexp.MustCompile(`Cannot find module '([^'\s]+)'`)
 	// Maven and Gradle wrappers stop before building when no JVM is found.
 	jvmMissing = regexp.MustCompile(`JAVA_HOME is not set and no 'java' command could be found|JAVA_HOME (?:environment variable )?is not defined correctly|Unable to locate a Java Runtime`)
+	// GCC and Clang name a header they could not open.
+	headerMissing = regexp.MustCompile(`fatal error: '?([A-Za-z0-9_][A-Za-z0-9_.@/-]{0,99})'?(?:: No such file or directory| file not found)`)
 )
 
 // diagnose recognizes a missing runner, program or module in the output of a
@@ -60,6 +63,9 @@ func diagnose(argv []string, exit int, data []byte) *Diagnosis {
 	}
 	if m := importMissing.FindStringSubmatch(text); m != nil && safeName.MatchString(m[1]) {
 		return &Diagnosis{Kind: "module_missing", Name: m[1], Message: fmt.Sprintf("Python could not import %s: a dependency missing from this environment, or a module a branch renamed or removed", m[1])}
+	}
+	if m := headerMissing.FindStringSubmatch(text); m != nil && safeName.MatchString(m[1]) {
+		return &Diagnosis{Kind: "module_missing", Name: m[1], Message: fmt.Sprintf("the compiler could not find header %s: a system library missing from this environment, or a header a branch renamed or removed", m[1])}
 	}
 	if m := nodeMissing.FindStringSubmatch(text); m != nil && safeName.MatchString(m[1]) {
 		return &Diagnosis{Kind: "module_missing", Name: m[1], Message: fmt.Sprintf("Node could not find module %s: a dependency missing from the private candidate (node_modules is not copied), or a module a branch renamed or removed", m[1])}

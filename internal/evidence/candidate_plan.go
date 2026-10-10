@@ -340,6 +340,9 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 	defer cancel()
 	env := environment(home, spec.Env)
 	var out output
+	// observed is the argv whose output is decorated: a failed setup step
+	// that compiled the source is observed as that step.
+	observed := argv
 	finish := func(status model.Status) CandidateRun {
 		r.Status = status
 		r.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -357,7 +360,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		r.IntegrityDigest = integrity(r)
 		r.ID = "evidence:" + r.IntegrityDigest
 		observation := CandidateObservation{Status: r.Status, ExitCode: r.ExitCode, TestsRun: r.TestsRun, TestsFailed: r.TestsFailed, TestsSkipped: r.TestsSkipped, Harness: r.Harness, OutputDigest: r.OutputDigest}
-		decorateCandidateObservation(&observation, argv, out.b.Bytes(), root, dir, cwd)
+		decorateCandidateObservation(&observation, observed, out.b.Bytes(), root, dir, cwd)
 		return CandidateRun{Record: r, Observation: observation}
 	}
 	for _, step := range spec.Setup {
@@ -374,6 +377,12 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 			return finish(model.StatusTimeout), nil
 		}
 		if r.ExitCode != 0 {
+			// A setup build (cmake --build, make) that stopped on compiler
+			// errors in repository source observed the combined source fail.
+			if len(harnessCounts(step, out.b.Bytes(), dir).BuildErrors) > 0 {
+				observed = step
+				return finish(model.StatusFailed), nil
+			}
 			return finish(model.StatusError), nil
 		}
 	}

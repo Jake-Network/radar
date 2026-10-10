@@ -13,6 +13,7 @@ reported as `unknown` or `incomplete`, never as a pass.
 | Go | declarations, imports | packages inside any `go.mod` module in the repository |
 | Rust | declarations, imports | `crate::`, `self::`, `super::` and `mod name;` |
 | Java | declarations, imports | single-type, on-demand (`.*`) and static imports, by each file's declared `package` and file name |
+| C / C++ | declarations, `#include` | in order: the including file's directory (quoted includes); `-I`, `-iquote` and `-isystem` of a committed `compile_commands.json`; ancestors up to the nearest build file (quoted); `include/`, and for quoted includes `src/`, of each enclosing CMake, Meson or Make project |
 
 Parsing is Tree-sitter, built into the binary. There is no type checking, call
 resolution or runtime tracing. Import edges (`DEPENDS_ON`) are labeled
@@ -29,6 +30,19 @@ Java types used from the same package need no import, so they get no edge;
 test selection relates same-package tests instead. A type declared by two files
 is left unresolved. Fully qualified names used without an import, reflection,
 generated sources (annotation processors, Lombok) and Kotlin are not handled.
+
+C and C++: `.c` is C, `.cc`, `.cpp`, `.cxx`, `.hpp`, `.hh` and similar are
+C++, and a `.h` header is C++ only when the C++ grammar parses it cleanly and
+the C grammar cannot or the text uses C++-only syntax. A header is linked to
+the one implementation file with the same name beside it or in the mirrored
+`src/` of an `include/` layout (`header_source_pairing`, inferred), so a change
+to `foo.cpp` reaches the tests that include `foo.h`. Macros and `#if` branches
+are not evaluated: every branch is indexed, and a computed `#include` stays
+unresolved. CMake, Meson and Make scripts are not evaluated, so
+`target_include_directories` is unknown unless `compile_commands.json` is
+committed, and its flags apply only to the files it lists; headers it does not
+list resolve by the conventions above. A header found in both `include/` and
+`src/` is left unresolved. System headers are not indexed.
 
 Working-tree indexing honors `.gitignore`. Symlinks and submodules in a
 combined tree are refused.
@@ -89,8 +103,9 @@ the reference fixture.
 ## Tests
 
 Recognized result formats: `go test -json`, `python -m unittest`, `pytest`,
-Jest, Vitest, `node --test`, `cargo test`, Maven Surefire totals, the JUnit
-reports Maven and Gradle write for selected commands, and any JUnit XML report
+Jest, Vitest, `node --test`, `cargo test`, Maven Surefire totals, CTest and
+GoogleTest summaries, the JUnit reports Maven, Gradle and CTest write for
+selected commands, and any JUnit XML report
 declared with `junit`: one file, or a directory of `TEST-*.xml` files.
 Inventory and selection are described in [TEST_SELECTION](TEST_SELECTION.md).
 

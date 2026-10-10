@@ -24,8 +24,8 @@ that proves them and a failure case that shows the limit.
   pytest-testmon), run under the same consent and environment rules as tests.
 - Java contract discovery: literal Spring MVC and JAX-RS endpoints with their
   response types as proposed bindings.
-- C/C++: include edges per compilation configuration, `compile_commands.json`
-  as data, CTest and GoogleTest results.
+- C/C++: include edges per compilation configuration (macros and `#if`
+  branches evaluated per configuration), and per-test CTest selection.
 - Compiler-backed semantics (SCIP, go/types, rust-analyzer, tsc) and
   incremental indexing.
 - Signed and notarized releases.

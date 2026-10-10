@@ -52,6 +52,10 @@ jobs:
         env:
           RADAR_DEMO_REQUIRE: "1"
         run: bash examples/java-maven/demo.sh /tmp/radar --prime
+      - name: C++ CMake combination demo (runner CMake and compiler)
+        env:
+          RADAR_DEMO_REQUIRE: "1"
+        run: bash examples/cpp-cmake/demo.sh /tmp/radar
       - name: Offline binary installer checks
         run: bash scripts/install-release-test.sh
       - name: Native release packaging

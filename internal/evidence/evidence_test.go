@@ -448,3 +448,37 @@ func TestWrapperUnavailable(t *testing.T) {
 		t.Fatalf("unsafe distribution name: %q", why)
 	}
 }
+
+// A setup build that stops on a compiler error in repository source observed
+// the source fail; one that stops for any other reason is a setup error.
+func TestSetupCompileErrorIsSourceFailure(t *testing.T) {
+	root := fixture(t, map[string]string{"src/a.c": "int main(void) { return reserve(); }\n"})
+	argv := []string{"ctest", "--test-dir", "build"}
+	p := plan(argv)
+	p.Acceptance[0].Rule.Setup = [][]string{{"sh", "-c", `echo "$PWD/src/a.c:1:25: error: implicit declaration of function 'reserve'"; exit 2`, "make"}}
+	r, err := Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// sh is not a build driver: its output is not read as a compiler's.
+	if r.Status != "error" || r.Phase != "setup" {
+		t.Fatalf("non-build setup failure: %+v", r)
+	}
+	bin := t.TempDir()
+	if e := os.WriteFile(filepath.Join(bin, "make"), []byte("#!/bin/sh\necho \"$PWD/src/a.c:1:25: error: implicit declaration of function 'reserve'\"\nexit 2\n"), 0o755); e != nil {
+		t.Fatal(e)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	p.Acceptance[0].Rule.Setup = [][]string{{"make"}}
+	r, err = Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+	if err != nil || r.Status != "failed" || r.Phase != "setup" || r.ExitCode != 2 {
+		t.Fatalf("setup compile failure: %+v %v", r, err)
+	}
+	if e := os.WriteFile(filepath.Join(bin, "make"), []byte("#!/bin/sh\necho 'CMake Error: could not load cache'\nexit 2\n"), 0o755); e != nil {
+		t.Fatal(e)
+	}
+	r, err = Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+	if err != nil || r.Status != "error" || r.Phase != "setup" {
+		t.Fatalf("setup environment failure: %+v %v", r, err)
+	}
+}

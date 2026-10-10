@@ -40,7 +40,28 @@ var (
 	// Surefire's per-module "Results:" totals; per-class lines carry a
 	// "Time elapsed" suffix and are not counted twice.
 	surefireTotal = regexp.MustCompile(`(?m)^\[(?:INFO|WARNING|ERROR)\] Tests run: ([0-9]+), Failures: ([0-9]+), Errors: ([0-9]+), Skipped: ([0-9]+)\s*$`)
+	// CTest counts skipped tests in "out of N" and lists them as not run.
+	ctestTotal   = regexp.MustCompile(`(?m)^\s*[0-9]+% tests passed, ([0-9]+) tests? failed out of ([0-9]+)\s*$`)
+	ctestSkipped = regexp.MustCompile(`(?m)^\s*[0-9]+ - \S.* \(Skipped\)\s*$`)
+	gtestPassed  = regexp.MustCompile(`(?m)^\[  PASSED  \] ([0-9]+) tests?\.`)
+	gtestFailed  = regexp.MustCompile(`(?m)^\[  FAILED  \] ([0-9]+) tests?, listed below`)
+	gtestSkipped = regexp.MustCompile(`(?m)^\[  SKIPPED \] ([0-9]+) tests?, listed below`)
 )
+
+// buildDriver reports argv that compiles C or C++: a build program, CMake's
+// build mode, or a compiler. Its output can hold compiler errors and, for
+// `make test`, CTest's summary.
+func buildDriver(argv []string) bool {
+	switch filepath.Base(argv[0]) {
+	case "make", "gmake", "ninja", "cc", "c++", "gcc", "g++", "clang", "clang++":
+		return true
+	case "cmake":
+		return slices.Contains(argv[1:], "--build")
+	case "meson":
+		return len(argv) > 1 && (argv[1] == "compile" || argv[1] == "test")
+	}
+	return false
+}
 
 // buildTool names the JVM build tool an argv invokes, directly or through
 // its wrapper script.
@@ -72,12 +93,18 @@ func uses(argv []string, tool string) bool {
 // arbitrary success output. dir is the command's working directory, used to
 // read absolute compiler paths; empty accepts only relative ones.
 func harnessCounts(argv []string, data []byte, dir string) harnessResult {
-	if len(argv) < 2 {
+	// A build program runs bare (make, ninja); every other runner needs a
+	// subcommand or arguments to be recognized.
+	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) {
 		return harnessResult{}
 	}
 	text := ansi.ReplaceAllString(string(data), "")
 	name := filepath.Base(argv[0])
 	switch {
+	case buildDriver(argv):
+		r := ctest(text)
+		r.BuildErrors = ccBuildErrors(text, dir)
+		return r
 	case name == "go" && argv[1] == "test":
 		return goTest(argv, data, dir)
 	case isUnittest(argv):
@@ -97,8 +124,58 @@ func harnessCounts(argv []string, data []byte, dir string) harnessResult {
 	case buildTool(argv) == "gradle":
 		// Gradle prints no test counts; results come from its JUnit reports.
 		return harnessResult{BuildErrors: javaBuildErrors(text, dir)}
+	case name == "ctest":
+		r := ctest(text)
+		if slices.Contains(argv[1:], "--build-and-test") {
+			r.BuildErrors = ccBuildErrors(text, dir)
+		}
+		return r
+	case slices.ContainsFunc(argv[1:], func(a string) bool { return strings.HasPrefix(a, "--gtest_") }):
+		return gtest(text)
 	}
 	return harnessResult{}
+}
+
+func ctest(text string) harnessResult {
+	var r harnessResult
+	skipped := len(ctestSkipped.FindAllString(text, -1))
+	total := 0
+	for _, m := range ctestTotal.FindAllStringSubmatch(text, -1) {
+		failed, _ := strconv.Atoi(m[1])
+		n, _ := strconv.Atoi(m[2])
+		r.Harness = "ctest"
+		r.Failed += failed
+		total += n
+	}
+	if r.Harness == "" {
+		return harnessResult{}
+	}
+	r.Skipped = min(skipped, total-r.Failed)
+	r.Run = total - r.Skipped
+	return r
+}
+
+func gtest(text string) harnessResult {
+	r := harnessResult{}
+	for _, m := range gtestPassed.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Run += n
+		r.Harness = "gtest"
+	}
+	for _, m := range gtestFailed.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Run += n
+		r.Failed += n
+		r.Harness = "gtest"
+	}
+	for _, m := range gtestSkipped.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Skipped += n
+	}
+	if r.Harness == "" {
+		return harnessResult{}
+	}
+	return r
 }
 
 func maven(text, dir string) harnessResult {

@@ -307,3 +307,33 @@ func TestCandidateEquivalentEmptyDeclarationsAndFailureLocations(t *testing.T) {
 		t.Fatal("failure location incorrect")
 	}
 }
+
+// A candidate setup build that stops on a compile error in repository source
+// is a failed observation decorated from the setup step's output.
+func TestCandidateSetupCompileErrorIsSourceFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake build program")
+	}
+	root := fixture(t, map[string]string{"src/restock.cpp": "int drain() { return reserve(); }\n"})
+	bin := t.TempDir()
+	if e := os.WriteFile(filepath.Join(bin, "make"), []byte("#!/bin/sh\necho \"$PWD/src/restock.cpp:1:22: error: 'reserve' was not declared in this scope\"\nexit 2\n"), 0o755); e != nil {
+		t.Fatal(e)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	c := candidateCheckpoint(t, root)
+	argv := []string{"ctest", "--test-dir", "build"}
+	p := reviewedPlan(root, c, argv, ".")
+	p.Acceptance[0].Rule.Setup = [][]string{{"make"}}
+	review(&p)
+	run, e := RunCandidate(context.Background(), root, c, p, argv, ".", 10*time.Second)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if run.Record.Status != model.StatusFailed || run.Record.Phase != "setup" {
+		t.Fatalf("%+v", run.Record)
+	}
+	d := run.Observation.Diagnosis
+	if d == nil || d.Kind != "build_failed" || d.Name != "reserve" || len(run.Observation.Locations) != 1 || run.Observation.Locations[0].Path != "src/restock.cpp" {
+		t.Fatalf("diagnosis %+v locations %+v", d, run.Observation.Locations)
+	}
+}

@@ -188,12 +188,12 @@ func TestGradleLiteralProjects(t *testing.T) {
 				t.Fatalf("root project test %+v", test.java)
 			}
 		case "core/src/integrationTest/java/com/shop/StoreIT.java":
-			if test.java != nil || test.PackageRoot != "core" || !strings.Contains(test.javaReason, "outside core/src/test/java") {
-				t.Fatalf("custom source set accepted: %+v %q", test.java, test.javaReason)
+			if test.java != nil || test.PackageRoot != "core" || !strings.Contains(test.unsupported, "outside core/src/test/java") {
+				t.Fatalf("custom source set accepted: %+v %q", test.java, test.unsupported)
 			}
 		case "tools/gen/src/test/java/GenTest.java":
-			if test.java != nil || !strings.Contains(test.javaReason, "not a literally included project") {
-				t.Fatalf("unincluded build accepted: %+v %q", test.java, test.javaReason)
+			if test.java != nil || !strings.Contains(test.unsupported, "not a literally included project") {
+				t.Fatalf("unincluded build accepted: %+v %q", test.java, test.unsupported)
 			}
 		}
 	}
@@ -243,7 +243,7 @@ func TestGradleSettingsParsing(t *testing.T) {
 	}
 	reasons := map[string]string{}
 	for _, test := range inv.Tests {
-		reasons[test.Path] = test.Framework + ": " + test.javaReason
+		reasons[test.Path] = test.Framework + ": " + test.unsupported
 	}
 	if !strings.Contains(reasons["a/src/test/java/ATest.java"], "gradle: Gradle settings in . compute or relocate projects") {
 		t.Errorf("computed settings: %q", reasons["a/src/test/java/ATest.java"])

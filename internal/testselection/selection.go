@@ -33,10 +33,12 @@ type Test struct {
 	// text is the bounded test source, kept in memory for lexical file
 	// references; it is never serialized.
 	text string
-	// java is how a Maven or Gradle test class runs; javaReason says why no
-	// run is safely known. Neither is serialized.
-	java       *javaRun
-	javaReason string
+	// java is how a Maven or Gradle test class runs and ctest the CMake
+	// build-and-test command; unsupported says why no run is safely known.
+	// None is serialized.
+	java        *javaRun
+	ctest       []string
+	unsupported string
 }
 type Inventory struct {
 	Revision    string             `json:"revision"`
@@ -194,7 +196,17 @@ func DiscoverProvider(ctx context.Context, p indexer.Provider, revision string) 
 			}
 			framework, root, run, reason := javaBuild(entry.Path, content, contents)
 			provenance := model.Provenance{Revision: revision, Path: entry.Path, Method: "static_test_convention:" + framework, Evidence: model.Inferred}
-			inv.Tests = append(inv.Tests, Test{ID: model.StableID("test", entry.Path, framework), Path: entry.Path, Framework: framework, PackageRoot: root, Evidence: provenance, text: content, java: run, javaReason: reason})
+			inv.Tests = append(inv.Tests, Test{ID: model.StableID("test", entry.Path, framework), Path: entry.Path, Framework: framework, PackageRoot: root, Evidence: provenance, text: content, java: run, unsupported: reason})
+			continue
+		}
+		if cTestFile(entry.Path, content) {
+			root, argv, reason := cmakeRun(entry.Path, contents)
+			framework := "ctest"
+			if argv == nil {
+				framework = "c-unknown"
+			}
+			provenance := model.Provenance{Revision: revision, Path: entry.Path, Method: "static_test_convention:" + framework, Evidence: model.Inferred}
+			inv.Tests = append(inv.Tests, Test{ID: model.StableID("test", entry.Path, framework), Path: entry.Path, Framework: framework, PackageRoot: root, Evidence: provenance, text: content, ctest: argv, unsupported: reason})
 			continue
 		}
 		framework := classify(entry.Path, content, contents)
@@ -219,7 +231,8 @@ func relevant(p string) bool {
 		return true
 	}
 	switch path.Ext(p) {
-	case ".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".java":
+	case ".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".java",
+		".c", ".cc", ".cpp", ".cxx", ".c++", ".h", ".hh", ".hpp", ".hxx", ".h++", ".ipp", ".tpp", ".inl":
 		return true
 	}
 	return false
@@ -230,7 +243,7 @@ func relevant(p string) bool {
 func isManifest(p string) bool {
 	switch path.Base(p) {
 	case "go.mod", "Cargo.toml", "package.json", "pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", "requirements.txt",
-		"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "mvnw", "gradlew":
+		"pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "mvnw", "gradlew", "CMakeLists.txt":
 		return true
 	}
 	return false
@@ -354,7 +367,7 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		}
 		changedSet[clean] = true
 	}
-	affected, routes, contractImpact, pathTruncated := dependencyImpact(snapshot, changedSet)
+	affected, routes, contractImpact, reached, pathTruncated := dependencyImpact(snapshot, changedSet)
 	if pathTruncated {
 		result.Limitations = append(result.Limitations, "Impact traversal bounded to 50000 nodes and 16 evidence locations per path; inspect the indexed graph for omitted detail.")
 	}
@@ -368,7 +381,7 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 	directGoRoots := goRootsWithDirectMatch(inv, affected, changedSet)
 	companions := javaCompanions(inv, snapshot, changedSet)
 	for _, test := range inv.Tests {
-		priority, reason, files := testPriority(test, changedSet, changed, affected, contractImpact, owners, roots, directGoRoots, companions)
+		priority, reason, files := testPriority(test, changedSet, changed, affected, reached, contractImpact, owners, roots, directGoRoots, companions)
 		if priority == 0 {
 			continue
 		}
@@ -384,9 +397,13 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			omitUnsupported("Cargo test has no discovered Cargo.toml")
 			continue
 		}
-		if test.javaReason != "" {
-			result.Limitations = append(result.Limitations, "No safely recognized Java build for "+test.Path+": "+test.javaReason+".")
-			omitUnsupported(test.javaReason)
+		if test.unsupported != "" {
+			build := "Java build"
+			if test.Framework == "c-unknown" {
+				build = "C/C++ test build"
+			}
+			result.Limitations = append(result.Limitations, "No safely recognized "+build+" for "+test.Path+": "+test.unsupported+".")
+			omitUnsupported(test.unsupported)
 			continue
 		}
 		argv, cwd := commandFor(test)
@@ -408,6 +425,11 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			toolAvailable = false
 		}
 		reasons := []Reason{{Code: reason, Explanation: description, Evidence: model.Inferred, Locations: locations, RelatedFiles: unique(files)}}
+		// A changed test still relates the changed sources it imports.
+		if imported := reached[test.Path]; reason == "changed_test" && len(imported) > 0 {
+			reasons = append(reasons, Reason{Code: "dependency_impact", Explanation: reasonDescriptions["dependency_impact"], Evidence: model.Inferred, Locations: []model.Provenance{test.Evidence}, RelatedFiles: unique(imported)})
+			files = append(files, imported...)
+		}
 		// A test selected for a stronger reason still relates its
 		// same-package sources, which no import edge records.
 		if same := companions[test.Path]; len(same) > 0 && reason != "java_package_companion" {
@@ -418,6 +440,10 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		if test.java != nil {
 			toolAvailable = javaToolAvailable(argv, available)
 			junit = test.java.junit
+		}
+		if test.ctest != nil {
+			toolAvailable = ctestToolAvailable(available)
+			junit = ctestReport
 		}
 		groups.add(Command{Command: argv, CWD: cwd, Framework: test.Framework, TestFiles: []string{test.Path}, Affected: unique(files), EvidenceReasons: reasons, Priority: priority, ToolAvailable: toolAvailable, JUnit: junit})
 	}
@@ -574,7 +600,7 @@ func goRootsWithDirectMatch(inv Inventory, affected map[string]string, changedSe
 
 // testPriority ranks why a test is relevant to the change. A zero priority
 // means the test is not selected.
-func testPriority(test Test, changedSet map[string]bool, changed []string, affected map[string]string, contractImpact map[string]bool, owners map[string]string, roots, directGoRoots map[string]bool, companions map[string][]string) (int, string, []string) {
+func testPriority(test Test, changedSet map[string]bool, changed []string, affected map[string]string, reached map[string][]string, contractImpact map[string]bool, owners map[string]string, roots, directGoRoots map[string]bool, companions map[string][]string) (int, string, []string) {
 	priority := 0
 	reason := ""
 	files := []string{}
@@ -589,6 +615,7 @@ func testPriority(test Test, changedSet map[string]bool, changed []string, affec
 			reason = "declared_contract_impact"
 		}
 		files = append(files, source)
+		files = append(files, reached[test.Path]...)
 	}
 	// A test naming a changed data, schema or configuration file reads it
 	// at runtime more often than not; the match is lexical, not proof.
@@ -685,6 +712,10 @@ func commandFor(t Test) ([]string, string) {
 		if t.java != nil {
 			return t.java.argv(t.Framework, false), t.java.cwd
 		}
+	case "ctest":
+		// CTest runs the project's whole registered suite; there is no
+		// per-file selection.
+		return append([]string(nil), t.ctest...), t.PackageRoot
 	}
 	return nil, t.PackageRoot
 }
