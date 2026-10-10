@@ -25,8 +25,8 @@ func TestInteractiveListsBranchesAndDispatchesStaticGate(t *testing.T) {
 	agent("agent-frontend", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
 	gitTest(t, root, "branch", "feature-off-tree", "agent-backend")
 
-	out := interact(t, root, "1\nq\n")
-	for _, want := range []string{"Worktree branches beyond main: agent-backend, agent-frontend", "Other branches beyond main:    feature-off-tree", "$ radar gate\n", "Radar gate: PASS (static)", "(exit 0)"} {
+	out := interact(t, root, "1\n\nq\n")
+	for _, want := range []string{"Branches to check:  agent-backend, agent-frontend", "Other branches:     feature-off-tree", "1  Check agent-backend + agent-frontend against main", "$ radar gate\n", "Radar gate: PASS (static)", "No tests ran — choose 3 to run them. (exit 0)", "Press Enter to return to the menu"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -50,8 +50,42 @@ func TestInteractiveRunRequiresConfirmationAndUsesPickedBranches(t *testing.T) {
 		t.Fatal("end of input at the confirmation must not run tests:\n" + eof)
 	}
 
-	out := interact(t, root, "2\n1 2\n3\ny\nq\n")
-	for _, want := range []string{"$ radar gate agent-backend agent-frontend\n", "Selected:  agent-backend, agent-frontend", "$ radar gate --run agent-backend agent-frontend\n", "Radar gate: FAIL", "(exit 1)"} {
+	out := interact(t, root, "2\n1 2\n\n3\ny\n\nq\n")
+	for _, want := range []string{"$ radar gate agent-backend agent-frontend\n", "Branches to check:  agent-backend, agent-frontend  (you picked these", "$ radar gate --run agent-backend agent-frontend\n", "Radar gate: FAIL", "Problems found, or a required check could not be done — see the report above. (exit 1)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestInteractiveEnterRunsTheStaticCheck(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	out := interact(t, root, "\n\nq\n")
+	if !strings.Contains(out, "$ radar gate\n") || strings.Contains(out, "$ radar gate --run") {
+		t.Fatal(out)
+	}
+}
+
+func TestInteractiveWithoutBranchesExplainsInsteadOfRunning(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	out := interact(t, root, "1\n3\nq\n")
+	for _, want := range []string{"No checked-out branch has commits beyond main yet", "Nothing to check yet", "No branch has commits beyond main yet."} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "$ radar gate") || strings.Contains(out, "Run tests? [y/N]") || strings.Contains(out, "start here") {
+		t.Fatal("nothing to check must not dispatch gate or offer a start:\n" + out)
+	}
+}
+
+func TestInteractiveClearDropsPickedBranches(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("agent-frontend", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
+	out := interact(t, root, "2\n1\n\nc\n1\n\nq\n")
+	for _, want := range []string{"$ radar gate agent-backend\n", "c  Clear the picked branches", "$ radar gate\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -81,8 +115,8 @@ func TestInteractiveFromSubdirectoryUsesRepositoryRoot(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	out := interact(t, sub, "1\nq\n")
-	for _, want := range []string{"Worktree branches beyond main: agent-backend", "Radar gate: PASS (static)", "(exit 0)"} {
+	out := interact(t, sub, "1\n\nq\n")
+	for _, want := range []string{"Branches to check:  agent-backend", "Radar gate: PASS (static)", "(exit 0)"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -104,7 +138,7 @@ func TestInteractiveRunShowsEveryWorkspaceRepositoryBeforeConsent(t *testing.T) 
 	}
 	// Branches picked in this repository leave the others at their base,
 	// where --run executes nothing; the confirmation says so.
-	out = interact(t, s.orders, "2\n1\n3\nn\nq\n")
+	out = interact(t, s.orders, "2\n1\n\n3\nn\nq\n")
 	if !strings.Contains(out, "orders    agent/api (this repository)") || !strings.Contains(out, "payments  base only — no branches here, so no tests run") {
 		t.Fatal(out)
 	}

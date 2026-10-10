@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -45,34 +46,52 @@ func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.W
 	}
 	s := &session{ctx: ctx, root: root, in: bufio.NewScanner(in), out: out, errout: errout, p: p}
 	printLogo(out, p, "radar "+Version, tagline)
+	// run dispatches one command, says what its exit code means and waits
+	// for Enter so the report is read before the menu scrolls it away.
+	run := func(args ...string) bool {
+		s.outcome(args, s.dispatch(args...))
+		_, ok := s.prompt(p.dim("Press Enter to return to the menu "))
+		return ok
+	}
 	for {
 		s.refresh()
 		s.menu()
-		choice, ok := s.prompt(p.paint("1;32", "› "))
+		choice, ok := s.prompt(s.promptLabel())
 		if !ok {
 			return 0
 		}
 		switch strings.ToLower(choice) {
-		case "1":
-			s.dispatch("gate")
+		case "1", "":
+			if s.nothingToCheck() {
+				continue
+			}
+			ok = run(append([]string{"gate"}, s.selected...)...)
 		case "2":
 			if picked := s.pick(); len(picked) > 0 {
 				s.selected = picked
-				s.dispatch(append([]string{"gate"}, picked...)...)
+				ok = run(append([]string{"gate"}, picked...)...)
 			}
 		case "3":
-			if s.confirmRun(s.selected) {
-				s.dispatch(append([]string{"gate", "--run"}, s.selected...)...)
+			if !s.nothingToCheck() && s.confirmRun(s.selected) {
+				ok = run(append([]string{"gate", "--run"}, s.selected...)...)
 			}
 		case "4":
-			s.dispatch("doctor")
+			ok = run("doctor")
+		case "c":
+			if len(s.selected) == 0 {
+				fmt.Fprintln(out, "No branches are selected; Radar already checks every checked-out branch.")
+			}
+			s.selected = nil
 		case "h":
 			printHelp(out, true)
+			_, ok = s.prompt(p.dim("Press Enter to return to the menu "))
 		case "q", "quit", "exit":
 			return 0
-		case "":
 		default:
-			fmt.Fprintf(out, "Unknown choice %q. Type a number, h for all commands or q to quit.\n", choice)
+			fmt.Fprintf(out, "%s %q is not a choice. Type a number from 1 to 4, h for all commands or q to quit.\n", p.mark("?"), choice)
+		}
+		if !ok {
+			return 0
 		}
 	}
 }
@@ -213,34 +232,137 @@ func (s *session) menu() {
 	if base == "" {
 		base = "(no main/master/trunk branch)"
 	}
-	fmt.Fprintf(w, "\n%s %s\n\n", p.bold(filepath.Base(s.root)), p.dim("(base "+base+")"))
-	fmt.Fprintf(w, "  Worktree branches beyond %s: %s\n", base, s.branchList(s.worktree))
-	if len(s.others) > 0 {
-		fmt.Fprintf(w, "  Other branches beyond %s:    %s\n", base, s.branchList(s.others))
+	fmt.Fprintf(w, "\n%s %s\n\n", p.bold(filepath.Base(s.root)), p.dim("· base "+base))
+	row := func(label, value, note string) {
+		if note != "" {
+			note = "  " + p.dim(note)
+		}
+		fmt.Fprintf(w, "  %-20s%s%s\n", label, value, note)
 	}
 	if len(s.selected) > 0 {
-		fmt.Fprintf(w, "  Selected:  %s\n", p.cyan(strings.Join(s.selected, ", ")))
+		row("Branches to check:", p.cyan(strings.Join(s.selected, ", ")), "(you picked these · c clears)")
+	} else {
+		row("Branches to check:", s.branchList(s.worktree), "(branches checked out in your worktrees)")
+	}
+	if len(s.others) > 0 && len(s.selected) == 0 {
+		row("Other branches:", s.branchList(s.others), "(not checked out · pick them with 2)")
 	}
 	if s.workspace != "" {
 		fmt.Fprintf(w, "\n  Workspace %q — radar gate checks every repository in it:\n", s.workspace)
 		s.printTargets(s.scope, false)
 	}
-	target := "worktree branches"
-	if len(s.selected) > 0 {
-		target = "selected branches"
-	}
-	item := func(key, text, note string) {
+
+	item := func(key, title, note, detail string) {
 		if note != "" {
 			note = "  " + p.dim(note)
 		}
-		fmt.Fprintf(w, "  %s %s%s\n", p.command("["+key+"]"), text, note)
+		fmt.Fprintf(w, "  %s  %s%s\n", p.command(key), p.bold(title), note)
+		if detail != "" {
+			fmt.Fprintf(w, "     %s\n", p.dim(detail))
+		}
+	}
+	if s.empty() {
+		fmt.Fprintf(w, "\n  %s No checked-out branch has commits beyond %s yet — commit some work first.\n", p.mark("?"), base)
+	}
+	fmt.Fprintf(w, "\n%s\n\n", p.bold("What do you want to do?"))
+	what := s.subject()
+	start := "safe · runs no code  " + p.green("← start here")
+	if s.empty() {
+		start = "safe · runs no code"
+	}
+	item("1", "Check "+what+" against "+base, start,
+		"Combines them in a private copy and reports merge conflicts, broken API\n     contracts and which tests cover the change. Your checkout is not changed.")
+	pickDetail := fmt.Sprintf("No branch has commits beyond %s yet.", base)
+	if n := len(s.worktree) + len(s.others); n > 0 {
+		pickDetail = fmt.Sprintf("Pick from the %s with commits beyond %s, then check them.", plural(n, "branch", "branches"), base)
+	}
+	item("2", "Choose which branches to combine", "", pickDetail)
+	item("3", "Check, then run the related tests", p.yellow("runs your test commands")+p.dim(" · asks first"),
+		"Same as 1, then runs the tests that cover the change on the combined code.")
+	item("4", "Check my setup", "",
+		"Shows the languages, test runners and tools Radar found (radar doctor).")
+	fmt.Fprintf(w, "\n  %s  All commands   %s  Quit", p.command("h"), p.command("q"))
+	if len(s.selected) > 0 {
+		fmt.Fprintf(w, "   %s  Clear the picked branches", p.command("c"))
 	}
 	fmt.Fprintln(w)
-	item("1", "Check worktree branches together", "static · runs no code")
-	item("2", "Pick branches to check together", "")
-	item("3", "Run tests on the combined "+target, "runs repository code · asks first")
-	item("4", "Environment check (doctor)", "")
-	fmt.Fprintf(w, "  %s All commands    %s Quit\n", p.command("[h]"), p.command("[q]"))
+}
+
+// subject names what choice 1 checks, short enough for a menu line.
+func (s *session) subject() string {
+	if s.workspace != "" && len(s.scope) > 1 {
+		return fmt.Sprintf("the %d repositories of workspace %q", len(s.scope), s.workspace)
+	}
+	branches := s.worktree
+	if len(s.selected) > 0 {
+		branches = s.selected
+	}
+	switch n := len(branches); {
+	case n == 0:
+		return "your branches"
+	case n <= 3:
+		return strings.Join(branches, " + ")
+	default:
+		return fmt.Sprintf("%d branches", n)
+	}
+}
+
+func (s *session) promptLabel() string {
+	return s.p.dim("Type 1–4 and press Enter (Enter alone = 1) ") + s.p.paint("1;32", "› ")
+}
+
+// empty reports that gate has no branch to combine: nothing is picked and
+// no checked-out branch (in any workspace repository) has commits beyond
+// its base.
+func (s *session) empty() bool {
+	if len(s.selected) > 0 || s.base == "" {
+		return false
+	}
+	if s.workspace == "" {
+		return len(s.worktree) == 0
+	}
+	for _, t := range s.scope {
+		if len(t.branches) > 0 || t.problem != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// nothingToCheck explains, instead of running gate into an error, that no
+// branch has commits beyond the base yet.
+func (s *session) nothingToCheck() bool {
+	if !s.empty() {
+		return false
+	}
+	fmt.Fprintf(s.out, "\n%s Nothing to check yet: no checked-out branch has commits beyond %s.\n", s.p.mark("?"), s.base)
+	fmt.Fprintln(s.out, "  Commit work on a branch (for example in an agent's worktree), then choose 1 again.")
+	if len(s.others) > 0 {
+		fmt.Fprintln(s.out, "  Or choose 2 to pick from the other branches listed above.")
+	}
+	return true
+}
+
+// outcome says in words what a menu command's exit code means.
+func (s *session) outcome(args []string, code int) {
+	p := s.p
+	gate, run := args[0] == "gate", slices.Contains(args, "--run")
+	var line string
+	switch {
+	case code == 0 && gate && run:
+		line = p.mark("✓") + " The required checks passed, including the tests that ran on the combined code."
+	case code == 0 && gate:
+		line = p.mark("✓") + " No problems found by the static checks. No tests ran — choose 3 to run them."
+	case code == 0:
+		line = p.mark("✓") + " Done."
+	case code == 1 && gate:
+		line = p.mark("✗") + " Problems found, or a required check could not be done — see the report above."
+	case code == 1:
+		line = p.mark("!") + " Something needs attention — see above."
+	default:
+		line = p.mark("!") + " Radar could not finish — see the error above."
+	}
+	fmt.Fprintf(s.out, "\n%s %s\n", line, p.dim(fmt.Sprintf("(exit %d)", code)))
 }
 
 func (s *session) branchList(branches []string) string {
@@ -280,10 +402,16 @@ func (s *session) pick() []string {
 	if len(all) > maxListedBranches {
 		all = all[:maxListedBranches]
 	}
+	fmt.Fprintf(s.out, "\n%s\n", s.p.bold("Which branches should Radar combine?"))
+	fmt.Fprintf(s.out, "%s\n\n", s.p.dim("They are merged together in a private copy; your branches are not changed."))
 	for i, b := range all {
-		fmt.Fprintf(s.out, "  %2d) %s\n", i+1, b)
+		note := ""
+		if i < len(s.worktree) {
+			note = s.p.dim("  (checked out)")
+		}
+		fmt.Fprintf(s.out, "  %s  %s%s\n", s.p.command(fmt.Sprintf("%2d", i+1)), b, note)
 	}
-	line, ok := s.prompt("Branches (numbers, e.g. 1 3; Enter to cancel): ")
+	line, ok := s.prompt("\nNumbers separated by spaces, e.g. 1 3 (Enter alone cancels) › ")
 	if !ok || line == "" {
 		return nil
 	}
@@ -330,16 +458,9 @@ func (s *session) confirmRun(args []string) bool {
 // dispatch echoes the equivalent command so the CLI is learnable, then runs
 // it. An interrupt cancels that command and returns to the menu; at the
 // prompt it exits radar as usual.
-func (s *session) dispatch(args ...string) {
+func (s *session) dispatch(args ...string) int {
 	fmt.Fprintf(s.out, "\n%s\n\n", s.p.command("$ radar "+strings.Join(args, " ")))
 	ctx, stop := signal.NotifyContext(s.ctx, os.Interrupt)
-	code := Run(ctx, append(args, "--root", s.root), s.out, s.errout)
-	stop()
-	exit := fmt.Sprintf("(exit %d)", code)
-	if code == 0 {
-		exit = s.p.green(exit)
-	} else {
-		exit = s.p.red(exit)
-	}
-	fmt.Fprintf(s.out, "\n%s\n", exit)
+	defer stop()
+	return Run(ctx, append(args, "--root", s.root), s.out, s.errout)
 }
