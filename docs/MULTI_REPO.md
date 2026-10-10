@@ -3,6 +3,8 @@
 > **상태: 1단계("선택과 결합")만 구현됨.** 아래 사양에서 2단계(연결), 3단계(실행 시나리오), 4단계(CI)로 표시된 명령·옵션·설정은 아직 없다. 구현된 명령은 `radar gate`의 `repo:ref`, `--base [repo:]REF`, `--with`, `--only`, `--again`, `--replay`와 `radar workspace add/remove/show`다.
 >
 > 이 문서는 `docs/plans/MSA_MULTI_REPO.md`(초기 기획)를 대체한다.
+>
+> **진행 상황(2026-10-10):** 1단계는 PR #5(`workspace-stage1`)로 리뷰 중이다. 2단계는 아직 시작하지 않았다. 2단계의 현재 상태, 코드 지도, 확정 결정, 구현 계획, 필수 테스트는 [plans/WORKSPACE_STAGE2.md](plans/WORKSPACE_STAGE2.md)에 있다. 새 세션은 그 문서부터 읽는다.
 
 ## 1단계 구현 결정
 
@@ -21,6 +23,21 @@
 7. **`--again`도 선택을 바꾸는 옵션(위치 인자, `--base`, `--with`, `--only`)과 함께 쓰면 오류다.** `--again`은 직전 선택을 그대로 반복하기 때문이다.
 8. **실행 기록 위치.** 등록된 workspace는 `<state>/runs/<workspace 이름>/`, 미등록 repo에서 `--with`로 만든 일회성 범위는 `<state>/runs/_with-<현재 repo ID>-<해시>/`를 쓴다. 그래서 같은 repo의 어느 worktree에서 실행해도 `--again`이 같은 기록을 찾는다. `--replay`는 새 기록을 만들지 않는다.
 9. **경로 확인.** 레지스트리의 경로가 없거나 다른 repo를 가리키면 그 repo는 ERROR(exit 2)다. 단, 현재 실행 중인 checkout이 같은 common git dir이면 그 checkout을 쓴다.
+10. **같은 repo에 `--base`를 두 번 주거나, `--only`가 제외한 repo를 대상·기준으로 지정하면 오류다.**
+11. **자동 선택에서 모든 repo에 기준을 넘는 브랜치가 없으면** 단일 repo처럼 "no branches to combine" 오류(exit 2)를 낸다.
+12. **`--run`의 시간 제한(`--timeout`)은 repo마다 따로 적용된다.** 3단계 전에 전체 예산으로 바꿀지 정한다.
+13. **실행 기록을 저장하지 못해도 판정과 exit code는 바뀌지 않는다.** `! run not recorded` 줄과 JSON `record_error`로 알린다.
+14. **`--with`와 `workspace add`의 상대 경로는 repo 루트 기준이다**(`--root`를 주면 그 디렉터리 기준).
+
+## 2단계 확정 결정 (2026-10-10, 아직 구현되지 않음)
+
+1. **팀 파일:** 레지스트리에 home repo를 기록하고, home repo의 기준 브랜치 커밋에서 `.radar/workspace.json`을 읽는다.
+2. **멤버 불일치:** 범위는 팀 파일을 따른다. 레지스트리에만 있는 repo는 빼고 `· registered but not in the team file` 줄로 알린다.
+3. **`workspace connect`:** `--into repo:PATH`로 쓸 worktree를 고른다. 생략하면 레지스트리 경로(main worktree)에 쓰고, 두 repo의 커밋 명령을 출력한다.
+4. **후보 연결 제안:** 변경이 있는 repo 쌍에서 찾은 후보만 최대 3개 보여 주고, 각각에 확정 명령 한 줄을 붙인다. 나머지는 JSON에만 둔다.
+5. **`consumes.json`:** `fields`는 v1 `contracts.json` 표기(점 경로, `[]`)를 쓰고 `FieldOverlaps`를 재사용한다. `source`가 없으면 `·` 참고 줄로만 알린다.
+
+구현 계획과 작업 전에 확인할 작은 결정은 [plans/WORKSPACE_STAGE2.md](plans/WORKSPACE_STAGE2.md)에 있다.
 
 ---
 
