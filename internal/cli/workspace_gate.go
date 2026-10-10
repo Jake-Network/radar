@@ -61,6 +61,12 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 	}
 	registry, err := a.registry()
 	if err != nil {
+		if len(o.with) == 0 && len(o.only) == 0 && !o.again && o.replay == "" {
+			// A broken machine-local registry must not stop the gate of every
+			// repository; it may hide this repository's workspace, so say so.
+			fmt.Fprintf(a.errout, "radar: warning: workspace registry not read (%v); checking this repository alone, without its workspace\nNext: fix or remove the registry file, then rerun\n", err)
+			return nil, nil
+		}
 		return nil, wsError("fix or remove the registry file, then rerun", "%v", err)
 	}
 	current, err := workspace.Locate(a.ctx, a.root)
@@ -146,8 +152,10 @@ func (a *app) workspaceInvocation(o options) (*workspaceInvocation, error) {
 	return inv, nil
 }
 
-// replayScope locates the recorded repositories: the registered path of the
-// same repo ID, else the recorded path, else this checkout.
+// replayScope locates the recorded repositories: the first of the registered
+// path of the same repo ID, the recorded path and this checkout that holds
+// every recorded commit, else the first that is a checkout at all, so the
+// rebuild reports which commit is missing.
 func (a *app) replayScope(registry workspace.Registry, current workspace.Location, key string, rec composition.Record) workspace.Scope {
 	s := workspace.Scope{Workspace: rec.Workspace, Key: key, Source: workspace.SourceReplay, OneOff: len(rec.Selection.With) > 0, Only: rec.Selection.Only, All: rec.Selection.All}
 	registered := workspace.Workspace{}
@@ -167,8 +175,15 @@ func (a *app) replayScope(registry workspace.Registry, current workspace.Locatio
 		}
 		sr.Missing = "path " + r.Path + " is not available"
 		for _, path := range candidates {
-			if loc, err := workspace.Locate(a.ctx, path); err == nil {
+			loc, err := workspace.Locate(a.ctx, path)
+			if err != nil {
+				continue
+			}
+			if sr.Missing != "" {
 				sr.Path, sr.CommonDir, sr.Missing = loc.Root, loc.CommonDir, ""
+			}
+			if a.hasCommits(loc.Root, r) {
+				sr.Path, sr.CommonDir = loc.Root, loc.CommonDir
 				break
 			}
 		}
@@ -182,11 +197,21 @@ func (a *app) replayScope(registry workspace.Registry, current workspace.Locatio
 	return s
 }
 
-type workspaceBranch struct {
-	Ref     string   `json:"ref"`
-	Commit  string   `json:"commit"`
-	Source  string   `json:"source"`
-	Changed []string `json:"changed"`
+// hasCommits reports whether root holds the recorded base and inputs of r.
+func (a *app) hasCommits(root string, r composition.RecordRepo) bool {
+	commits := []string{r.Base}
+	for _, b := range r.Branches {
+		commits = append(commits, b.Commit)
+	}
+	for _, c := range commits {
+		if c == "" {
+			continue
+		}
+		if _, err := gitrepo.Resolve(a.ctx, root, c); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 type workspaceRepo struct {
@@ -198,7 +223,7 @@ type workspaceRepo struct {
 	Base                    string                     `json:"base"`
 	BaseSource              string                     `json:"base_source"`
 	SelectionSource         string                     `json:"selection_source"`
-	Branches                []workspaceBranch          `json:"branches"`
+	Branches                []composition.Branch       `json:"branches"`
 	Skipped                 []string                   `json:"skipped_branches,omitempty"`
 	Detached                []composition.Detached     `json:"detached,omitempty"`
 	Dirty                   []composition.Dirty        `json:"dirty"`
@@ -250,8 +275,11 @@ type workspaceReport struct {
 	ran                bool
 }
 
+// rank orders repository verdicts for the workspace verdict. A supported
+// failure in one repository decides the workspace even when another could
+// not be checked: error (exit 2) means no verdict could be made at all.
 func rank(v gate.Verdict) int {
-	return map[gate.Verdict]int{gate.Pass: 0, gate.Blocked: 1, gate.Fail: 2, gate.Error: 3}[v]
+	return map[gate.Verdict]int{gate.Pass: 0, gate.Blocked: 1, gate.Error: 2, gate.Fail: 3}[v]
 }
 
 func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
@@ -317,7 +345,8 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 	}
 	g.ScopeSummary = scopeSummary(inv.scope, g.ReplayOf)
 	unstable := configurationUnstable(configuration.Inputs)
-	g.Next = workspaceNext(g.Verdict, o.verify, unstable)
+	errored := slices.ContainsFunc(g.Repos, func(r workspaceRepo) bool { return r.Verdict == gate.Error })
+	g.Next = workspaceNext(g.Verdict, o.verify, unstable, errored)
 	if inv.replay == nil {
 		rec := composition.NewRecord(inv.scope, inv.selection, results, g.Digest, string(g.Verdict))
 		if store, err := composition.OpenStore(inv.scope.Key); err != nil {
@@ -343,10 +372,9 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 }
 
 func workspaceEntry(r composition.Result) workspaceRepo {
-	e := workspaceRepo{ID: r.ID, Path: r.Path, CommonDir: r.CommonDir, Origin: r.Origin, BaseRef: r.BaseRef, Base: r.Base, BaseSource: r.BaseSource, SelectionSource: r.Selection, Branches: []workspaceBranch{}, Skipped: r.Skipped, Detached: r.Detached, Dirty: r.Dirty, WorktreeInspectionError: r.WorktreeInspectionError, Error: r.Error, Next: r.Next, Report: r.Report, Verdict: gate.Error}
+	e := workspaceRepo{ID: r.ID, Path: r.Path, CommonDir: r.CommonDir, Origin: r.Origin, BaseRef: r.BaseRef, Base: r.Base, BaseSource: r.BaseSource, SelectionSource: r.Selection, Branches: append([]composition.Branch{}, r.Branches...), Skipped: r.Skipped, Detached: r.Detached, Dirty: r.Dirty, WorktreeInspectionError: r.WorktreeInspectionError, Error: r.Error, Next: r.Next, Report: r.Report, Verdict: gate.Error}
 	branches := []gateBranch{}
 	for _, b := range r.Branches {
-		e.Branches = append(e.Branches, workspaceBranch{Ref: b.Ref, Commit: b.Commit, Source: b.Source, Changed: b.Changed})
 		branches = append(branches, gateBranch{Ref: b.Ref, Commit: b.Commit, Changed: b.Changed})
 	}
 	if r.Report != nil {
@@ -407,13 +435,16 @@ func scopeSummary(s workspace.Scope, replayOf string) string {
 }
 
 // workspaceNext always ends with radar gate --again, with --run when the
-// combined trees should be (re)tested.
-func workspaceNext(v gate.Verdict, ran, unstable bool) string {
+// combined trees should be (re)tested. errored reports a repository that
+// could not be checked, which a failure elsewhere does not hide.
+func workspaceNext(v gate.Verdict, ran, unstable, errored bool) string {
 	again := "radar gate --again"
 	if ran {
 		again += " --run"
 	}
 	switch {
+	case v == gate.Fail && errored:
+		return "repair and commit on the branches above and resolve the errors above, then: " + again
 	case v == gate.Fail:
 		return "repair and commit on the branches above, then: " + again
 	case unstable:

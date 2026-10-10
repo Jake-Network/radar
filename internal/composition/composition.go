@@ -310,13 +310,19 @@ type Result struct {
 // Build combines and analyzes every repository that has no error, one at a
 // time and each in its own private repository. A repository that fails to
 // build gets an error; the others are still built. With a replayed selection
-// the candidate must reproduce the recorded tree.
+// the candidate must reproduce the recorded tree. A repository with no
+// selected branch takes part at its base: nothing is combined there, so it
+// is analyzed without execution and execution is not required of it.
 func Build(ctx context.Context, repos []Repo, o integration.Options) []Result {
 	results := []Result{}
 	for _, r := range repos {
 		res := Result{Repo: r}
 		if r.Error == "" {
-			res.Report = build(ctx, &res.Repo, o)
+			ro := o
+			if len(r.Branches) == 0 {
+				ro.Verify, ro.AllowExecution, ro.Suite, ro.Command = false, false, "", nil
+			}
+			res.Report = build(ctx, &res.Repo, ro)
 		}
 		results = append(results, res)
 	}

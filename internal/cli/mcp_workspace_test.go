@@ -19,15 +19,16 @@ func TestMCPWorkspaceGateMatchesCLI(t *testing.T) {
 		}
 		return v
 	}
-	// with: a one-off scope, as the CLI builds it.
-	viaMCP := call(map[string]any{"with": []any{"../payments"}})
-	_, viaCLI := gateJSON(t, s.orders, "--with", "../payments")
-	if viaMCP["digest"] != viaCLI["digest"] || viaMCP["repo_count"] != 2.0 || viaMCP["scope_summary"] != viaCLI["scope_summary"] {
-		t.Fatal("MCP with", viaMCP["digest"], viaCLI["digest"])
+	// The fixed root bounds what MCP reads: --with would reach any checkout
+	// on the machine, so only repositories a human registered take part.
+	for _, with := range []any{[]any{"../payments"}, []any{s.payments}, "../payments"} {
+		if result := a.callTool("radar_gate", map[string]any{"with": with}); result["isError"] != true {
+			t.Fatal("radar_gate accepted with", with, result)
+		}
 	}
 	s.register()
-	viaMCP = call(map[string]any{"targets": "orders:agent/api,payments:agent/client"})
-	_, viaCLI = gateJSON(t, s.orders, "orders:agent/api", "payments:agent/client")
+	viaMCP := call(map[string]any{"targets": "orders:agent/api,payments:agent/client"})
+	_, viaCLI := gateJSON(t, s.orders, "orders:agent/api", "payments:agent/client")
 	if viaMCP["digest"] != viaCLI["digest"] || viaMCP["next"] != viaCLI["next"] || len(viaMCP["repos"].([]any)) != 2 {
 		t.Fatal("MCP targets", viaMCP, viaCLI["digest"])
 	}
@@ -41,8 +42,5 @@ func TestMCPWorkspaceGateMatchesCLI(t *testing.T) {
 		if tests, ok := raw.(map[string]any)["tests"].(map[string]any); ok && tests["executed_count"] != 0.0 {
 			t.Fatal("MCP executed repository code", viaMCP)
 		}
-	}
-	if result := a.callTool("radar_gate", map[string]any{"with": "../payments"}); result["isError"] != true {
-		t.Fatal("with must be an array")
 	}
 }

@@ -135,8 +135,12 @@ func (s Store) Save(rec *Record, report func() any) error {
 	for {
 		rec.RunID = newRunID(now)
 		final = filepath.Join(s.Dir, rec.RunID)
-		if _, err := os.Stat(final); errors.Is(err, os.ErrNotExist) {
+		_, err := os.Stat(final)
+		if errors.Is(err, os.ErrNotExist) {
 			break
+		}
+		if err != nil {
+			return fmt.Errorf("run records: %w", err)
 		}
 	}
 	tmp, err := os.MkdirTemp(s.Dir, ".tmp-")

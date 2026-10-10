@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -182,7 +181,9 @@ func (a *app) workspaceShow(current workspace.Location) int {
 		return 0
 	}
 	repos, err := composition.Collect(a.ctx, composition.Request{Scope: *scope})
-	if err != nil && !errors.Is(err, composition.ErrMoving) {
+	if err != nil {
+		// Collect returns no repositories with ErrMoving; an empty list would
+		// read as an empty workspace.
 		return a.fail(err)
 	}
 	out := []showRepo{}

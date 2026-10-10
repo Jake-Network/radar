@@ -253,9 +253,18 @@ func (s Scope) QualifyBases(values []string) []string {
 	return s.Qualify(targets)
 }
 
-// ShellPath quotes a path for a copyable POSIX shell command when needed.
+// ShellPath quotes a value for a copyable POSIX shell command unless every
+// character is known to be safe there. Suggested commands are presentation
+// only, but must stay one safe command when pasted.
 func ShellPath(p string) string {
-	if p != "" && !strings.ContainsAny(p, " \t'\"$`\\!*?[]{}()<>|&;#~") {
+	safe := p != ""
+	for _, r := range p {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_./:@%+=,-", r)) {
+			safe = false
+			break
+		}
+	}
+	if safe {
 		return p
 	}
 	return "'" + strings.ReplaceAll(p, "'", `'"'"'`) + "'"

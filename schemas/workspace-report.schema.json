@@ -99,7 +99,7 @@
     "configuration_inputs": { "type": "array", "items": { "type": "object" } },
     "verdict": {
       "enum": ["pass", "fail", "blocked", "error"],
-      "description": "Worst repository verdict; blocked renders as NOT VERIFIED."
+      "description": "Worst repository verdict, in the order fail, error, blocked, pass: a failure in one repository decides the workspace even when another could not be checked. blocked renders as NOT VERIFIED."
     },
     "next": {
       "type": "string",

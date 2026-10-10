@@ -378,6 +378,14 @@ func TestWorkspaceConflictAndSourcesUntouched(t *testing.T) {
 	if snapshot() != before {
 		t.Fatal("gate changed a source repository")
 	}
+	// An unusable payments does not hide the conflict in orders.
+	if err := os.Rename(s.payments, s.payments+"-moved"); err != nil {
+		t.Fatal(err)
+	}
+	code, r := gateJSON(t, s.orders)
+	if code != 1 || r["verdict"] != "fail" || repoOf(t, r, "payments")["verdict"] != "error" || r["next"] != "repair and commit on the branches above and resolve the errors above, then: radar gate --again" {
+		t.Fatal("conflict with an unusable repo", code, r["verdict"], r["next"])
+	}
 }
 
 func TestWorkspaceSymlinkRepoWarnsAndErrors(t *testing.T) {
@@ -458,6 +466,22 @@ func TestWorkspaceReplayWithoutObjects(t *testing.T) {
 	}
 }
 
+func TestWorkspaceReplayUsesTheCheckoutWithTheCommits(t *testing.T) {
+	s := newShop(t)
+	s.register()
+	_, r := gateJSON(t, s.orders)
+	// payments is re-registered as a fresh clone without agent/client; the
+	// recorded checkout still has the recorded commits.
+	clone := filepath.Join(s.base, "payments-clone")
+	gitTest(t, s.base, "clone", "-q", "--no-local", "--single-branch", "--branch", "main", s.payments, clone)
+	invoke(t, s.orders, 0, "workspace", "remove", "payments")
+	invoke(t, s.orders, 0, "workspace", "add", clone, "--id", "payments")
+	code, replay := gateJSON(t, s.orders, "--replay", r["run_id"].(string))
+	if code != 0 || replay["digest"] != r["digest"] || repoOf(t, replay, "payments")["path"] != s.payments {
+		t.Fatal("replay picked a checkout without the recorded commits", code, repoOf(t, replay, "payments")["path"], repoOf(t, replay, "payments")["error"])
+	}
+}
+
 func TestWorkspaceConcurrentGatesKeepBothRecords(t *testing.T) {
 	s := newShop(t)
 	s.register()
@@ -500,6 +524,14 @@ func TestWorkspaceRunExecutesPerRepo(t *testing.T) {
 			t.Fatal(id, "executed nothing")
 		}
 	}
+	// payments takes part at its base: nothing is combined there, so
+	// nothing is run or required there.
+	code, r = gateJSON(t, s.orders, "--run", "orders:agent/api")
+	payments := repoOf(t, r, "payments")
+	executions, _ := payments["report"].(map[string]any)["executions"].([]any)
+	if code != 0 || r["verdict"] != "pass" || payments["verdict"] != "pass" || len(executions) != 0 {
+		t.Fatal("--run with a base-only repo", code, r["verdict"], payments["verdict"], r["next"])
+	}
 	code, out, _ := run(t, s.orders, "gate", "--run")
 	if code != 0 || !strings.Contains(out, "! cross-repo execution: not checked — this version checks each repo separately") || !strings.Contains(out, "per-repo checks only") {
 		t.Fatal(out)
@@ -508,6 +540,19 @@ func TestWorkspaceRunExecutesPerRepo(t *testing.T) {
 	code, r = gateJSON(t, s.orders, "--again", "--run")
 	if code != 1 || repoOf(t, r, "payments")["verdict"] != "fail" || repoOf(t, r, "orders")["verdict"] != "pass" || r["next"] != "repair and commit on the branches above, then: radar gate --again --run" {
 		t.Fatal("failing payments tests", code, r["next"])
+	}
+}
+
+func TestBrokenRegistryKeepsTheSingleRepositoryGate(t *testing.T) {
+	s := newShop(t)
+	os.WriteFile(filepath.Join(os.Getenv("RADAR_CONFIG_DIR"), workspace.RegistryFile), []byte(`{"version":2,"workspaces":[]}`), 0o600)
+	code, out, errs := run(t, s.orders, "gate", "agent/api")
+	if code != 0 || !strings.Contains(out, "Radar gate: PASS") || !strings.Contains(errs, "warning: workspace registry not read") || !strings.Contains(errs, "without its workspace") {
+		t.Fatal("broken registry stopped the single-repository gate", code, out, errs)
+	}
+	// Workspace options need the registry.
+	if code, _, errs := run(t, s.orders, "gate", "--only", "orders"); code != 2 || !strings.Contains(errs, "fix or remove the registry file") {
+		t.Fatal("--only with a broken registry", code, errs)
 	}
 }
 

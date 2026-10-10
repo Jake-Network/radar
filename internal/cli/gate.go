@@ -15,6 +15,7 @@ import (
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/testselection"
+	"github.com/Jake-Network/radar/internal/workspace"
 )
 
 // gateBranch records what one input branch changed relative to its merge base
@@ -327,19 +328,7 @@ func gateArgs(o options, baseRef string, refs []string) string {
 
 // Suggested commands are presentation only, but remain safe to copy into a
 // POSIX shell even when a valid Git ref contains shell metacharacters.
-func shellArg(s string) string {
-	safe := s != ""
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_./:@%+=,-", r)) {
-			safe = false
-			break
-		}
-	}
-	if safe {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
-}
+func shellArg(s string) string { return workspace.ShellPath(s) }
 
 var verdictMark = map[gate.Verdict]string{gate.Pass: "PASS", gate.Fail: "FAIL", gate.Blocked: "NOT VERIFIED", gate.Error: "ERROR"}
 
