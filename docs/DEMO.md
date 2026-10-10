@@ -1,64 +1,81 @@
-# Reproducible local demo
+# Demos
 
-Build with Go 1.23+, CGO enabled, and a C compiler. This script also needs Git,
-Bash, and Python 3. It copies the fixture into a fresh temporary Git repository;
-all branch creation and commits are confined to that copy. Read the script
-before explicitly running it.
+Each script builds a throwaway Git repository from checked-in fixtures, runs
+Radar against it and checks the results. Nothing touches your checkout. CI runs
+`scripts/smoke.sh` and every `examples/*/demo.sh`.
+
+Build first (Go 1.23+, CGO and a C compiler):
 
 ```sh
 go build -o /tmp/radar ./cmd/radar
+make demo-all        # builds bin/radar and runs every examples/*/demo.sh
+```
+
+The scripts need Bash, Git and Python 3. Read them before running: the
+`--run` steps execute the fixture's tests.
+
+## Two green branches, one broken merge
+
+```sh
+bash scripts/smoke.sh /tmp/radar
+bash examples/integration/demo.sh /tmp/radar
+```
+
+One branch doubles the unit price and the other doubles the quantity. Each
+passes the budget test on its own, they merge without a conflict, and the
+combined tree fails the test. Radar reports the failing case, the source
+location and the branch to look at, then verifies the repaired combination.
+`smoke.sh` is the short, portable version.
+
+## Selection across languages
+
+```sh
+bash examples/intelligent-verification/demo.sh /tmp/radar
+```
+
+A Python backend, FastAPI/Pydantic adapter source, TypeScript types, a
+JavaScript client and an HTTP integration suite. Radar selects tests across the
+language boundary and runs them on the combined tree. Needs Node with `fetch`,
+GNU `/usr/bin/time` and permission to open a loopback socket. Nothing is
+downloaded.
+
+## Contract gate and selection modes
+
+```sh
+bash examples/selection-eval/demo.sh /tmp/radar
+```
+
+Shows that deleting the contract manifest cannot pass a contract gate, that an
+explicit retirement can, and that grouped targeted suites catch real failures.
+
+## Indexing, plans and contract conflicts
+
+```sh
 bash examples/organization/demo.sh /tmp/radar
 ```
 
-The script prints actual JSON results and retains its temporary repository.
-It checks these scenarios:
+Indexes a TypeScript, Python, Go and Rust fixture, preflights a good plan and a
+deliberately broken one, then renames `total` to `total_cents` on a producer
+branch while a consumer branch still reads `total`. `radar scan` reports the
+removed field and the declared consumer. The script keeps its temporary
+repository for inspection.
 
-1. Index real TypeScript/JavaScript, Python, Go, and Rust declarations, imports
-   and inferred file dependencies. Query `ExportSummary` in the persisted graph
-   (readable IDs such as `class:backend/models.py#ExportSummary`).
-2. Preflight an export plan and an intentionally inconsistent plan. The second
-   has unordered shared-contract writers and lacks security verification.
-   Both retain unresolved authorization and scalability assumptions.
-3. Verify the baseline's `total` property and authorization file presence.
-   These checks are intentionally narrow; runtime authorization is unverified.
-4. Rename `total` to `total_cents` in a producer branch's explicit schema while
-   an independent consumer branch retains its declared `total` dependency.
-   Scan committed branches and report the schema removal and declared consumer.
-   No fixture-specific keyword detector is involved.
-5. Analyze the same schema edit before committing. `WORKTREE` observations are
-   informational warnings, not authoritative integration failures.
-6. Verify the producer checkpoint and detect the missing accepted `total` field.
-7. Scan independent Python and TypeScript changes with unchanged contracts and
-   observe no contract incompatibility findings.
-
-`plans/exports.json` is a minimal design candidate, not an approved production
-architecture. The script binds the plan template to the index's actual committed
-baseline; verification without a review declaration remains informational. It also runs
-`radar plan` to produce an incomplete grounded bundle for agent-assisted design.
-The sample queue is in memory; isolation, durability, cancellation, retries, and
-large-data performance require additional behavioral evidence. To use a real
-plan, pin its indexed revision and record a digest-bound checkpoint review.
-
-## Committed implementation and test evidence
+## Commit-bound test evidence
 
 ```sh
 bash examples/verification/demo.sh /tmp/radar
 ```
 
-This separate temporary repository creates a baseline, an additive schema plan,
-and a local review declaration named `fixture-declaration` (a test identity, not
-an assertion of real human approval). It commits the compliant implementation,
-executes one real Python unittest through `radar test --allow-execution`, and
-checks that `verify --ref SHA --evidence ID` reports an authoritative pass. It
-then commits a producer that removes the accepted `total` property and runs the
-same unittest to produce a real failure. Verification distinguishes the failure
-and rejects the previous passing evidence because it belongs to another commit.
-An amended plan is also checked: its old review declaration and evidence cannot
-verify the new plan digest.
-The fixture is retained for inspection, including SQLite records and JSON reports.
+Records a review declaration, runs a real unittest with
+`radar test --allow-execution` and verifies the implementation commit. It then
+breaks the producer and shows that the old passing record cannot verify the
+new commit, and that an edited plan invalidates its old review.
 
-The plan declares an exact target schema object for its contract delta and exact
-argv for its `test_run` criterion. The successful command supports the specified
-criterion only. It does not prove security, durability, or all response behavior.
-Private test snapshots are not OS sandboxes. These scripts create only disposable
-fixture commits and never mutate the Radar checkout's Git history.
+## Several repositories
+
+```sh
+bash scripts/demo_workspace_links.sh /tmp/radar
+```
+
+Creates two repositories, declares a cross-repository link, and shows a static
+pass, a failure after the producer drops a field, and the repaired pass.

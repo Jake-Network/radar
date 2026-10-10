@@ -7,14 +7,15 @@ import (
 	"strings"
 )
 
-// Diagnosis names why a command produced no test outcome, when its output
-// matches a known shape. It is a fixed sentence built from a bounded name,
+// Diagnosis names why a command produced no test outcome or why the combined
+// source failed to build, when its output matches a known shape. It is a fixed sentence built from a bounded name,
 // never raw output, so persisted evidence keeps only the output digest.
 type Diagnosis struct {
 	// Kind is runner_missing (python -m RUNNER could not find RUNNER),
-	// command_missing (the shell could not find a program) or module_missing
+	// command_missing (the shell could not find a program), module_missing
 	// (an import failed: a dependency absent from this environment, or a
-	// module a branch renamed or removed).
+	// module a branch renamed or removed) or build_failed (the compiler
+	// rejected repository source; Name is the undefined symbol or the file).
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Message string `json:"message"`

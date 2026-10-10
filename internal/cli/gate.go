@@ -236,7 +236,7 @@ func (a *app) gateBranches(args []string, baseRef, baseSHA string) ([]string, []
 func (a *app) branchChanges(baseSHA, sha string) ([]string, error) {
 	mb, err := gitrepo.MergeBase(a.ctx, a.root, baseSHA, sha)
 	if err != nil {
-		return nil, err
+		return nil, gitrepo.ExplainShallow(a.ctx, a.root, err)
 	}
 	return gitrepo.ChangedFiles(a.ctx, a.root, mb, sha)
 }
@@ -377,6 +377,11 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	type row struct{ mark, name, text string }
 	rows := []row{}
 	for _, c := range r.Gate.Required {
+		if contractsUndeclared(c, r) {
+			// Nothing was declared, so nothing was checked: not a green check.
+			rows = append(rows, row{"·", gateCheckName(c.ID), "none declared, so no contract was checked (radar discover proposes candidates)"})
+			continue
+		}
 		rows = append(rows, row{gateMark(c.Status), gateCheckName(c.ID), gateLabel(c, r)})
 	}
 	if !ran && len(r.Conflicts) == 0 {
@@ -607,6 +612,12 @@ func gateCheckName(id string) string {
 		return "Test selection"
 	}
 	return id
+}
+
+// contractsUndeclared reports a contract requirement that passed only
+// because the repository declares no contract and the base had no obligation.
+func contractsUndeclared(c gate.Check, r integration.Report) bool {
+	return c.ID == "no_breaking_contracts" && c.Status == model.StatusPassed && r.DeclaredBindings == 0 && len(r.ContractObligations) == 0
 }
 
 // gateLabel phrases a required check's result.

@@ -291,11 +291,13 @@ func unavailable(root string, c testselection.Command) string {
 }
 
 // executionRemediation fits the repair advice to what was observed: only a
-// failed test points at the combined source; a missing runner, a timeout or
+// failed test or a failed build points at the combined source; a missing runner, a timeout or
 // an unrecognized result points at the environment or the command.
 func executionRemediation(ev ExecutionEvidence) string {
 	d := ev.Observation.Diagnosis
 	switch {
+	case ev.Status == model.StatusFailed && d != nil && d.Kind == "build_failed":
+		return "The branches do not compile together. Open the reported location in a checkout of the combined branches, then either update the branch that still uses the old code or restore what another branch renamed or removed. Commit and rerun the same gate."
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
 	case d.Environment():

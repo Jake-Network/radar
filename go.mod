@@ -2,6 +2,10 @@ module github.com/Jake-Network/radar
 
 go 1.23.0
 
+// v0.4.0 was tagged during pre-release development, before the public version
+// line started at v0.1.0. v0.4.1 exists only to publish this retraction.
+retract [v0.4.0, v0.4.1]
+
 require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/tree-sitter/go-tree-sitter v0.25.0

@@ -4,7 +4,7 @@
   contract gate, that an explicit retirement can, and that targeted, grouped
   suites observe real failures in the private candidate.
 * `evaluate.py` runs the labeled mutation evaluation described in
-  [docs/VALIDATION_SELECTION.md](../../docs/VALIDATION_SELECTION.md).
+  [docs/BENCHMARKS.md](../../docs/BENCHMARKS.md).
   `mutations.json` targets `fixture/`, and `click-mutations.json` targets a
   prepared Pallets Click checkout. `results/` holds the published run.
 

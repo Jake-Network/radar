@@ -115,7 +115,10 @@ type Report struct {
 	// ContractObligations lists base contract declarations the candidate
 	// removed, narrowed, moved or retired; see contracts.ObligationChange.
 	ContractObligations []contracts.ObligationChange `json:"contract_obligations,omitempty"`
-	contractUnverified  []string
+	// DeclaredBindings counts the declared contract bindings analyzed, so a
+	// passing contract check with nothing declared is not shown as a check.
+	DeclaredBindings   int `json:"-"`
+	contractUnverified []string
 }
 
 func newReport() Report {

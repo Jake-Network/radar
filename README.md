@@ -55,7 +55,7 @@ Details: add --json. Radar never touches your branches; the combination is built
 Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.4.0/scripts/install-release.sh | bash -s -- --version v0.4.0
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.0/scripts/install-release.sh | bash -s -- --version v0.1.0
 ```
 
 This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
@@ -67,11 +67,11 @@ radar doctor
 radar setup --agent both --dry-run
 ```
 
-Windows binaries are not published for 0.4.0: Windows Git defaults such as
+Windows binaries are not published for 0.1.0: Windows Git defaults such as
 `core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go install github.com/Jake-Network/radar/cmd/radar@v0.4.0
+go install github.com/Jake-Network/radar/cmd/radar@v0.1.0
 ```
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
@@ -244,7 +244,7 @@ Radar also has a plan-and-evidence toolkit, listed under `radar help --all`.
 You can write plans grounded in the indexed code, approve them with a review
 bound to their digest, record test evidence bound to a commit, query the import
 graph, and lint explicit contracts. See the [usage reference](docs/USAGE.md).
-You can also run the [deterministic integration demo](docs/INTEGRATION_DEMO.md).
+You can also run the [demos](docs/DEMO.md).
 
 ## Development
 
@@ -257,6 +257,6 @@ make demo-all
 
 Native release jobs target Linux and macOS (amd64 and arm64).
 Tags prepare assets; publishing requires a separate manual request. See
-[RELEASING](docs/RELEASING.md) and [0.4 validation](docs/RADAR_0_4_VALIDATION.md).
-Also see [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md)
-and the [roadmap](docs/ROADMAP.md). MIT licensed.
+[RELEASING](docs/RELEASING.md) and the [changelog](CHANGELOG.md).
+Also see [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md),
+[benchmarks](docs/BENCHMARKS.md) and the [roadmap](docs/ROADMAP.md). MIT licensed.

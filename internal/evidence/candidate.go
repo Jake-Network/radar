@@ -32,7 +32,12 @@ type CandidateObservation struct {
 }
 
 var failedCase = regexp.MustCompile(`(?m)^(?:FAIL|ERROR): ([A-Za-z_][A-Za-z0-9_]*) \(([A-Za-z_][A-Za-z0-9_.]*)\)$`)
-var dependencyError = regexp.MustCompile(`(?m)^(?:ModuleNotFoundError|ImportError):`)
+
+// dependencyError recognizes a module absent from the environment. The
+// unittest loader prefixes every import failure with "ImportError: Failed to
+// import test module", so ImportError alone (for example a name a branch
+// removed) is a failure of the combined source, as it is under pytest.
+var dependencyError = regexp.MustCompile(`(?m)^ModuleNotFoundError:`)
 var pythonLocation = regexp.MustCompile(`File "([^"]+)", line ([0-9]+)`)
 
 // ObserveCandidate requires explicit caller authorization and an already
@@ -129,6 +134,22 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			if len(r.Locations) >= 20 {
 				break
 			}
+		}
+	}
+	if r.Status == model.StatusFailed {
+		var build []sourceBuildError
+		for _, b := range harnessCounts(argv, data).BuildErrors {
+			if cwd != "" && cwd != "." {
+				b.Path = filepath.ToSlash(filepath.Join(cwd, b.Path))
+			}
+			if _, e = pathutil.ResolveInside(root, b.Path); e != nil {
+				continue
+			}
+			build = append(build, b)
+			r.Locations = append(r.Locations, model.Provenance{Path: b.Path, Line: b.Line, Method: "observed_compiler_error", Evidence: model.ObservedTest})
+		}
+		if len(build) > 0 {
+			r.Diagnosis = buildDiagnosis(filepath.Base(argv[0])+" "+argv[1], build)
 		}
 	}
 	// Harness-like text printed by arbitrary programs is not an authentication

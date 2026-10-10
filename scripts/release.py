@@ -108,7 +108,7 @@ def package(output, version):
         if version and actual != "radar " + version:
             raise ValueError("Packaged executable version mismatch")
         (stage / "VERSION.txt").write_text(actual + "\n", encoding="utf-8")
-        for name in ("LICENSE", "README.md", "CONTRIBUTING.md"):
+        for name in ("LICENSE", "README.md", "CHANGELOG.md", "CONTRIBUTING.md"):
             shutil.copyfile(ROOT / name, stage / name)
         for name in ("third_party", "docs", "integrations", "schemas", "scripts"):
             shutil.copytree(ROOT / name, stage / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

@@ -31,7 +31,7 @@
     "repository": {
       "type": "string",
       "minLength": 1,
-      "description": "Location-independent identity git:<root commit SHAs>, or the checkout path for repositories without history (and Radar 0.1 records)."
+      "description": "Location-independent identity git:<root commit SHAs>, or the checkout path for repositories without history (and records from the earliest pre-release builds)."
     },
     "revision": {
       "type": "string",

@@ -1,77 +1,74 @@
-# Security and privacy
+# Security
 
-Radar's deterministic core runs locally. It does not upload source, call an LLM,
-or enable telemetry. Indexing parses files; it does not execute application
-code, package-install hooks, repository scripts, or agent instructions.
+Radar runs locally. It does not upload source, call an LLM or send telemetry.
 
-Git analysis reads revisions using subprocess arguments rather than shell
-interpolation. Radar does not merge, rebase, revert, push, or rewrite commits.
-Analysis inputs and paths are untrusted. Supported paths must remain within
-the repository. Large files and generated directories are bounded or skipped;
-diagnostics explain available analysis.
+## What runs and what does not
 
-Verification itself does not execute commands. `radar gate` without `--run`
-never executes repository code; `radar gate --run` is equivalent to
-`merge-check --verify --allow-execution --suite balanced` and carries the same
-host-permission caveats as the execution modes below. `radar test --allow-execution`
-explicitly runs an exact command declared by a plan's `test_run` rule, in a private
-copy of committed files, under a timeout and output limit. Review the command and
-repository before opting in. This copy protects your checkout from normal test
-writes, but is not an OS sandbox: malicious code can access credentials, the
-network or files available to your user. Tests receive PATH plus private HOME and temporary directories; inherited secrets
-and language startup settings are removed. Package-manager offline settings are
-set and dependencies are not installed automatically. Existing local dependency
-caches (Go module and build caches, Cargo and rustup homes, npm cache, Python
-user base, an active virtualenv) are made available so offline builds work;
-tests can read and may write them. A rule may additionally pass named
-environment variables (`env`), link untracked checkout directories into the
-snapshot (`link`) and run `setup` commands; all are part of the reviewed plan,
-so review them like the test command. This is an environment restriction, not
-a network or filesystem sandbox. Evidence stores output digests, not raw
-stdout/stderr; the last 4 KiB of output is displayed to the operator (and
-returned in `--json` output) but never persisted. Avoid sensitive command
-arguments because arguments and passed-through variable names are stored.
-Optional cloud inference remains unimplemented and must disclose data sent before
-any future opt-in.
+Indexing, discovery, `check`, `merge-check` without `--verify`, and
+`radar gate` without `--run` read repository files and Git objects as data.
+They do not run application code, package scripts, Git hooks or agent
+instructions.
 
-`radar mcp` runs locally over stdio for one fixed root. It does not expose
-`test` or `approve`, so an agent cannot execute repository code or declare a
-review through it; it can write Radar state and new plan files under the root.
-The Claude Code Stop hook only runs `radar verify`.
+Repository code runs only with `gate --run`, `merge-check --verify
+--allow-execution` or `test --allow-execution`. Those commands run in a private
+copy of the committed source, with a timeout, an output limit and a reduced
+environment: `PATH`, a private `HOME` and temp directory, offline settings for
+package managers, and read access to existing dependency caches. Inherited
+secrets and language startup variables are removed. A plan rule can add named
+variables (`env`), linked directories (`link`) and `setup` commands, so review
+those the same way you review the test command.
 
-Agent skills are advisory instructions, not a security sandbox. Review plans
-and consequential decisions. A local plan review declaration is not an
-authenticated identity or permission to mutate Git history.
+**The private copy is not a sandbox.** Test code runs as your user and can
+read your files, your credentials and the network. Review code before you run
+it, and use a disposable runner without secrets in CI.
 
-Avoid including source or secrets in public issues. Report a security issue
-privately to the maintainers before publishing exploit details. A dedicated
-private reporting channel is not configured yet.
+## Git and paths
 
-Read-only Git subprocesses disable repository-configured filesystem monitor hooks; Radar never enables Git pagers and runs repository test commands only through the explicit opt-in workflow. Checks use bounded local reads and do not resolve remote schema references.
+Git is called with argument arrays, never through a shell. Radar's Git
+processes disable repository fsmonitor hooks and never enable a pager. The
+private candidate repository also runs without hooks and ignores user and
+system Git configuration. Radar does not merge, rebase, push, stash, clean or
+rewrite anything in your repository. Combined candidates live in a temporary
+repository that is deleted afterward. Radar never fetches. When a shallow clone
+lacks the history it needs, the error tells you to run `git fetch --unshallow`.
 
-Gate inspects registered worktree status without optional Git locks. It never
-stashes, commits or cleans dirty files; uncommitted changes are excluded from
-candidates and reported explicitly. Selected plan/policy artifacts are captured
-as bounded bytes with digests and checked again after analysis. Changed artifacts
-invalidate passing required evidence even under a limited policy. Boundary
-observations cannot detect transient writes reverted between observations and
-do not authenticate local configuration owners.
+Paths, refs, schemas and PR metadata are treated as untrusted. Paths must stay
+inside the repository, symlinks and submodules are refused in combined trees,
+remote `$ref` is not followed, and file sizes are capped.
 
-## PR execution and native installation
+## Stored data
 
-The PR example uses `pull_request`, read-only contents permissions, pinned tool
-source, trusted-base helpers and no persisted checkout credentials. Untrusted
-metadata becomes subprocess arguments, never shell source. Static inspection is
-available without executable verification. Execution requires repository-owner
-configuration; selected additional PRs require separate explicit authorization.
-Numbers are mutable: review their latest fetched heads. Candidate directories
-are not OS sandboxes, and local/Radar execution consent is not a claim that code
-is safe. Use ephemeral runners without repository secrets or privileged services.
+Evidence records store an output digest, never raw stdout or stderr. The last
+4 KiB of output is shown to you (and included in `--json`) but not saved.
+Command arguments and the names of passed-through variables are saved, so keep
+secrets out of arguments.
 
-Release installers validate checksums, version and archive paths/types, stream
-only the expected executable, and preserve installed binaries on validation
-failure. Windows rejects destination reparse points and supports native amd64
-only. Checksums do not authenticate a compromised publisher. Release signing,
-notarization and provenance attestations are not configured. Native release
-qualification blocks on tests; publication is an explicit manual protected
-workflow operation. No automatic branch or Homebrew-tap updates occur.
+Integrity hashes catch accidental changes to local records. They do not prove
+who made them. A review recorded with `radar approve` is a declaration with
+whatever name you pass, not an authenticated identity.
+
+## Agents
+
+`radar mcp` serves one repository over stdio. It does not expose `test`,
+`approve` or any execution flag, so an agent cannot run repository code or
+record a review through it. It can write Radar state and new plan files, so it
+is not read-only. The Claude Code Stop hook only runs `radar verify`. Agent
+skills are instructions, not a security boundary.
+
+## CI and installation
+
+The [GitHub Actions example](../integrations/github-actions/README.md) uses
+`pull_request` with read-only permissions, pinned actions and no persisted
+checkout credentials. Static inspection runs by default. Running tests needs
+the repository owner to opt in.
+
+Installers verify the archive checksum, version and member paths, extract only
+the binary, and leave an existing binary in place if anything fails. Checksums
+do not protect against a compromised publisher. Releases are not signed or
+notarized yet.
+
+## Reporting
+
+Please report security issues privately to the maintainers before publishing
+details, and keep source and secrets out of public issues. There is no
+dedicated private reporting channel yet.
