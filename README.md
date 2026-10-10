@@ -55,7 +55,7 @@ Details: add --json. Radar never touches your branches; the combination is built
 Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.0/scripts/install-release.sh | bash -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.1/scripts/install-release.sh | bash -s -- --version v0.1.1
 ```
 
 This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
@@ -67,11 +67,11 @@ radar doctor
 radar setup --agent both --dry-run
 ```
 
-Windows binaries are not published for 0.1.0: Windows Git defaults such as
+Windows binaries are not published yet: Windows Git defaults such as
 `core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go install github.com/Jake-Network/radar/cmd/radar@v0.1.0
+go install github.com/Jake-Network/radar/cmd/radar@v0.1.1
 ```
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).

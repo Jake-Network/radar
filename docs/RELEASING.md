@@ -12,8 +12,8 @@ native runner. A cross-compiled binary is not treated as qualified.
 | macOS arm64 | macOS 15, Apple Silicon | `radar-darwin_arm64.tar.gz` |
 | macOS amd64 | macOS 15, Intel | `radar-darwin_amd64.tar.gz` |
 
-All four passed the hosted matrix for the pre-release `v0.4.0` tag. 0.1.0 is
-qualified by its own tag run. Windows amd64 can be packaged locally but is not
+Every release is qualified by its own tag run. The `v0.1.0` tag failed on
+macOS and was never published; 0.1.1 is the first published release. Windows amd64 can be packaged locally but is not
 in the matrix: tests fail on the runner's Git defaults (`core.autocrlf`, long
 paths), so no Windows binary is published.
 
