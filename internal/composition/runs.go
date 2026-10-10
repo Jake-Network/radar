@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -129,8 +128,8 @@ func newRunID(now time.Time) string {
 	return now.UTC().Format("20060102T150405.000Z") + "-" + hex.EncodeToString(b)
 }
 
-// Save writes the record and report under a new run ID, points last at it
-// and keeps the newest KeepRuns runs. Each run is written to a private
+// Save writes the record and report under a new run ID and keeps the newest
+// KeepRuns runs. Each run is written to a private
 // directory and renamed into place, so concurrent runs never overwrite each
 // other and readers never see a partial run. report is called once the run
 // ID is assigned, so the stored report can carry it.
@@ -170,9 +169,6 @@ func (s Store) Save(rec *Record, report func() any) error {
 	if err = os.Rename(tmp, final); err != nil {
 		return err
 	}
-	if err = workspace.WriteAtomic(filepath.Join(s.Dir, "last"), []byte(rec.RunID+"\n")); err != nil {
-		return err
-	}
 	s.prune()
 	return nil
 }
@@ -203,14 +199,17 @@ func (s Store) prune() {
 // ErrNoRun reports a store without the requested run.
 var ErrNoRun = errors.New("no recorded run")
 
-// Load reads a run's record by run ID, or the latest run with "last".
+// Load reads a run's record by run ID, or the newest kept run with "last".
+// "last" is resolved from the run IDs rather than a pointer written by Save:
+// with concurrent saves the run finishing last can start earliest, and prune
+// may already have removed it.
 func (s Store) Load(id string) (Record, error) {
 	if id == "last" {
-		b, err := os.ReadFile(filepath.Join(s.Dir, "last"))
-		if err != nil {
+		ids := s.ids()
+		if len(ids) == 0 {
 			return Record{}, ErrNoRun
 		}
-		id = strings.TrimSpace(string(b))
+		id = ids[0]
 	}
 	if !runPattern.MatchString(id) {
 		return Record{}, fmt.Errorf("%w %q: run IDs look like 20261010T120000.000Z-1a2b3c", ErrNoRun, id)
