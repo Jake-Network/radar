@@ -183,7 +183,7 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	result := harnessCounts(argv, content, testDir)
 	if spec.JUnit != "" {
 		if junit, err := readJUnit(testDir, spec.JUnit); err == nil {
-			result = junit
+			result = supplementJUnit(result, junit)
 		}
 	}
 	r.TestsRun, r.TestsFailed, r.TestsSkipped, r.Harness = result.Run, result.Failed, result.Skipped, result.Harness

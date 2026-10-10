@@ -244,6 +244,17 @@ func cargo(text, dir string) harnessResult {
 	return r
 }
 
+// supplementJUnit combines two observations of the same execution. Counts
+// may overlap, so take their maximum rather than adding them. A partial
+// report must never erase failures or compiler errors observed in stdout.
+func supplementJUnit(output, report harnessResult) harnessResult {
+	output.Run = max(output.Run, report.Run)
+	output.Failed = max(output.Failed, report.Failed)
+	output.Skipped = max(output.Skipped, report.Skipped)
+	output.Harness = report.Harness
+	return output
+}
+
 const maxJUnitBytes = 16 << 20
 
 // maxJUnitFiles bounds the per-class reports read from a report directory.

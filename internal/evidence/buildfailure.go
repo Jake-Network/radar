@@ -85,9 +85,9 @@ func insidePath(dir, p string) (string, bool) {
 }
 
 // goBuildErrors reads compiler errors from `go test -json` build-output
-// events. It returns nothing unless a package build failed, every reported
-// error is free of dependency or toolchain problems, and at least one names a
-// repository source file.
+// events or the text diagnostics used before Go 1.24. It returns nothing
+// unless a package build failed, every reported error is free of dependency
+// or toolchain problems, and at least one names a repository source file.
 func goBuildErrors(data []byte, dir string) []sourceBuildError {
 	failed := false
 	var errs []sourceBuildError
@@ -96,32 +96,42 @@ func goBuildErrors(data []byte, dir string) []sourceBuildError {
 			Action string
 			Output string
 		}
-		if json.Unmarshal(line, &event) != nil {
+		text := string(line)
+		if json.Unmarshal(line, &event) == nil {
+			switch event.Action {
+			case "build-fail":
+				failed = true
+				continue
+			case "output":
+				// Go 1.23 prints compiler diagnostics as text before JSON
+				// test events, and identifies the failed build in this output.
+				if strings.HasPrefix(event.Output, "FAIL\t") && strings.Contains(event.Output, "[build failed]") {
+					failed = true
+				}
+				continue
+			case "build-output":
+				text = strings.TrimRight(event.Output, "\n")
+			default:
+				continue
+			}
+		}
+		if goDependency.MatchString(text) {
+			return nil
+		}
+		m := goCompileLine.FindStringSubmatch(text)
+		if m == nil || len(errs) >= maxBuildErrors {
 			continue
 		}
-		switch event.Action {
-		case "build-fail":
-			failed = true
-		case "build-output":
-			text := strings.TrimRight(event.Output, "\n")
-			if goDependency.MatchString(text) {
-				return nil
-			}
-			m := goCompileLine.FindStringSubmatch(text)
-			if m == nil || len(errs) >= maxBuildErrors {
-				continue
-			}
-			path, ok := sourcePath(dir, m[1])
-			if !ok {
-				continue
-			}
-			n, _ := strconv.Atoi(m[2])
-			e := sourceBuildError{Path: path, Line: n}
-			if u := goUndefined.FindStringSubmatch(m[3]); u != nil {
-				e.Symbol = u[1]
-			}
-			errs = append(errs, e)
+		path, ok := sourcePath(dir, m[1])
+		if !ok {
+			continue
 		}
+		n, _ := strconv.Atoi(m[2])
+		e := sourceBuildError{Path: path, Line: n}
+		if u := goUndefined.FindStringSubmatch(m[3]); u != nil {
+			e.Symbol = u[1]
+		}
+		errs = append(errs, e)
 	}
 	if !failed {
 		return nil

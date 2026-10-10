@@ -149,7 +149,7 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 		if count > maxSnapshotFiles*2 {
 			return errors.New("candidate input inventory exceeds file limit")
 		}
-		if !d.IsDir() && !tracked[rel] && !declaredArtifact(allowed, rel) && !indexer.ExcludedPath(rel) {
+		if !d.IsDir() && !tracked[rel] && !(d.Type().IsRegular() && declaredArtifact(allowed, rel)) && !indexer.ExcludedPath(rel) {
 			state.Matches = false
 			fmt.Fprintf(hash, "untracked:%s\x00", rel)
 		}
@@ -162,15 +162,15 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 	return state, nil
 }
 
-// declaredArtifact reports whether rel is a declared JUnit report or a file
-// inside a declared report directory.
+// declaredArtifact reports whether rel names a declared JUnit file or an
+// immediate TEST-*.xml child that readJUnit consumes from a report directory.
+// The caller must also verify that the artifact is a regular file.
 func declaredArtifact(allowed map[string]bool, rel string) bool {
-	for dir := rel; dir != "." && dir != "/" && dir != ""; dir = filepath.ToSlash(filepath.Dir(dir)) {
-		if allowed[dir] {
-			return true
-		}
+	if allowed[rel] {
+		return true
 	}
-	return false
+	name := filepath.Base(rel)
+	return allowed[filepath.ToSlash(filepath.Dir(rel))] && strings.HasPrefix(name, "TEST-") && strings.HasSuffix(name, ".xml")
 }
 
 func executionDirectory(root, cwd string) (string, error) {
@@ -410,7 +410,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 			}
 			return finish(model.StatusError), nil
 		}
-		counts = junit
+		counts = supplementJUnit(counts, junit)
 	}
 	r.TestsRun = counts.Run
 	r.TestsFailed = counts.Failed

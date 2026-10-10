@@ -105,7 +105,7 @@ func ObserveCandidateReport(ctx context.Context, root, cwd string, argv []string
 		// Without a readable report the output-based result stands: a
 		// compile error is still observed, and no count is invented.
 		if junit, e := readJUnit(dir, report); e == nil {
-			result.Run, result.Failed, result.Skipped, result.Harness = junit.Run, junit.Failed, junit.Skipped, junit.Harness
+			result = supplementJUnit(result, junit)
 		}
 	}
 	r.TestsRun = result.Run
