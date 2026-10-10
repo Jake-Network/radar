@@ -500,3 +500,29 @@ func TestMalformedBaselineCannotBecomeNoBreakingPassAfterManifestRepair(t *testi
 		t.Fatalf("malformed baseline passed gate: %+v", r.Gate)
 	}
 }
+
+func TestProgressReportsStagesWithoutChangingTheReport(t *testing.T) {
+	root := fixture(t)
+	ctx := context.Background()
+	quiet, e := Preview(ctx, root, opts("backend", "frontend"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	steps := []Step{}
+	o := opts("backend", "frontend")
+	o.Progress = func(s Step) { steps = append(steps, s) }
+	observed, e := Preview(ctx, root, o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	stages := []string{}
+	for _, s := range steps {
+		stages = append(stages, s.Stage)
+	}
+	if strings.Join(stages, ",") != "combine,analyze,test" || steps[2].Index != 1 || steps[2].Total != 1 || steps[2].Command[0] != "python3" {
+		t.Fatalf("steps=%+v", steps)
+	}
+	if quiet.CandidateTree != observed.CandidateTree || quiet.Status != observed.Status || len(quiet.Findings) != len(observed.Findings) {
+		t.Fatalf("progress changed the report: %+v vs %+v", quiet, observed)
+	}
+}

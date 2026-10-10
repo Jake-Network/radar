@@ -53,30 +53,32 @@ func renderNextSteps(w io.Writer, steps []string) {
 	if len(steps) == 0 {
 		return
 	}
-	fmt.Fprintln(w, "\nNext steps:")
+	p := paletteOf(w)
+	fmt.Fprintln(w, "\n"+p.bold("Next steps:"))
 	for i, s := range steps {
-		fmt.Fprintf(w, "  %d. %s\n", i+1, s)
+		fmt.Fprintf(w, "  %d. %s\n", i+1, p.next(s))
 	}
 }
 
 func renderReport(w io.Writer, command string, r planning.Report) {
-	fmt.Fprintf(w, "%s: %s  (revision %s, authoritative: %s)\n", command, strings.ToUpper(string(r.Status)), r.Revision, yesNo(r.Authoritative))
+	p := paletteOf(w)
+	fmt.Fprintf(w, "%s: %s  (revision %s, authoritative: %s)\n", p.bold(command), p.status(r.Status, strings.ToUpper(string(r.Status))), r.Revision, yesNo(r.Authoritative))
 	if len(r.Checks) > 0 {
-		fmt.Fprintln(w, "\nChecks:")
+		fmt.Fprintln(w, "\n"+p.bold("Checks:"))
 		for _, c := range r.Checks {
-			fmt.Fprintf(w, "  %s  %s — %s\n", mark(c.Status), c.ID, c.Explanation)
+			fmt.Fprintf(w, "  %s  %s — %s\n", p.status(c.Status, mark(c.Status)), c.ID, c.Explanation)
 		}
 	}
 	if len(r.Findings) > 0 {
-		fmt.Fprintln(w, "\nFindings:")
+		fmt.Fprintln(w, "\n"+p.bold("Findings:"))
 		for _, f := range r.Findings {
-			fmt.Fprintf(w, "  %s  %s: %s\n", severityMark(f.Severity), f.Code, f.Explanation)
+			fmt.Fprintf(w, "  %s  %s: %s\n", p.severity(f.Severity, severityMark(f.Severity)), f.Code, f.Explanation)
 		}
 	}
 	if len(r.Tasks) > 0 {
-		fmt.Fprintln(w, "\nTasks:")
+		fmt.Fprintln(w, "\n"+p.bold("Tasks:"))
 		for _, t := range r.Tasks {
-			line := fmt.Sprintf("  %s  %s — %s", mark(t.Status), t.ID, t.Explanation)
+			line := fmt.Sprintf("  %s  %s — %s", p.status(t.Status, mark(t.Status)), t.ID, t.Explanation)
 			if len(t.BlockedBy) > 0 {
 				line += " (blocked by " + strings.Join(t.BlockedBy, ", ") + ")"
 			}
@@ -113,15 +115,16 @@ func renderSchedule(w io.Writer, s planning.Schedule) {
 }
 
 func renderContracts(w io.Writer, r contracts.Report) {
+	p := paletteOf(w)
 	fmt.Fprintf(w, "contracts: %s  (%s; %d/%d bindings analyzed; base %s → %s)\n", strings.ToUpper(string(r.Status)), r.Checkpoint, r.Analyzed, r.Bindings, short(r.Base), strings.Join(shortAll(r.Heads), ", "))
 	for _, f := range r.Findings {
-		fmt.Fprintf(w, "  %s  %s [%s] %s\n", severityMark(f.Severity), f.Code, f.Contract, f.Explanation)
+		fmt.Fprintf(w, "  %s  %s [%s] %s\n", p.severity(f.Severity, severityMark(f.Severity)), f.Code, f.Contract, f.Explanation)
 		if f.Consumer != "" {
 			fmt.Fprintf(w, "           producer %s → consumer %s (branches %s)\n", f.Producer, f.Consumer, strings.Join(shortAll(f.Branches), " / "))
 		}
 	}
 	for _, d := range r.Diagnostics {
-		fmt.Fprintf(w, "  %s  %s %s\n", severityMark(d.Severity), d.Path, d.Message)
+		fmt.Fprintf(w, "  %s  %s %s\n", p.severity(d.Severity, severityMark(d.Severity)), d.Path, d.Message)
 	}
 	for _, o := range r.Obligations {
 		fmt.Fprintf(w, "  obligation %s at %s: %s — %s\n", o.Binding, short(o.Head), o.Kind, o.Explanation)
@@ -135,12 +138,13 @@ func renderContracts(w io.Writer, r contracts.Report) {
 }
 
 func renderLint(w io.Writer, r contracts.LintReport) {
-	fmt.Fprintf(w, "contracts at %s: %s\n", r.Revision, strings.ToUpper(string(r.Status)))
+	p := paletteOf(w)
+	fmt.Fprintf(w, "contracts at %s: %s\n", r.Revision, p.status(r.Status, strings.ToUpper(string(r.Status))))
 	if r.Error != "" {
 		fmt.Fprintln(w, "  "+r.Error)
 	}
 	for _, b := range r.Bindings {
-		fmt.Fprintf(w, "  %s  %s\n", mark(b.Status), b.ID)
+		fmt.Fprintf(w, "  %s  %s\n", p.status(b.Status, mark(b.Status)), b.ID)
 		for _, i := range b.Issues {
 			fmt.Fprintln(w, "        issue: "+i)
 		}
@@ -151,7 +155,8 @@ func renderLint(w io.Writer, r contracts.LintReport) {
 }
 
 func renderRecord(w io.Writer, r evidence.Record) {
-	fmt.Fprintf(w, "test: %s  exit %d, %d run, %d failed, %d skipped (harness %s)\n", strings.ToUpper(string(r.Status)), r.ExitCode, r.TestsRun, r.TestsFailed, r.TestsSkipped, orDash(r.Harness))
+	p := paletteOf(w)
+	fmt.Fprintf(w, "test: %s  exit %d, %d run, %d failed, %d skipped (harness %s)\n", p.status(r.Status, strings.ToUpper(string(r.Status))), r.ExitCode, r.TestsRun, r.TestsFailed, r.TestsSkipped, orDash(r.Harness))
 	fmt.Fprintf(w, "evidence: %s\ncriteria: %s\n", r.ID, strings.Join(r.Criteria, ", "))
 	switch r.Status {
 	case model.StatusError:
@@ -165,7 +170,8 @@ func renderRecord(w io.Writer, r evidence.Record) {
 }
 
 func renderFinding(w io.Writer, f model.Finding) {
-	fmt.Fprintf(w, "%s %s (%s evidence)\n%s\n", strings.ToUpper(string(f.Severity)), f.Code, f.Evidence, f.Explanation)
+	p := paletteOf(w)
+	fmt.Fprintf(w, "%s %s (%s evidence)\n%s\n", p.severity(f.Severity, strings.ToUpper(string(f.Severity))), p.bold(f.Code), f.Evidence, f.Explanation)
 	if f.Contract != "" {
 		fmt.Fprintf(w, "contract: %s  producer: %s  consumer: %s\n", f.Contract, f.Producer, f.Consumer)
 	}
@@ -222,7 +228,7 @@ func renderAffected(w io.Writer, r affectedReport) {
 		fmt.Fprintf(w, "  task      %s — %s\n", t.ID, strings.Join(t.Paths, ", "))
 	}
 	for _, d := range r.Diagnostics {
-		fmt.Fprintf(w, "  %s  %s %s\n", severityMark(d.Severity), d.Path, d.Message)
+		fmt.Fprintf(w, "  %s  %s %s\n", paletteOf(w).severity(d.Severity, severityMark(d.Severity)), d.Path, d.Message)
 	}
 	if len(r.Contracts) > 0 {
 		fmt.Fprintf(w, "Run `radar impact --base %s --head %s` to check the affected contracts.\n", short(r.Base), r.Head)

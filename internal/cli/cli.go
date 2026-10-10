@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
@@ -19,6 +20,7 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/project"
 	"github.com/Jake-Network/radar/internal/storage"
+	"github.com/Jake-Network/radar/internal/termui"
 	"github.com/Jake-Network/radar/internal/workspace"
 )
 
@@ -43,7 +45,9 @@ type app struct {
 	stateRoot   string // directory holding .radar state (shared by linked worktrees)
 	out, errout io.Writer
 	machine     bool
-	store       *storage.Store
+	// live is where transient --run progress goes: stderr on a terminal.
+	live  io.Writer
+	store *storage.Store
 }
 
 // Run executes one command. Exit codes: 0 success or informational report,
@@ -51,6 +55,7 @@ type app struct {
 func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	rootArg := "."
 	machine := false
+	colorArg := string(termui.Auto)
 	rest := []string{}
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
@@ -69,11 +74,35 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 			rootArg = args[i]
 		case strings.HasPrefix(args[i], "--root="):
 			rootArg = strings.TrimPrefix(args[i], "--root=")
+		case args[i] == "--color":
+			i++
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				fmt.Fprintln(errout, "--color requires auto, always or never")
+				return 2
+			}
+			colorArg = args[i]
+		case strings.HasPrefix(args[i], "--color="):
+			colorArg = strings.TrimPrefix(args[i], "--color=")
 		default:
 			rest = append(rest, args[i])
 		}
 	}
-	a := &app{ctx: ctx, out: out, errout: errout, machine: machine}
+	mode, e := termui.ParseMode(colorArg)
+	if e != nil {
+		fmt.Fprintln(errout, "radar:", e)
+		return 2
+	}
+	// Machine output and the MCP server's stdio stay byte-for-byte plain.
+	if machine || (len(rest) > 0 && rest[0] == "mcp") {
+		mode = termui.Never
+	}
+	liveOK := mode != termui.Never && termui.Live(errout, os.Getenv)
+	out, errout = restyle(out, mode), restyle(errout, mode)
+	var live io.Writer
+	if liveOK {
+		live = errout
+	}
+	a := &app{ctx: ctx, out: out, errout: errout, machine: machine, live: live}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		all := false
 		if len(rest) > 1 {
@@ -92,6 +121,9 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	}
 	c, ok := lookup(rest[0])
 	if !ok {
+		if guess := suggestCommand(rest[0]); guess != "" {
+			return a.fail(fmt.Errorf("unknown command %q; did you mean %q? Run radar help for every command", rest[0], guess))
+		}
 		return a.fail(fmt.Errorf("unknown command %q; run radar help", rest[0]))
 	}
 	fs := flag.NewFlagSet("radar "+c.name, flag.ContinueOnError)
@@ -164,9 +196,69 @@ func (a *app) fail(e error) int {
 	} else if a.machine {
 		a.emit(map[string]any{"error": e.Error(), "status": model.StatusError})
 	} else {
-		fmt.Fprintln(a.errout, "radar:", e)
+		p := paletteOf(a.errout)
+		fmt.Fprintln(a.errout, p.paint("1;31", "radar:"), e)
 	}
 	return 2
+}
+
+// restyle decides styling for one output stream. A writer the caller
+// already styled (the interactive menu dispatching a command) keeps its
+// decision unless styling is now disabled.
+func restyle(w io.Writer, mode termui.Mode) io.Writer {
+	if s, ok := w.(styledWriter); ok {
+		if mode == termui.Never {
+			return s.Writer
+		}
+		return s
+	}
+	return styled(w, termui.Color(w, mode, os.Getenv))
+}
+
+// suggestCommand returns the command a mistyped name most likely meant, or
+// "" when nothing is close (edit distance at most 2, or a unique prefix).
+func suggestCommand(name string) string {
+	best, bestDistance := "", 3
+	prefixed := []string{}
+	for _, c := range commands {
+		if len(name) >= 2 && strings.HasPrefix(c.name, name) {
+			prefixed = append(prefixed, c.name)
+		}
+		if d := editDistance(name, c.name); d < bestDistance {
+			best, bestDistance = c.name, d
+		}
+	}
+	if best == "" && len(prefixed) == 1 {
+		return prefixed[0]
+	}
+	return best
+}
+
+// editDistance is the Damerau-Levenshtein (optimal string alignment) distance,
+// so a swapped pair of letters ("gaet") counts as one edit.
+func editDistance(a, b string) int {
+	x, y := []rune(a), []rune(b)
+	d := make([][]int, len(x)+1)
+	for i := range d {
+		d[i] = make([]int, len(y)+1)
+		d[i][0] = i
+	}
+	for j := range d[0] {
+		d[0][j] = j
+	}
+	for i := 1; i <= len(x); i++ {
+		for j := 1; j <= len(y); j++ {
+			cost := 1
+			if x[i-1] == y[j-1] {
+				cost = 0
+			}
+			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
+			if i > 1 && j > 1 && x[i-1] == y[j-2] && x[i-2] == y[j-1] {
+				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
+			}
+		}
+	}
+	return d[len(x)][len(y)]
 }
 func (a *app) repository() error {
 	info, e := gitrepo.Inspect(a.ctx, a.root)

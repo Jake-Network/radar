@@ -291,22 +291,23 @@ func checkNoBreaking(findings []model.Finding, unestablished []string, manifestE
 }
 
 func renderCheck(w io.Writer, r checkReport, impact affectedReport) {
-	fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
+	p := paletteOf(w)
+	fmt.Fprintf(w, "%s %s — %s\n", p.bold("Gate:"), p.verdict(r.Gate.Verdict, string(r.Gate.Verdict)), r.Gate.Explanation)
 	fmt.Fprintf(w, "Analysis: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
 	renderAffected(w, impact)
 	renderProposal(w, r.VerificationProposal)
 	renderSelection(w, r.Selection)
 	for _, c := range r.Checks {
-		fmt.Fprintf(w, "%s: %s — %s\n", c.ID, c.Status, c.Explanation)
+		fmt.Fprintf(w, "%s: %s — %s\n", c.ID, p.status(c.Status, string(c.Status)), c.Explanation)
 	}
 	for _, f := range r.Findings {
 		renderFinding(w, f)
 	}
 	for _, d := range r.Diagnostics {
-		fmt.Fprintf(w, "%s: %s %s\n", d.Severity, d.Path, d.Message)
+		fmt.Fprintf(w, "%s: %s %s\n", p.severity(d.Severity, string(d.Severity)), d.Path, d.Message)
 	}
 	for _, o := range r.Declared.Obligations {
 		fmt.Fprintf(w, "contract obligation %s: %s — %s\n", o.Binding, o.Kind, o.Explanation)
 	}
-	fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
+	fmt.Fprintln(w, p.dim("For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts)."))
 }

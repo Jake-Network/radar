@@ -113,19 +113,14 @@ func chain(r workspaceRepo) string {
 }
 
 func renderWorkspaceGate(w io.Writer, g workspaceReport) {
-	verdict := verdictMark[g.Verdict]
-	if !g.ran && g.Verdict == gate.Pass {
-		verdict = "PASS (static)"
-	}
-	if g.ran && g.Verdict == gate.Pass {
-		verdict = "PASS (selected policy; bounded verification)"
-	}
+	p := paletteOf(w)
+	verdict := p.verdict(g.Verdict, verdictText(g.Verdict, g.ran))
 	head := []string{}
 	if g.Workspace != "" {
 		head = append(head, fmt.Sprintf("workspace %q", g.Workspace))
 	}
 	head = append(head, plural(g.RepoCount, "repo", "repos"), plural(g.BranchCount, "branch", "branches"), g.ScopeSummary)
-	fmt.Fprintf(w, "Radar gate: %s — %s\n\n", verdict, strings.Join(head, " · "))
+	fmt.Fprintf(w, "%s%s — %s\n\n", brand(p, "Radar gate: "), verdict, strings.Join(head, " · "))
 
 	idWidth, chainWidth := 0, 0
 	for _, r := range g.Repos {
@@ -137,14 +132,14 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 		if r.Error != "" && r.Base == "" {
 			source = "error"
 		}
-		fmt.Fprintf(w, "  %-*s  %-*s   (%s)\n", idWidth, r.ID, chainWidth, chain(r), source)
+		fmt.Fprintf(w, "  %s%s  %-*s   %s\n", p.cyan(r.ID), strings.Repeat(" ", idWidth-len(r.ID)), chainWidth, chain(r), p.dim("("+source+")"))
 	}
 	fmt.Fprintln(w)
 	for _, r := range g.Repos {
 		mark, text := repoLine(r)
-		fmt.Fprintf(w, "  %s %-*s  %s\n", mark, idWidth, r.ID, text)
+		fmt.Fprintf(w, "  %s %s%s  %s\n", p.mark(mark), p.bold(r.ID), strings.Repeat(" ", idWidth-len(r.ID)), text)
 		if r.Next != "" {
-			fmt.Fprintf(w, "      next: %s\n", r.Next)
+			fmt.Fprintf(w, "      next: %s\n", p.next(r.Next))
 		}
 		if r.Report == nil {
 			continue
@@ -153,7 +148,7 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 		for _, f := range r.Report.Findings {
 			switch f.Severity {
 			case model.SeverityError:
-				fmt.Fprintf(w, "      ✗ %s: %s\n", f.Code, f.Explanation)
+				fmt.Fprintf(w, "      %s %s: %s\n", p.mark("✗"), p.red(f.Code), readableExplanation(f.Explanation, r.Report.Executions, p))
 				if f.Remediation != "" {
 					fmt.Fprintf(w, "        fix: %s\n", f.Remediation)
 				}
@@ -162,52 +157,52 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 			}
 		}
 		if warnings > 0 {
-			fmt.Fprintf(w, "      · %s; see --json\n", plural(warnings, "warning", "warnings"))
+			fmt.Fprintf(w, "      %s %s; see --json\n", p.mark("·"), plural(warnings, "warning", "warnings"))
 		}
 		if s := r.Report.Selection; g.ran && s != nil {
-			fmt.Fprintf(w, "      tests (%s): ran %d of %d selected command(s)\n", s.Mode, len(r.Report.Executions), len(s.Commands))
+			fmt.Fprintf(w, "      tests (%s): ran %d of %s\n", s.Mode, len(r.Report.Executions), plural(len(s.Commands), "selected command", "selected commands"))
 			for _, ev := range r.Report.Executions {
-				fmt.Fprintf(w, "        %s  %s  (in %s; %d recognized test(s))\n", gateMark(ev.Status), strings.Join(shorten(ev.Command, 6), " "), ev.CWD, ev.Observation.TestsRun)
+				fmt.Fprintf(w, "        %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
 			}
 			for _, b := range s.Blocking {
-				fmt.Fprintf(w, "        not run: %s\n", b)
+				fmt.Fprintf(w, "        %s not run: %s\n", p.mark("?"), b)
 			}
 			if len(s.Uncovered) > 0 {
-				fmt.Fprintf(w, "        uncovered changes: %s\n", strings.Join(shorten(s.Uncovered, 5), ", "))
+				fmt.Fprintf(w, "        %s uncovered changes: %s\n", p.mark("?"), strings.Join(shorten(s.Uncovered, 5), ", "))
 			}
 		}
 	}
 	if len(g.Links) == 0 {
-		fmt.Fprintf(w, "  ! cross-repo links: not checked — %s\n", g.CrossRepo.Reason)
+		fmt.Fprintf(w, "  %s cross-repo links: not checked — %s\n", p.mark("!"), g.CrossRepo.Reason)
 	} else {
 		renderWorkspaceLinks(w, g)
 	}
 	for _, suggestion := range g.SuggestedLinks[:min(3, len(g.SuggestedLinks))] {
-		fmt.Fprintf(w, "  · proposed link  %s → %s: %s (not checked)\n    %s\n", suggestion.Producer, suggestion.Consumer, suggestion.Candidate.Endpoint, suggestion.Command)
+		fmt.Fprintf(w, "  %s proposed link  %s → %s: %s (not checked)\n    %s\n", p.mark("·"), suggestion.Producer, suggestion.Consumer, suggestion.Candidate.Endpoint, p.command(suggestion.Command))
 	}
 	for _, r := range g.ExcludedRepos {
-		fmt.Fprintf(w, "  · %s  registered but not in the team file\n", r.ID)
+		fmt.Fprintf(w, "  %s %s  registered but not in the team file\n", p.mark("·"), r.ID)
 	}
 	if g.TeamFile != nil && g.TeamFile.Uncommitted {
-		fmt.Fprintf(w, "  ! %s:%s  uncommitted team file excluded; using the committed base declaration\n", g.TeamFile.Home, g.TeamFile.Path)
+		fmt.Fprintf(w, "  %s %s:%s  uncommitted team file excluded; using the committed base declaration\n", p.mark("!"), g.TeamFile.Home, g.TeamFile.Path)
 	}
 	if g.CrossRepoExecution != nil {
-		fmt.Fprintf(w, "  ! cross-repo execution: not checked — %s\n", g.CrossRepoExecution.Reason)
+		fmt.Fprintf(w, "  %s cross-repo execution: not checked — %s\n", p.mark("!"), g.CrossRepoExecution.Reason)
 	}
 	for _, r := range g.Repos {
 		for _, d := range r.Dirty {
 			if d.Selected {
-				fmt.Fprintf(w, "  · %s:%s  committed changes only (%d uncommitted excluded)\n", r.ID, d.Branch, d.Count())
+				fmt.Fprintf(w, "  %s %s:%s  committed changes only (%d uncommitted excluded)\n", p.mark("·"), r.ID, d.Branch, d.Count())
 			}
 		}
 		for _, s := range r.Skipped {
-			fmt.Fprintf(w, "  · %s:%s\n", r.ID, strings.Replace(s, " (", "  skipped (", 1))
+			fmt.Fprintf(w, "  %s %s:%s\n", p.mark("·"), r.ID, strings.Replace(s, " (", "  skipped (", 1))
 		}
 		for _, d := range r.Detached {
-			fmt.Fprintf(w, "  ! %s  detached worktree %s @ %s not selected — name it: radar gate %s:%s\n", r.ID, d.Path, short(d.Commit), r.ID, d.Commit)
+			fmt.Fprintf(w, "  %s %s  detached worktree %s @ %s not selected — name it: %s\n", p.mark("!"), r.ID, d.Path, short(d.Commit), p.command("radar gate "+r.ID+":"+d.Commit))
 		}
 		if r.WorktreeInspectionError != "" {
-			fmt.Fprintf(w, "  ! %s  worktree inspection unavailable: %s\n", r.ID, r.WorktreeInspectionError)
+			fmt.Fprintf(w, "  %s %s  worktree inspection unavailable: %s\n", p.mark("!"), r.ID, r.WorktreeInspectionError)
 		}
 	}
 	if a := g.Again; a != nil {
@@ -222,11 +217,11 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 			changes = append(changes, k+" has new commits")
 		}
 		if len(a.Added)+len(a.Removed) > 0 {
-			fmt.Fprintf(w, "  ! again: branches changed since run %s: %s\n", a.PreviousRun, strings.Join(changes, " · "))
+			fmt.Fprintf(w, "  %s again: branches changed since run %s: %s\n", p.mark("!"), a.PreviousRun, strings.Join(changes, " · "))
 		} else if len(a.Moved) > 0 {
-			fmt.Fprintf(w, "  · again: same branches as run %s; %s\n", a.PreviousRun, strings.Join(changes, " · "))
+			fmt.Fprintf(w, "  %s again: same branches as run %s; %s\n", p.mark("·"), a.PreviousRun, strings.Join(changes, " · "))
 		} else {
-			fmt.Fprintf(w, "  · again: same branches and commits as run %s\n", a.PreviousRun)
+			fmt.Fprintf(w, "  %s again: same branches and commits as run %s\n", p.mark("·"), a.PreviousRun)
 		}
 	}
 	leads := []string{}
@@ -242,20 +237,20 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 	}
 	leads = append(leads, workspaceLinkLeads(g)...)
 	if len(leads) > 0 {
-		fmt.Fprintln(w, "\nRepair leads (where to look, not proof of cause)")
+		fmt.Fprintln(w, "\n"+p.bold("Repair leads")+" (where to look, not proof of cause)")
 		for _, l := range leads {
 			fmt.Fprintln(w, l)
 		}
 	}
 	switch {
 	case g.ReplayOf != "":
-		fmt.Fprintf(w, "\n  · replayed run %s · digest %s\n", g.ReplayOf, shortDigest(g.Digest))
+		fmt.Fprintf(w, "\n  %s\n", p.dim(fmt.Sprintf("· replayed run %s · digest %s", g.ReplayOf, shortDigest(g.Digest))))
 	case g.RecordError != "":
-		fmt.Fprintf(w, "\n  ! run not recorded: %s (--again and --replay cannot use this run)\n", g.RecordError)
+		fmt.Fprintf(w, "\n  %s run not recorded: %s (--again and --replay cannot use this run)\n", p.mark("!"), g.RecordError)
 	default:
-		fmt.Fprintf(w, "\n  · run %s · digest %s\n", g.RunID, shortDigest(g.Digest))
+		fmt.Fprintf(w, "\n  %s\n", p.dim(fmt.Sprintf("· run %s · digest %s", g.RunID, shortDigest(g.Digest))))
 	}
-	fmt.Fprintf(w, "\nNext: %s\n", g.Next)
+	fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(g.Next))
 }
 
 func sortedAttributions(m map[string]gateAttribution) []gateAttribution {
@@ -303,19 +298,20 @@ func linkDetail(l composition.Link) string {
 }
 
 func renderWorkspaceLinks(w io.Writer, g workspaceReport) {
+	p := paletteOf(w)
 	for _, l := range g.Links {
 		switch l.Status {
 		case model.StatusPassed:
-			fmt.Fprintf(w, "  ✓ link %s  %s → %s\n", l.ID, l.Producer, l.Consumer)
+			fmt.Fprintf(w, "  %s link %s  %s → %s\n", p.mark("✓"), l.ID, l.Producer, l.Consumer)
 		case model.StatusWarning:
-			fmt.Fprintf(w, "  ✓ link %s  %s → %s (warning: %s)\n", l.ID, l.Producer, l.Consumer, linkDetail(l))
+			fmt.Fprintf(w, "  %s link %s  %s → %s (warning: %s)\n", p.mark("✓"), l.ID, l.Producer, l.Consumer, linkDetail(l))
 		case model.StatusFailed:
-			fmt.Fprintf(w, "  ✗ link %s  %s → %s: %s (candidate+candidate)\n", l.ID, l.Producer, l.Consumer, linkDetail(l))
+			fmt.Fprintf(w, "  %s link %s  %s → %s: %s (candidate+candidate)\n", p.mark("✗"), l.ID, l.Producer, l.Consumer, linkDetail(l))
 		default:
-			fmt.Fprintf(w, "  ! link %s  not checked — %s\n", l.ID, linkDetail(l))
+			fmt.Fprintf(w, "  %s link %s  not checked — %s\n", p.mark("!"), l.ID, linkDetail(l))
 		}
 		for _, warning := range l.Warnings {
-			fmt.Fprintf(w, "  · link %s  %s\n", l.ID, warning)
+			fmt.Fprintf(w, "  %s link %s  %s\n", p.mark("·"), l.ID, warning)
 		}
 		for _, i := range []int{1, 2} {
 			c := l.Cells[i]
@@ -330,7 +326,7 @@ func renderWorkspaceLinks(w io.Writer, g workspaceReport) {
 			if reason == "" && len(c.Findings) > 0 {
 				reason = c.Findings[0].Explanation
 			}
-			fmt.Fprintf(w, "  ! link %s  %s → %s: %s — %s (%s producer + %s consumer; excluded from verdict)\n", l.ID, l.Producer, l.Consumer, order, reason, c.Producer, c.Consumer)
+			fmt.Fprintf(w, "  %s link %s  %s → %s: %s — %s (%s producer + %s consumer; excluded from verdict)\n", p.mark("!"), l.ID, l.Producer, l.Consumer, order, reason, c.Producer, c.Consumer)
 		}
 	}
 }

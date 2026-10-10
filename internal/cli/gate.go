@@ -64,9 +64,9 @@ func gateCommand() command {
 			fs.Var(listFlag{&o.only}, "only", "check only workspace repository `REPO` in this run (repeatable)")
 			fs.StringVar(&o.replay, "replay", "", "rebuild the exact commits of workspace `RUN` (run ID or last)")
 			fs.BoolVar(&o.verify, "run", false, "execute the selected tests on the combined tree with your host permissions (not an OS sandbox)")
-			fs.StringVar(&o.suite, "suite", "", "test selection with --run: targeted, balanced (default) or full")
-			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands --run executes")
-			fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "total --run time budget, maximum 30m")
+			fs.StringVar(&o.suite, "suite", "", "test selection `MODE` with --run: targeted, balanced (default) or full")
+			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands (`N`) --run executes")
+			fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "total --run time budget (`DURATION`), maximum 30m")
 			policyFlag(fs, o)
 			planFlag(fs, o)
 		}, run: (*app).gate}
@@ -116,7 +116,10 @@ func (a *app) gate(o options) int {
 			options.Suite = testselection.ModeBalanced
 		}
 	}
+	progress := a.startProgress("combining branches in private Git state")
+	options.Progress = progress.callback()
 	r, err := integration.Preview(a.ctx, a.root, options)
+	progress.done()
 	if err != nil {
 		return a.fail(err)
 	}
@@ -333,57 +336,74 @@ func shellArg(s string) string { return workspace.ShellPath(s) }
 var verdictMark = map[gate.Verdict]string{gate.Pass: "PASS", gate.Fail: "FAIL", gate.Blocked: "NOT VERIFIED", gate.Error: "ERROR"}
 
 func renderGate(w io.Writer, g gateReport, ran bool) {
+	p := paletteOf(w)
 	r := g.Report
-	verdict := verdictMark[r.Gate.Verdict]
-	if !ran && r.Gate.Verdict == gate.Pass {
-		verdict = "PASS (static)"
-	}
-	if ran && r.Gate.Verdict == gate.Pass {
-		verdict = "PASS (selected policy; bounded verification)"
-	}
-	fmt.Fprintf(w, "Radar gate: %s — %d branch(es) onto %s @ %s\n\n", verdict, len(g.Branches), g.BaseRef, short(r.Base))
+	fmt.Fprintf(w, "%s%s — %s\n", brand(p, "Radar gate: "), p.verdict(r.Gate.Verdict, verdictText(r.Gate.Verdict, ran)), gateHeadline(g, ran))
+	fmt.Fprintln(w, p.dim(fmt.Sprintf("%s onto %s @ %s", plural(len(g.Branches), "branch", "branches"), g.BaseRef, short(r.Base))))
+	fmt.Fprintln(w)
 	width := 0
 	for _, b := range g.Branches {
 		width = max(width, len(b.Ref))
 	}
 	for _, b := range g.Branches {
-		fmt.Fprintf(w, "  %-*s  %s  %d file(s) changed\n", width, b.Ref, short(b.Commit), len(b.Changed))
+		fmt.Fprintf(w, "  %s%s  %s  %s changed\n", p.cyan(b.Ref), strings.Repeat(" ", width-len(b.Ref)), p.dim(short(b.Commit)), plural(len(b.Changed), "file", "files"))
 	}
 	for _, s := range g.Skipped {
-		fmt.Fprintf(w, "  skipped: %s\n", s)
+		fmt.Fprintf(w, "  %s skipped: %s\n", p.mark("·"), s)
 	}
 	if g.WorktreeInspectionError != "" {
-		fmt.Fprintf(w, "  ! worktree inspection unavailable: %s. Candidate verification is unchanged; inspect worktrees manually for excluded uncommitted changes.\n", g.WorktreeInspectionError)
+		fmt.Fprintf(w, "  %s worktree inspection unavailable: %s. Candidate verification is unchanged; inspect worktrees manually for excluded uncommitted changes.\n", p.mark("!"), g.WorktreeInspectionError)
 	}
 	for _, wt := range g.Worktrees {
 		if wt.InspectionError != "" {
-			fmt.Fprintf(w, "  ! worktree %q: status unavailable: %s\n", wt.Path, wt.InspectionError)
+			fmt.Fprintf(w, "  %s worktree %q: status unavailable: %s\n", p.mark("!"), wt.Path, wt.InspectionError)
 		} else if len(wt.Staged)+len(wt.Unstaged)+len(wt.Untracked) > 0 {
-			fmt.Fprintf(w, "  ! worktree %q (%s): %d staged, %d unstaged, %d untracked; uncommitted changes EXCLUDED. Commit intended changes and rerun.\n", wt.Path, wt.Branch, len(wt.Staged), len(wt.Unstaged), len(wt.Untracked))
+			fmt.Fprintf(w, "  %s worktree %q (%s): %d staged, %d unstaged, %d untracked; uncommitted changes EXCLUDED. Commit intended changes and rerun.\n", p.mark("!"), wt.Path, wt.Branch, len(wt.Staged), len(wt.Unstaged), len(wt.Untracked))
 		}
 		if wt.Detached {
-			fmt.Fprintf(w, "  ! detached worktree %q @ %s: commit included=%t; name its commit explicitly to include it.\n", wt.Path, short(wt.Commit), wt.CommitIncluded)
+			fmt.Fprintf(w, "  %s detached worktree %q @ %s: commit included=%t; name its commit explicitly to include it.\n", p.mark("!"), wt.Path, short(wt.Commit), wt.CommitIncluded)
 		}
 	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  Policy: %s; requires %s\n", r.Gate.Policy.Name, strings.Join(r.Gate.Policy.Require, ", "))
+
+	// Required checks, phrased for people; check IDs stay in --json.
+	type row struct{ mark, name, text string }
+	rows := []row{}
 	for _, c := range r.Gate.Required {
-		fmt.Fprintf(w, "  %s  %s\n", gateMark(c.Status), gateLabel(c))
+		rows = append(rows, row{gateMark(c.Status), gateCheckName(c.ID), gateLabel(c, r)})
 	}
 	if !ran && len(r.Conflicts) == 0 {
-		fmt.Fprintln(w, "  ?  combined tree not tested yet (add --run)")
+		rows = append(rows, row{"?", "Tests", "combined tree not tested yet (add --run)"})
 	}
+	nameWidth := 0
+	for _, x := range rows {
+		nameWidth = max(nameWidth, len(x.name))
+	}
+	fmt.Fprintln(w)
+	for _, x := range rows {
+		fmt.Fprintf(w, "  %s %s%s  %s\n", p.mark(x.mark), p.bold(x.name), strings.Repeat(" ", nameWidth-len(x.name)), x.text)
+	}
+	fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("policy %s requires %s", r.Gate.Policy.Name, strings.Join(r.Gate.Policy.Require, ", "))))
+
+	problems := 0
 	for _, f := range r.Findings {
 		if f.Severity != model.SeverityError {
 			continue
 		}
-		fmt.Fprintf(w, "\n  ✗ %s: %s\n", f.Code, f.Explanation)
+		if problems++; problems == 1 {
+			fmt.Fprintln(w, "\n"+p.bold("Problems"))
+		}
+		explanation, cases, _ := strings.Cut(readableExplanation(f.Explanation, r.Executions, p), " Failed cases: ")
+		fmt.Fprintf(w, "  %s %s\n", p.mark("✗"), p.paint("1;31", f.Code))
+		fmt.Fprintf(w, "    %s\n", explanation)
+		if cases != "" {
+			fmt.Fprintf(w, "    failed cases: %s\n", p.red(cases))
+		}
 		if a, ok := g.Attribution[f.ID]; ok {
 			label := "look at"
 			if strings.HasPrefix(f.Code, "integration_execution_") {
 				label = "look at (import-based lead)"
 			}
-			fmt.Fprintf(w, "    %s: %s\n", label, renderLeads(a.Leads))
+			fmt.Fprintf(w, "    %s: %s\n", label, renderLeads(a.Leads, p))
 		}
 		if len(r.Conflicts) > 0 && f.Code == "integration_textual_conflict" {
 			fmt.Fprintf(w, "    paths: %s\n", strings.Join(r.Conflicts, ", "))
@@ -397,53 +417,136 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		if f.Severity != model.SeverityWarning {
 			continue
 		}
-		if warnings++; warnings <= 5 {
-			fmt.Fprintf(w, "\n  ! %s: %s\n", f.Code, f.Explanation)
+		if warnings++; warnings == 1 {
+			fmt.Fprintln(w, "\n"+p.bold("Warnings"))
+		}
+		if warnings <= 5 {
+			fmt.Fprintf(w, "  %s %s: %s\n", p.mark("!"), p.yellow(f.Code), readableExplanation(f.Explanation, r.Executions, p))
 			if a, ok := g.Attribution[f.ID]; ok {
-				fmt.Fprintf(w, "    look at: %s\n", renderLeads(a.Leads))
+				fmt.Fprintf(w, "    look at: %s\n", renderLeads(a.Leads, p))
 			}
 		}
 	}
 	if warnings > 5 {
-		fmt.Fprintf(w, "\n  … %d more warning(s); see --json\n", warnings-5)
+		fmt.Fprintf(w, "  … %s; see --json\n", plural(warnings-5, "more warning", "more warnings"))
 	}
 	if !ran && r.VerificationProposal != nil && len(r.VerificationProposal.Commands) > 0 {
-		fmt.Fprintf(w, "\n  Suggested tests (static relationships; not run):\n")
+		fmt.Fprintf(w, "\n%s %s\n", p.bold("Suggested tests"), p.dim("(static relationships; not run)"))
 		for i, c := range r.VerificationProposal.Commands {
 			if i == 5 {
-				fmt.Fprintf(w, "    … %d more\n", len(r.VerificationProposal.Commands)-5)
+				fmt.Fprintf(w, "  … %d more\n", len(r.VerificationProposal.Commands)-5)
 				break
 			}
-			fmt.Fprintf(w, "    %s  (in %s)\n", strings.Join(shorten(c.Command, 6), " "), c.CWD)
+			fmt.Fprintf(w, "  %s  %s\n", p.cyan(displayCommand(c.Command)), p.dim("(in "+c.CWD+")"))
 		}
 	}
 	if ran && r.Selection != nil {
-		fmt.Fprintf(w, "\n  Test files: %d inventoried, %d selected (relationships are not behavioral coverage)\n", r.Selection.Inventory, r.Selection.TestFiles)
-		fmt.Fprintf(w, "\n  Tests (%s): ran %d of %d selected command(s)\n", r.Selection.Mode, len(r.Executions), len(r.Selection.Commands))
+		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Tests ("+r.Selection.Mode+"):"), len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 		for _, ev := range r.Executions {
-			fmt.Fprintf(w, "    %s  %s  (in %s; %d recognized test(s))\n", gateMark(ev.Status), strings.Join(shorten(ev.Command, 6), " "), ev.CWD, ev.Observation.TestsRun)
-		}
-		if len(r.Selection.Uncovered) > 0 {
-			fmt.Fprintf(w, "  Uncovered changes (no established test relationship): %s\n", strings.Join(r.Selection.Uncovered, ", "))
-			fmt.Fprintln(w, "  Resolve with supported tests, review --suite full, or explicitly select a limited --policy.")
-		}
-		if !slices.Contains(r.Gate.Policy.Require, "test_selection") || !slices.Contains(r.Gate.Policy.Require, "integration_execution") {
-			fmt.Fprintln(w, "  Limited policy: test selection or combined execution is not required; PASS applies only to the named requirements.")
+			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
 		}
 		for _, b := range r.Selection.Blocking {
-			fmt.Fprintf(w, "    not run: %s\n", b)
+			fmt.Fprintf(w, "  %s not run: %s\n", p.mark("?"), b)
+		}
+		fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("Test files: %d inventoried, %d selected (relationships are not behavioral coverage)", r.Selection.Inventory, r.Selection.TestFiles)))
+		if len(r.Selection.Uncovered) > 0 {
+			fmt.Fprintf(w, "  %s Uncovered changes (no established test relationship): %s\n", p.mark("?"), strings.Join(r.Selection.Uncovered, ", "))
+			fmt.Fprintln(w, "    Resolve with supported tests, review --suite full, or explicitly select a limited --policy.")
+		}
+		if !slices.Contains(r.Gate.Policy.Require, "test_selection") || !slices.Contains(r.Gate.Policy.Require, "integration_execution") {
+			fmt.Fprintf(w, "  %s Limited policy: test selection or combined execution is not required; PASS applies only to the named requirements.\n", p.mark("!"))
 		}
 	}
 	if g.Next != "" {
-		fmt.Fprintf(w, "\nNext: %s\n", g.Next)
+		fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(g.Next))
 	}
-	fmt.Fprintln(w, "Details: add --json. Radar never touches your branches; the combination is built in private Git state.")
+	fmt.Fprintln(w, p.dim("Details: add --json. Radar never touches your branches; the combination is built in private Git state."))
 }
 
-func renderLeads(leads []gateLead) string {
+// brand prefixes the report's first line with Radar's mark on a terminal.
+func brand(p palette, title string) string {
+	if !p.on {
+		return title
+	}
+	return p.paint("1;32", "◉ ") + p.bold(title)
+}
+
+func verdictText(v gate.Verdict, ran bool) string {
+	switch {
+	case v == gate.Pass && !ran:
+		return "PASS (static)"
+	case v == gate.Pass:
+		return "PASS (selected policy; bounded verification)"
+	}
+	return verdictMark[v]
+}
+
+// gateHeadline says in a few words why the verdict is what it is.
+func gateHeadline(g gateReport, ran bool) string {
+	r := g.Report
+	reasons := []string{}
+	for _, c := range r.Gate.Required {
+		switch {
+		case r.Gate.Verdict == gate.Fail && c.Status == model.StatusFailed:
+			reasons = append(reasons, gateLabel(c, r))
+		case r.Gate.Verdict == gate.Blocked && c.Status != model.StatusPassed:
+			state := "not verified"
+			if c.Status == model.StatusIncomplete {
+				state = "incomplete"
+			}
+			reasons = append(reasons, strings.ToLower(gateCheckName(c.ID))+" "+state)
+		}
+	}
+	switch r.Gate.Verdict {
+	case gate.Fail:
+		if len(reasons) > 0 {
+			return strings.Join(reasons, "; ")
+		}
+	case gate.Blocked:
+		if len(reasons) > 0 {
+			return "required evidence is missing: " + strings.Join(reasons, ", ")
+		}
+	case gate.Pass:
+		if !ran {
+			return "static checks passed; tests not run yet"
+		}
+		return "every required check passed"
+	}
+	return firstSentence(r.Gate.Explanation)
+}
+
+// displayCommand renders argv as a copyable POSIX shell line, eliding
+// trailing arguments only when the line would be very long.
+func displayCommand(argv []string) string {
+	const limit = 96
+	parts, length := []string{}, 0
+	for i, a := range argv {
+		q := shellArg(a)
+		if length+len(q) > limit && i > 0 {
+			return strings.Join(parts, " ") + fmt.Sprintf(" … (+%d args)", len(argv)-i)
+		}
+		parts = append(parts, q)
+		length += len(q) + 1
+	}
+	return strings.Join(parts, " ")
+}
+
+// readableExplanation replaces the Go-quoted argv that integration findings
+// carry ("[\"python3\" \"-m\" …] in \".\"") with a copyable shell line.
+func readableExplanation(text string, executions []integration.ExecutionEvidence, p palette) string {
+	for _, ev := range executions {
+		quoted := fmt.Sprintf("%q in %q", ev.Command, ev.CWD)
+		if strings.Contains(text, quoted) {
+			text = strings.Replace(text, quoted, p.cyan(displayCommand(ev.Command))+" (in "+ev.CWD+")", 1)
+		}
+	}
+	return text
+}
+
+func renderLeads(leads []gateLead, p palette) string {
 	out := []string{}
 	for _, l := range leads {
-		out = append(out, fmt.Sprintf("%s (%s)", l.Branch, strings.Join(shorten(l.Files, 3), ", ")))
+		out = append(out, fmt.Sprintf("%s (%s)", p.cyan(l.Branch), strings.Join(shorten(l.Files, 3), ", ")))
 	}
 	return strings.Join(out, "; ")
 }
@@ -458,22 +561,63 @@ func gateMark(s model.Status) string {
 	return "?"
 }
 
-// gateLabel phrases required checks for people; IDs stay in --json.
-func gateLabel(c gate.Check) string {
+// gateCheckName names a required check for people; IDs stay in --json.
+func gateCheckName(id string) string {
+	switch id {
+	case "textual_merge":
+		return "Merge"
+	case "no_breaking_contracts":
+		return "Contracts"
+	case "integration_execution":
+		return "Tests"
+	case "test_selection":
+		return "Test selection"
+	}
+	return id
+}
+
+// gateLabel phrases a required check's result.
+func gateLabel(c gate.Check, r integration.Report) string {
 	labels := map[string][2]string{
 		"textual_merge":         {"branches merge without conflicts", "branches conflict"},
 		"no_breaking_contracts": {"no breaking contract change found", "breaking contract change"},
 		"integration_execution": {"selected tests pass on the combined tree", "tests on the combined tree did not pass"},
+		"test_selection":        {"complete (no uncovered changes)", "test selection failed"},
 	}
 	l, ok := labels[c.ID]
-	if !ok {
-		return c.ID + ": " + string(c.Status)
-	}
-	switch c.Status {
-	case model.StatusPassed:
+	switch {
+	case ok && c.Status == model.StatusPassed:
 		return l[0]
-	case model.StatusFailed:
+	case ok && c.Status == model.StatusFailed:
+		if c.ID == "textual_merge" && len(r.Conflicts) > 0 {
+			return l[1] + " in " + strings.Join(shorten(r.Conflicts, 4), ", ")
+		}
+		if c.ID == "integration_execution" && len(r.Executions) > 0 {
+			failed := 0
+			for _, ev := range r.Executions {
+				if gateMark(ev.Status) == "✗" {
+					failed++
+				}
+			}
+			return fmt.Sprintf("%d of %s failed on the combined tree", failed, plural(len(r.Executions), "test command", "test commands"))
+		}
 		return l[1]
+	case c.ID == "test_selection" && r.Selection != nil && c.Status == model.StatusIncomplete:
+		gaps := []string{}
+		if n := len(r.Selection.Uncovered); n > 0 {
+			gaps = append(gaps, plural(n, "changed file has", "changed files have")+" no related test")
+		}
+		if n := len(r.Selection.Blocking); n > 0 {
+			gaps = append(gaps, plural(n, "blocking gap", "blocking gaps")+" (see not run below)")
+		}
+		if len(gaps) > 0 {
+			return "incomplete — " + strings.Join(gaps, "; ")
+		}
+	case c.ID == "integration_execution" && r.Selection != nil && c.Status == model.StatusIncomplete:
+		return fmt.Sprintf("incomplete — ran %d of %s; required verification has gaps", len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 	}
-	return c.ID + " " + string(c.Status) + ": " + c.Explanation
+	if !ok {
+		return string(c.Status) + ": " + c.Explanation
+	}
+	return "not verified (" + string(c.Status) + ") — " + c.Explanation
 }

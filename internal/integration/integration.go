@@ -36,7 +36,32 @@ type Options struct {
 	PlanDigest             string
 	// MaxCommands bounds a selected suite after grouping (default 16).
 	MaxCommands int
+	// Progress, when set, hears what the gate is doing so a terminal can
+	// show it live. It is presentation only and never affects the report.
+	Progress func(Step)
 }
+
+// Step is one progress notification.
+type Step struct {
+	Repo  string // workspace repository ID, set by multi-repository callers
+	Stage string // StageCombine, StageAnalyze or StageTest
+	// Index and Total place a test command (1-based) in the selection.
+	Index, Total int
+	Command      []string
+}
+
+const (
+	StageCombine = "combine"
+	StageAnalyze = "analyze"
+	StageTest    = "test"
+)
+
+func (o Options) step(s Step) {
+	if o.Progress != nil {
+		o.Progress(s)
+	}
+}
+
 type Check = gate.Check
 
 // ExecutionEvidence binds an observation to the combined tree and ordered
@@ -140,6 +165,7 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	if e != nil {
 		return r, e
 	}
+	o.step(Step{Stage: StageCombine})
 	c, e := BuildCandidate(ctx, root, o.Base, o.Branches)
 	defer c.Close()
 	if e != nil {
@@ -171,6 +197,7 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 		return r, nil
 	}
 	r.CandidateCommit, r.CandidateTree = c.Commit, c.Tree
+	o.step(Step{Stage: StageAnalyze})
 	r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusPassed, Evidence: model.VerifiedTool, Explanation: "Git combined all selected commits without textual conflicts."})
 	r.Changed, e = gitrepo.ChangedFiles(ctx, temp, r.Base, r.CandidateCommit)
 	if e != nil {

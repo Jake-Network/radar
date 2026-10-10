@@ -360,7 +360,10 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 			options.Suite = testselection.ModeBalanced
 		}
 	}
+	progress := a.startProgress("combining branches in private Git state")
+	options.Progress = progress.callback()
 	results := composition.Build(a.ctx, repos, options, inv.team)
+	progress.done()
 	g := workspaceReport{Version: WorkspaceReportVersion, Workspace: inv.scope.Workspace, ScopeSource: inv.scope.Source, OneOff: inv.scope.OneOff, Only: inv.scope.Only, Configuration: configuration.Inputs, Selection: inv.selection, Repos: []workspaceRepo{}, Verdict: gate.Pass, ran: o.verify}
 	if g.Only == nil {
 		g.Only = []string{}

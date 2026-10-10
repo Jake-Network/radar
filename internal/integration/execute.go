@@ -58,7 +58,7 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		}
 		r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: status, Evidence: model.Unknown, Explanation: "Not executed (" + reason + "): " + explanation})
 	}
-	for _, selection := range selections {
+	for i, selection := range selections {
 		if executionCtx.Err() != nil {
 			skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
 			continue
@@ -68,6 +68,7 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			skipped(selection, "environment_unavailable", why+"; Radar does not install dependencies. Prepare the environment or declare a reviewed plan test_run rule (with link for untracked dependency directories).")
 			continue
 		}
+		o.step(Step{Stage: StageTest, Index: i + 1, Total: len(selections), Command: selection.Command})
 		executionOptions := o
 		executionOptions.Command = selection.Command
 		executionOptions.CWD = selection.CWD

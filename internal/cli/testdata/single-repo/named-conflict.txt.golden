@@ -1,15 +1,18 @@
 exit 1
 --- stdout
-Radar gate: FAIL — 2 branch(es) onto main @ 84d71f0816ed
+Radar gate: FAIL — branches conflict in backend.py
+2 branches onto main @ 84d71f0816ed
 
-  agent-b  63707b6694a0  1 file(s) changed
-  agent-a  e55503739389  1 file(s) changed
+  agent-b  63707b6694a0  1 file changed
+  agent-a  e55503739389  1 file changed
 
-  Policy: supported-integration; requires textual_merge, no_breaking_contracts
-  ✗  branches conflict
-  ?  no_breaking_contracts unknown: Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts
+  ✗ Merge      branches conflict in backend.py
+  ? Contracts  not verified (unknown) — Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts
+  policy supported-integration requires textual_merge, no_breaking_contracts
 
-  ✗ integration_textual_conflict: Resolve overlapping edits before integration.
+Problems
+  ✗ integration_textual_conflict
+    Resolve overlapping edits before integration.
     look at: agent-b (backend.py); agent-a (backend.py)
     paths: backend.py
     fix: Reconcile the reported paths on the feature branches and repeat merge-check.

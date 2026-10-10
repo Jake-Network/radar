@@ -79,6 +79,8 @@ bin/radar plan "Implement asynchronous exports of organization-scoped datasets" 
 
 Commands print a readable summary; add `--json` for machine output. `radar help` lists commands and `radar help COMMAND` shows each command's flags (a command rejects flags that belong to other commands).
 
+Human output is colored only on a terminal; `--color auto|always|never` overrides the detection, `NO_COLOR` disables it and `FORCE_COLOR` (or `CLICOLOR_FORCE`) enables it for pipes. Color never carries meaning on its own: marks and words are identical with and without it, and `--json`, MCP and captured output are never styled. On a terminal, `radar gate` also shows a transient progress line on stderr that it erases before printing the report. A mistyped command gets the closest match suggested (`radar gaet` → `gate`).
+
 Entity IDs are readable and independent of where the repository is checked out, e.g. `file:backend/models.py`, `class:backend/models.py#ExportSummary`, `function:svc/server.go#Server.Handle`, `contract:contracts/openapi.json#/components/schemas/ExportSummary`. Plans reference them in task `components` and rules; `radar resolve QUERY` finds them.
 
 `plan` writes a context bundle and an **incomplete** versioned plan under `.radar/plans/`. It does not generate an approved architecture. Use the [Claude Code](../integrations/claude-code/README.md) or [Codex](../integrations/codex/SKILL.md) integration, or your agent, to investigate code, compare alternatives, fill the design, and submit the plan for review. `--output path.json` chooses a new repository-relative artifact; existing artifacts are preserved.

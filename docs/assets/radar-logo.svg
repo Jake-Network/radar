@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="radar-logo-title">
+  <title id="radar-logo-title">Radar: a scope whose sweep has found where two branches meet</title>
+  <defs>
+    <radialGradient id="scope" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#123524"/>
+      <stop offset="1" stop-color="#07150e"/>
+    </radialGradient>
+    <linearGradient id="sweep" x1="64" y1="64" x2="104" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3ddc84" stop-opacity="0"/>
+      <stop offset="1" stop-color="#3ddc84" stop-opacity=".45"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#ff5d5d" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#ff5d5d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="64" cy="64" r="61" fill="url(#scope)" stroke="#2a7d55" stroke-width="2"/>
+  <g fill="none" stroke="#3ddc84" stroke-opacity=".28" stroke-width="1.4">
+    <circle cx="64" cy="64" r="45"/>
+    <circle cx="64" cy="64" r="29"/>
+    <circle cx="64" cy="64" r="13"/>
+    <path d="M64 5v118M5 64h118"/>
+  </g>
+  <path d="M64 64 L64 3 A61 61 0 0 1 116.8 33.5 Z" fill="url(#sweep)"/>
+  <path d="M64 64 L116.8 33.5" stroke="#7dffb4" stroke-width="2.4" stroke-linecap="round"/>
+  <g stroke="#3ddc84" stroke-opacity=".55" stroke-width="1.4" stroke-dasharray="3 3" fill="none">
+    <path d="M36 44 Q60 30 92 42"/>
+    <path d="M44 94 Q84 82 92 42"/>
+  </g>
+  <circle cx="36" cy="44" r="3.6" fill="#3ddc84"/>
+  <circle cx="44" cy="94" r="3.6" fill="#3ddc84"/>
+  <circle cx="92" cy="42" r="12" fill="url(#glow)"/>
+  <circle cx="92" cy="42" r="5" fill="#ff5d5d"/>
+  <circle cx="64" cy="64" r="3.4" fill="#7dffb4"/>
+</svg>
