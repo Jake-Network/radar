@@ -557,7 +557,7 @@ func TestHelpShowsOnlyImplementedWorkspaceSurface(t *testing.T) {
 	}
 	// Later stages are not exposed anywhere.
 	for _, text := range []string{help, gateHelp, wsHelp, all} {
-		for _, later := range []string{"connect", "--workspace", "scenario", "consumes.json", "workspace.json"} {
+		for _, later := range []string{"--workspace", "scenario"} {
 			if strings.Contains(text, later) {
 				t.Fatalf("help mentions unimplemented %q:\n%s", later, text)
 			}

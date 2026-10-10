@@ -15,10 +15,15 @@ import (
 
 func workspaceCommand() command {
 	return command{name: "workspace", usage: "radar workspace add PATH [--id ID] [--name NAME] | radar workspace show",
-		summary: "Group repositories so radar gate checks them together from any of them: add PATH, show.",
+		advancedFlags: []string{"fields", "direction", "source", "into"},
+		summary:       "Group repositories so radar gate checks them together from any of them: add PATH, show.",
 		flags: func(fs *flag.FlagSet, o *options) {
 			fs.StringVar(&o.id, "id", "", "repo `ID` for add (default: the main worktree's folder name)")
 			fs.StringVar(&o.name, "name", "", "workspace `NAME` when add creates one (default: this repository's ID)")
+			fs.StringVar(&o.fields, "fields", "", "comma-separated consumer fields for connect")
+			fs.StringVar(&o.direction, "direction", "", "required contract direction for connect: request or response")
+			fs.StringVar(&o.source, "source", "", "optional repository-relative consumer source for connect")
+			fs.Var(listFlag{&o.into}, "into", "write connect files in repo:PATH worktrees (repeatable)")
 		}, run: (*app).workspace}
 }
 
@@ -27,8 +32,11 @@ func (a *app) workspace(o options) int {
 	if len(o.args) > 0 {
 		sub, rest = o.args[0], o.args[1:]
 	}
-	if sub != "add" && (o.id != "" || o.name != "") {
-		return a.fail(wsError("radar workspace add PATH --id ID", "--id and --name apply only to workspace add"))
+	if (sub != "add" && sub != "connect" && o.id != "") || (sub != "add" && o.name != "") {
+		return a.fail(wsError("radar workspace add PATH --id ID", "--id applies to add/connect; --name applies only to add"))
+	}
+	if sub != "connect" && (o.fields != "" || o.direction != "" || o.source != "" || len(o.into) > 0) {
+		return a.fail(wsError("radar help --all", "--fields, --direction, --source and --into apply only to workspace connect"))
 	}
 	if e := a.repository(); e != nil {
 		return a.fail(e)
@@ -44,6 +52,8 @@ func (a *app) workspace(o options) int {
 		return a.workspaceRemove(current, rest[0])
 	case sub == "show" && len(rest) == 0:
 		return a.workspaceShow(current)
+	case sub == "connect" && len(rest) == 2:
+		return a.workspaceConnect(current, rest[0], rest[1], o)
 	}
 	return a.fail(wsError("radar workspace add PATH, or radar workspace show", "usage: radar workspace add PATH [--id ID] [--name NAME] | radar workspace show"))
 }
@@ -181,6 +191,21 @@ func (a *app) workspaceShow(current workspace.Location) int {
 		})
 		return 0
 	}
+	home := ""
+	if i := registry.Named(scope.Workspace); i >= 0 {
+		home = registry.Workspaces[i].Home
+	}
+	team, err := composition.LoadTeam(a.ctx, *scope, home, nil, nil)
+	if err != nil {
+		return a.fail(err)
+	}
+	if team != nil {
+		resolved, e := workspace.ResolveTeamScope(*scope, team.File, team.Identities(a.ctx, *scope))
+		if e != nil {
+			return a.fail(e)
+		}
+		scope = &resolved
+	}
 	repos, err := composition.Collect(a.ctx, composition.Request{Scope: *scope})
 	if err != nil && !errors.Is(err, composition.ErrMoving) {
 		return a.fail(err)
@@ -205,8 +230,22 @@ func (a *app) workspaceShow(current workspace.Location) int {
 		}
 	}
 	report := map[string]any{"workspace": scope.Workspace, "scope_source": scope.Source, "current": scope.Current, "repos": out, "recent_runs": runs, "next": "radar gate"}
+	if team != nil {
+		report["team_file"] = team
+		report["excluded_repos"] = scope.Excluded
+	}
 	a.report(report, func(w io.Writer) {
-		fmt.Fprintf(w, "Workspace %q · %s · scope from the local registry (this machine only)\n", scope.Workspace, plural(len(out), "repo", "repos"))
+		source := "the local registry (this machine only)"
+		if team != nil {
+			source = "the committed team file"
+		}
+		fmt.Fprintf(w, "Workspace %q · %s · scope from %s\n", scope.Workspace, plural(len(out), "repo", "repos"), source)
+		if team != nil && team.Uncommitted {
+			fmt.Fprintf(w, "  ! %s:%s has uncommitted changes; only the base commit is read\n", team.Home, team.Path)
+		}
+		for _, r := range scope.Excluded {
+			fmt.Fprintf(w, "  · %s  registered but not in the team file\n", r.ID)
+		}
 		for _, r := range out {
 			marker := ""
 			if r.ID == scope.Current {

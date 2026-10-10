@@ -19,9 +19,11 @@ type options struct {
 	maxCommands                                                                                                            int
 	args                                                                                                                   []string
 	// Workspace gate and workspace command options.
-	bases, with, only []string
-	again             bool
-	replay, id        string
+	bases, with, only         []string
+	again                     bool
+	replay, id                string
+	fields, direction, source string
+	into                      []string
 }
 
 // listFlag collects a repeatable flag's values in order.
@@ -193,6 +195,7 @@ var advancedUsage = [][2]string{
 	{"radar gate --only REPO", "check only these workspace repositories (repeatable)"},
 	{"radar gate --replay RUN", "rebuild a recorded workspace run's exact commits (run ID or last)"},
 	{"radar workspace remove REPO", "unregister a repository from this repository's workspace"},
+	{"radar workspace connect PRODUCER CONSUMER_REPO --fields a,b --direction request|response [--id ID] [--source PATH] [--into repo:PATH]", "declare a cross-repository contract; commit both written files before gate"},
 }
 
 func printHelp(w io.Writer, all bool) {
