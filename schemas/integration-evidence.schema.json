@@ -131,7 +131,7 @@
               "minimum": 0
             },
             "diagnosis": {
-              "description": "Why a command produced no test outcome, when its output matched a known shape. A fixed sentence with a bounded name; raw output is never stored.",
+              "description": "Why a command produced no test outcome or why the combined source failed to build, when its output matched a known shape. A fixed sentence with a bounded name; raw output is never stored.",
               "type": "object",
               "required": [
                 "kind",
@@ -143,7 +143,8 @@
                   "enum": [
                     "runner_missing",
                     "command_missing",
-                    "module_missing"
+                    "module_missing",
+                    "build_failed"
                   ]
                 },
                 "name": {

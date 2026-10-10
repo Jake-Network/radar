@@ -8,7 +8,7 @@ Radar gate: PASS (static) — static checks passed; tests not run yet
   · skipped: agent-idle (no commits beyond main)
 
   ✓ Merge      branches merge without conflicts
-  ✓ Contracts  no breaking contract change found
+  · Contracts  none declared, so no contract was checked (radar discover proposes candidates)
   ? Tests      combined tree not tested yet (add --run)
   policy supported-integration requires textual_merge, no_breaking_contracts
 

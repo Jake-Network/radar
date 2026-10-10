@@ -64,7 +64,9 @@ func repoLine(r workspaceRepo) (string, string) {
 	case gate.Pass:
 		parts := []string{combined}
 		for _, c := range rep.Gate.Required {
-			if l, ok := workspaceLabels[c.ID]; ok {
+			if contractsUndeclared(c, *rep) {
+				parts = append(parts, "no contracts declared")
+			} else if l, ok := workspaceLabels[c.ID]; ok {
 				parts = append(parts, l[0])
 			} else if c.ID != "textual_merge" {
 				parts = append(parts, c.ID+" passed")

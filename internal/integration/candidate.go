@@ -3,8 +3,10 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -132,11 +134,22 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 	if producerErr != nil || consumerErr != nil {
 		return fail(errors.New("unable to copy integration objects"))
 	}
+	// A shallow source copies history only down to its boundary; the private
+	// repository shares that boundary so Git does not walk missing parents.
+	boundary, e := gitrepo.ShallowBoundary(ctx, root)
+	if e != nil {
+		return fail(e)
+	}
+	if len(boundary) > 0 {
+		if e = os.WriteFile(filepath.Join(temp, ".git", "shallow"), []byte(strings.Join(boundary, "\n")+"\n"), 0o644); e != nil {
+			return fail(e)
+		}
+	}
 	if _, e = gitrepo.RunPrivate(ctx, temp, "checkout", "--quiet", "--detach", c.Base); e != nil {
 		return fail(e)
 	}
 	for _, sha := range c.Inputs {
-		_, mergeErr := gitrepo.RunPrivate(ctx, temp, "merge", "--no-ff", "--no-edit", "--no-verify", sha)
+		out, mergeErr := gitrepo.RunPrivate(ctx, temp, "merge", "--no-ff", "--no-edit", "--no-verify", sha)
 		if mergeErr != nil {
 			unmerged, inspectErr := gitrepo.RunPrivate(ctx, temp, "diff", "--name-only", "--diff-filter=U", "-z")
 			if inspectErr != nil {
@@ -148,6 +161,12 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 				}
 			}
 			if len(c.Conflicts) == 0 {
+				if line := lastLine(out); line != "" {
+					mergeErr = fmt.Errorf("%w: %s", mergeErr, line)
+				}
+				if len(boundary) > 0 {
+					mergeErr = &gitrepo.ShallowHistoryError{Err: mergeErr}
+				}
 				return fail(mergeErr)
 			}
 			sort.Strings(c.Conflicts)
@@ -166,4 +185,10 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 		return fail(e)
 	}
 	return c, nil
+}
+
+// lastLine returns the last non-empty line of bounded Git diagnostics.
+func lastLine(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
 }

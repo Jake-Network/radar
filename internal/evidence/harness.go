@@ -17,10 +17,12 @@ import (
 )
 
 // harnessResult counts recognized, executed test cases. Run excludes skipped
-// cases; Failed includes errors.
+// cases; Failed includes errors. BuildErrors holds compiler errors located in
+// repository source when the test build itself failed.
 type harnessResult struct {
 	Run, Failed, Skipped int
 	Harness              string
+	BuildErrors          []sourceBuildError
 }
 
 var (
@@ -101,6 +103,7 @@ func goTest(argv []string, data []byte) harnessResult {
 			r.Skipped++
 		}
 	}
+	r.BuildErrors = goBuildErrors(data)
 	return r
 }
 
@@ -201,6 +204,7 @@ func cargo(text string) harnessResult {
 		r.Failed += failed
 		r.Skipped += ignored
 	}
+	r.BuildErrors = cargoBuildErrors(text)
 	return r
 }
 

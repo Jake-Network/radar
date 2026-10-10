@@ -66,6 +66,7 @@ func analyzeContracts(ctx context.Context, temp string, r *Report, o Options) er
 	}
 	r.contractUnverified = impact.Unestablished()
 	r.ContractObligations = impact.Obligations
+	r.DeclaredBindings = impact.Bindings
 	r.Checks = append(r.Checks, configurationCheck)
 	r.Findings = append(r.Findings, impact.Findings...)
 	r.Diagnostics = append(r.Diagnostics, impact.Diagnostics...)

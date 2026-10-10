@@ -201,6 +201,10 @@ func outcome(timedOut bool, exit int, result harnessResult, exceeded bool, argv 
 		return model.StatusFailed
 	case timedOut:
 		return model.StatusTimeout
+	case exit != 0 && len(result.BuildErrors) > 0:
+		// The combined source does not compile: an observed failure of the
+		// source, not of the environment.
+		return model.StatusFailed
 	case exit == 0 && result.Failed > 0:
 		return model.StatusFailed
 	case exit == 0 && result.Run > 0 && !exceeded:
