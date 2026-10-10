@@ -172,7 +172,10 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 		if cFamily(a.language) {
 			kind, names = cDefinitionKind(n), cDeclarators(n)
 		}
-		nameNode := names[0]
+		var nameNode *sitter.Node
+		if len(names) > 0 {
+			nameNode = names[0]
+		}
 		if n.Kind() == "method_declaration" {
 			if receiver := n.ChildByFieldName("receiver"); receiver != nil && receiver.NamedChildCount() > 0 {
 				if typ := receiver.NamedChild(0).ChildByFieldName("type"); typ != nil {

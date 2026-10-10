@@ -315,6 +315,21 @@ int main(void) { return total(1, 2); }
 	}
 }
 
+func TestAnonymousRecordMembers(t *testing.T) {
+	for _, file := range []string{"anonymous.c", "anonymous.cpp", "anonymous.h"} {
+		t.Run(file, func(t *testing.T) {
+			got, result := entityKinds(t, file, "struct Outer { union { int x; double y; }; };\n")
+			if len(result.Diagnostics) != 0 || got["Outer.x"] != "symbol" || got["Outer.y"] != "symbol" {
+				t.Fatalf("anonymous union members lost: entities %v diagnostics %+v", got, result.Diagnostics)
+			}
+		})
+	}
+	got, result := entityKinds(t, "anonymous.c", "struct Outer { struct { int x; }; };\n")
+	if len(result.Diagnostics) != 0 || got["Outer.x"] != "symbol" {
+		t.Fatalf("anonymous C struct member lost: entities %v diagnostics %+v", got, result.Diagnostics)
+	}
+}
+
 func TestCppDeclarations(t *testing.T) {
 	got, r := entityKinds(t, "src/inventory.cpp", `#include "inventory.h"
 namespace shop::core {

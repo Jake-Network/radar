@@ -430,16 +430,16 @@ func TestCCBuildFailureEnvironmentNegatives(t *testing.T) {
 func TestCTestAndGoogleTestSummaries(t *testing.T) {
 	ctestOutput := "Test project /tmp/x/build\n    Start 1: inventory\n1/3 Test #1: inventory ........   Passed    0.01 sec\n2/3 Test #2: slow .............***Skipped   0.00 sec\n3/3 Test #3: restock ..........***Failed    0.01 sec\n\n" +
 		"67% tests passed, 1 tests failed out of 3\n\nTotal Test time (real) =   0.03 sec\n\nThe following tests did not run:\n\t  2 - slow (Skipped)\n\nThe following tests FAILED:\n\t  3 - restock (Failed)\n"
-	for _, argv := range [][]string{{"ctest", "--test-dir", "build"}, {"make", "test"}} {
+	for _, argv := range [][]string{{"ctest"}, {"ctest", "--test-dir", "build"}, {"make", "test"}} {
 		r := harnessCounts(argv, []byte(ctestOutput), "")
 		if r.Harness != "ctest" || r.Run != 2 || r.Failed != 1 || r.Skipped != 1 {
 			t.Fatalf("%v: ctest totals %+v", argv, r)
 		}
 	}
-	if r := harnessCounts([]string{"ctest", "--test-dir", "build"}, []byte("100% tests passed, 0 tests failed out of 2\n"), ""); r.Run != 2 || r.Failed != 0 || outcome(false, 0, r, false, nil, nil) != model.StatusPassed {
+	if r := harnessCounts([]string{"ctest"}, []byte("100% tests passed, 0 tests failed out of 2\n"), ""); r.Run != 2 || r.Failed != 0 || outcome(false, 0, r, false, nil, nil) != model.StatusPassed {
 		t.Fatalf("passing ctest %+v", r)
 	}
-	if r := harnessCounts([]string{"ctest", "--test-dir", "build"}, []byte("No tests were found!!!\n"), ""); r.Run != 0 || outcome(false, 0, r, false, []string{"ctest"}, nil) == model.StatusPassed {
+	if r := harnessCounts([]string{"ctest"}, []byte("No tests were found!!!\n"), ""); r.Run != 0 || outcome(false, 0, r, false, []string{"ctest"}, nil) == model.StatusPassed {
 		t.Fatalf("ctest without tests passed %+v", r)
 	}
 	gtestOutput := "[==========] Running 4 tests from 1 test suite.\n[==========] 4 tests from 1 test suite ran. (0 ms total)\n[  PASSED  ] 2 tests.\n[  SKIPPED ] 1 test, listed below:\n[  SKIPPED ] Inventory.Slow\n[  FAILED  ] 1 test, listed below:\n[  FAILED  ] Inventory.Reserve\n\n 1 FAILED TEST\n"

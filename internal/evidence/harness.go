@@ -93,9 +93,9 @@ func uses(argv []string, tool string) bool {
 // arbitrary success output. dir is the command's working directory, used to
 // read absolute compiler paths; empty accepts only relative ones.
 func harnessCounts(argv []string, data []byte, dir string) harnessResult {
-	// A build program runs bare (make, ninja); every other runner needs a
+	// Build programs and CTest can run bare; other runners need a
 	// subcommand or arguments to be recognized.
-	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) {
+	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) && filepath.Base(argv[0]) != "ctest" {
 		return harnessResult{}
 	}
 	text := ansi.ReplaceAllString(string(data), "")

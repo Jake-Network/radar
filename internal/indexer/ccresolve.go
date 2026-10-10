@@ -145,18 +145,32 @@ func (r *resolver) projectRoots(p string) []string {
 // a header found in both is ambiguous and left unresolved.
 func (r *resolver) include(importer string, imp languages.Import) []string {
 	spec := path.Clean(imp.Module)
-	if path.IsAbs(imp.Module) || !within(spec) {
+	if path.IsAbs(imp.Module) {
 		return nil
 	}
+	// Parent-relative includes can stay inside the repository. Validate
+	// the resolved path, rather than the include spelling alone.
+	lookup := func(dir string) []string {
+		candidate := path.Join(dir, spec)
+		if !within(candidate) {
+			return nil
+		}
+		return r.first(candidate)
+	}
 	if !imp.System {
-		if found := r.first(path.Join(path.Dir(importer), spec)); found != nil {
+		if found := lookup(path.Dir(importer)); found != nil {
 			return found
 		}
 	}
 	for _, dir := range r.includeDirs()[importer] {
-		if found := r.first(path.Join(dir, spec)); found != nil {
+		if found := lookup(dir); found != nil {
 			return found
 		}
+	}
+	// An unresolved parent-relative path should not be rebased onto
+	// guessed ancestor or include/src directories.
+	if !within(spec) {
+		return nil
 	}
 	roots := r.projectRoots(importer)
 	if !imp.System {
@@ -166,7 +180,7 @@ func (r *resolver) include(importer string, imp languages.Import) []string {
 		}
 		for dir := path.Dir(importer); dir != limit && dir != "."; {
 			dir = path.Dir(dir)
-			if found := r.first(path.Join(dir, spec)); found != nil {
+			if found := lookup(dir); found != nil {
 				return found
 			}
 		}
@@ -178,7 +192,7 @@ func (r *resolver) include(importer string, imp languages.Import) []string {
 		}
 		var found []string
 		for _, c := range candidates {
-			if r.sources[c] {
+			if within(c) && r.sources[c] {
 				found = append(found, c)
 			}
 		}

@@ -305,6 +305,21 @@ func TestIncludeResolution(t *testing.T) {
 	}
 }
 
+func TestParentRelativeIncludesStayInsideRepository(t *testing.T) {
+	got := indexTree(t, map[string]string{
+		"CMakeLists.txt":   "project(app C)\n",
+		"include/api.h":    "int api(void);\n",
+		"tests/test_api.c": "#include \"../include/api.h\"\nint main(void) { return api(); }\n",
+		"main.c":           "#include \"../include/api.h\"\n#include \"/include/api.h\"\n",
+	})
+	if got["tests/test_api.c -> include/api.h"] != "import_path_resolution:c" {
+		t.Fatalf("repository-contained parent include unresolved: %v", got)
+	}
+	if _, ok := got["main.c -> include/api.h"]; ok {
+		t.Fatalf("include escaping the repository resolved: %v", got)
+	}
+}
+
 func TestCompileCommandsIncludeDirs(t *testing.T) {
 	got := indexTree(t, map[string]string{
 		"compile_commands.json": `[
