@@ -1,5 +1,7 @@
 # Radar 여러 repo·브랜치 변경 검증 기획
 
+> **대체됨.** 이 초기 기획은 [MULTI_REPO.md](../MULTI_REPO.md)로 대체되었다. 여기의 `--repo`, `workspace init`, `--branch repo=ref` 흐름은 채택되지 않았다. 기록용으로만 남긴다.
+
 작성일·수정일: 2026년 10월 10일. 상태: 구현 제안. 아래 workspace 명령, 옵션, 설정 및 출력은 아직 구현되지 않았다. 기존 단일 repo `radar gate`와 구분한다.
 
 ## 제품 목표

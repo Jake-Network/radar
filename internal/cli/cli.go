@@ -19,6 +19,7 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/project"
 	"github.com/Jake-Network/radar/internal/storage"
+	"github.com/Jake-Network/radar/internal/workspace"
 )
 
 // Version is set at release time with -ldflags "-X .../internal/cli.Version=X.Y.Z";
@@ -100,9 +101,9 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 		c.flags(fs, &o)
 	}
 	parseArgs := rest[1:]
-	if c.name == "gate" {
+	if c.name == "gate" || c.name == "workspace" {
 		var e error
-		parseArgs, e = gateFlagArgs(fs, parseArgs)
+		parseArgs, e = interspersedFlagArgs(c.name, fs, parseArgs)
 		if e != nil {
 			return a.fail(e)
 		}
@@ -157,7 +158,10 @@ func (a *app) report(value any, human func(io.Writer)) {
 }
 
 func (a *app) fail(e error) int {
-	if a.machine {
+	var next *workspace.Error
+	if a.machine && errors.As(e, &next) {
+		a.emit(map[string]any{"error": next.Message, "next": next.Next, "status": model.StatusError})
+	} else if a.machine {
 		a.emit(map[string]any{"error": e.Error(), "status": model.StatusError})
 	} else {
 		fmt.Fprintln(a.errout, "radar:", e)

@@ -1,0 +1,154 @@
+exit 1
+{
+  "worktrees": [
+    {
+      "path": "$TMP/repo",
+      "branch": "main",
+      "commit": "84d71f0816ed3829811156266d8ff5fbc4f5dfbf",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    },
+    {
+      "path": "$TMP/worktrees/agent-a",
+      "branch": "agent-a",
+      "commit": "e555037393894ddae030d80479a4def120ea4442",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    },
+    {
+      "path": "$TMP/worktrees/agent-b",
+      "branch": "agent-b",
+      "commit": "63707b6694a073c2adea8a0f7d67ec3b7e676a77",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    }
+  ],
+  "base_ref": "main",
+  "branches": [
+    {
+      "ref": "agent-b",
+      "commit": "63707b6694a073c2adea8a0f7d67ec3b7e676a77",
+      "changed": [
+        "backend.py"
+      ]
+    },
+    {
+      "ref": "agent-a",
+      "commit": "e555037393894ddae030d80479a4def120ea4442",
+      "changed": [
+        "backend.py"
+      ]
+    }
+  ],
+  "attribution": {
+    "1921b983fbd1c2e031ce0532d067096c": {
+      "basis": "files named by the finding",
+      "leads": [
+        {
+          "branch": "agent-b",
+          "files": [
+            "backend.py"
+          ]
+        },
+        {
+          "branch": "agent-a",
+          "files": [
+            "backend.py"
+          ]
+        }
+      ]
+    }
+  },
+  "next": "repair on the branches above, commit, then rerun: radar gate agent-b agent-a",
+  "gate": {
+    "verdict": "fail",
+    "policy": {
+      "version": 1,
+      "name": "supported-integration",
+      "require": [
+        "textual_merge",
+        "no_breaking_contracts"
+      ]
+    },
+    "required_checks": [
+      {
+        "id": "textual_merge",
+        "status": "failed",
+        "evidence": "verified_tool",
+        "explanation": "Git reported unmerged paths in the private candidate."
+      },
+      {
+        "id": "no_breaking_contracts",
+        "status": "unknown",
+        "evidence": "unknown",
+        "explanation": "Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts"
+      }
+    ],
+    "explanation": "Selected policy requirements are not satisfied; inspect required_checks for failed, missing or execution-error evidence."
+  },
+  "coverage": [
+    {
+      "analyzer": "textual_merge",
+      "status": "failed",
+      "analyzed_scope": [
+        "Git reported unmerged paths in the private candidate."
+      ],
+      "excluded_scope": [],
+      "unavailable_capabilities": [],
+      "uncertainty": []
+    }
+  ],
+  "status": "failed",
+  "base": "84d71f0816ed3829811156266d8ff5fbc4f5dfbf",
+  "inputs": [
+    "63707b6694a073c2adea8a0f7d67ec3b7e676a77",
+    "e555037393894ddae030d80479a4def120ea4442"
+  ],
+  "conflicts": [
+    "backend.py"
+  ],
+  "changed": [],
+  "affected": [],
+  "checks": [
+    {
+      "id": "textual_merge",
+      "status": "failed",
+      "evidence": "verified_tool",
+      "explanation": "Git reported unmerged paths in the private candidate."
+    },
+    {
+      "id": "no_breaking_contracts",
+      "status": "unknown",
+      "evidence": "unknown",
+      "explanation": "Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts"
+    }
+  ],
+  "findings": [
+    {
+      "id": "1921b983fbd1c2e031ce0532d067096c",
+      "severity": "error",
+      "evidence": "verified_tool",
+      "code": "integration_textual_conflict",
+      "explanation": "Resolve overlapping edits before integration.",
+      "remediation": "Reconcile the reported paths on the feature branches and repeat merge-check."
+    }
+  ],
+  "diagnostics": [],
+  "limitations": [
+    "Static imports do not prove runtime dependency compatibility.",
+    "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.",
+    "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges."
+  ]
+}

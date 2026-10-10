@@ -1,0 +1,347 @@
+exit 0
+{
+  "worktrees": [
+    {
+      "path": "$TMP/repo",
+      "branch": "main",
+      "commit": "84d71f0816ed3829811156266d8ff5fbc4f5dfbf",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    },
+    {
+      "path": "$TMP/worktrees/agent-backend",
+      "branch": "agent-backend",
+      "commit": "a83463cb9da12bc28735ec41679ce56b939f5baa",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    },
+    {
+      "path": "$TMP/worktrees/agent-frontend",
+      "branch": "agent-frontend",
+      "commit": "2ca59cad7425b35b0bee25e2ed8d72e6658fd95d",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    },
+    {
+      "path": "$TMP/worktrees/agent-idle",
+      "branch": "agent-idle",
+      "commit": "84d71f0816ed3829811156266d8ff5fbc4f5dfbf",
+      "detached": false,
+      "staged": [],
+      "unstaged": [],
+      "untracked": [],
+      "commit_included": true,
+      "uncommitted_included": false
+    }
+  ],
+  "base_ref": "main",
+  "branches": [
+    {
+      "ref": "agent-backend",
+      "commit": "a83463cb9da12bc28735ec41679ce56b939f5baa",
+      "changed": [
+        "backend.py"
+      ]
+    },
+    {
+      "ref": "agent-frontend",
+      "commit": "2ca59cad7425b35b0bee25e2ed8d72e6658fd95d",
+      "changed": [
+        "frontend.ts"
+      ]
+    }
+  ],
+  "skipped_branches": [
+    "agent-idle (no commits beyond main)"
+  ],
+  "attribution": {},
+  "next": "radar gate --run",
+  "verification_proposal": {
+    "status": "incomplete",
+    "commands": [
+      {
+        "id": "cb2e7970c6fbbce89465478e4f11377d",
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "discover",
+          "-s",
+          ".",
+          "-p",
+          "test_checkout.py"
+        ],
+        "cwd": ".",
+        "framework": "unittest",
+        "test_files": [
+          "test_checkout.py"
+        ],
+        "affected": [
+          "backend.py"
+        ],
+        "evidence_reasons": [
+          {
+            "code": "dependency_impact",
+            "explanation": "Test imports a changed file through recorded inferred dependency paths.",
+            "evidence": "inferred",
+            "locations": [
+              {
+                "repository": "",
+                "revision": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
+                "path": "test_checkout.py",
+                "method": "static_test_convention:unittest",
+                "evidence": "inferred"
+              },
+              {
+                "repository": "/tmp/$VOLATILE",
+                "revision": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
+                "path": "test_checkout.py",
+                "line": 3,
+                "method": "import_path_resolution:python",
+                "evidence": "inferred"
+              }
+            ],
+            "related_files": [
+              "backend.py"
+            ]
+          }
+        ],
+        "priority": 80,
+        "tool_available": true
+      }
+    ],
+    "inventory": {
+      "revision": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
+      "tests": [
+        {
+          "id": "70a25ce9e30c1958e7bfa83eaf515082",
+          "path": "test_checkout.py",
+          "framework": "unittest",
+          "package_root": ".",
+          "evidence": {
+            "repository": "",
+            "revision": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
+            "path": "test_checkout.py",
+            "method": "static_test_convention:unittest",
+            "evidence": "inferred"
+          }
+        }
+      ],
+      "diagnostics": [],
+      "manifests": []
+    },
+    "limitations": [
+      "Dynamic imports, external services, path aliases and framework configuration can require additional tests.",
+      "Go modules with concrete package or dependency matches omit unrelated package fallback commands; unrecorded dependencies can still require broader tests.",
+      "Recommendations are inferred static candidates, not complete test coverage or evidence of passing tests.",
+      "Static naming and content markers can match comments or strings; test classification is inferred, not compiler-validated.",
+      "TOML and INI configuration markers are read statically; their syntax and complete runner semantics are not validated.",
+      "Tool availability checks executables only; dependencies, setup and environment are not verified or installed."
+    ]
+  },
+  "gate": {
+    "verdict": "pass",
+    "policy": {
+      "version": 1,
+      "name": "supported-integration",
+      "require": [
+        "textual_merge",
+        "no_breaking_contracts"
+      ]
+    },
+    "required_checks": [
+      {
+        "id": "textual_merge",
+        "status": "passed",
+        "evidence": "verified_tool",
+        "explanation": "Git combined all selected commits without textual conflicts."
+      },
+      {
+        "id": "no_breaking_contracts",
+        "status": "passed",
+        "evidence": "verified_static",
+        "explanation": "No supported authoritative contract incompatibility was found and every declared obligation was analyzed; unknown and inferred relationships remain visible in coverage."
+      }
+    ],
+    "explanation": "All selected policy requirements passed; this does not establish universal software correctness."
+  },
+  "coverage": [
+    {
+      "analyzer": "textual_merge",
+      "status": "passed",
+      "analyzed_scope": [
+        "Git combined all selected commits without textual conflicts."
+      ],
+      "excluded_scope": [],
+      "unavailable_capabilities": [],
+      "uncertainty": []
+    },
+    {
+      "analyzer": "declared_contract_configuration",
+      "status": "passed",
+      "analyzed_scope": [
+        "Declared contract configuration is absent or readable at both checkpoints."
+      ],
+      "excluded_scope": [],
+      "unavailable_capabilities": [],
+      "uncertainty": []
+    },
+    {
+      "analyzer": "declared_contracts",
+      "status": "incomplete",
+      "analyzed_scope": [],
+      "excluded_scope": [],
+      "unavailable_capabilities": [],
+      "uncertainty": [
+        "Analyzed 0 of 0 declared bindings."
+      ]
+    },
+    {
+      "analyzer": "discovered_contracts",
+      "status": "incomplete",
+      "analyzed_scope": [],
+      "excluded_scope": [
+        "Static imports do not prove runtime dependency compatibility.",
+        "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.",
+        "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges.",
+        "Candidates are proposed static relationships, never proof of runtime behavior or automatically accepted bindings. Input is limited to 10000 supported files, 64 MiB total and 4 MiB per file; dependency and state directories are excluded.",
+        "Tree-sitter and bounded local import resolution support literal FastAPI/Pydantic producers and typed TypeScript fetch/Axios consumers; supported facts carry exact source provenance.",
+        "Dynamic registration, computed schemas, validators, middleware, runtime URL origins, complex inheritance and ambiguous exports remain unsupported or uncertain. Discovery is incomplete even when no findings appear."
+      ],
+      "unavailable_capabilities": [],
+      "uncertainty": [
+        "Compared supported discovered producer and consumer relationships; candidates remain proposed."
+      ]
+    },
+    {
+      "analyzer": "dependency_compatibility",
+      "status": "unknown",
+      "analyzed_scope": [],
+      "excluded_scope": [],
+      "unavailable_capabilities": [
+        "compiler-resolved and runtime dependency behavior"
+      ],
+      "uncertainty": [
+        "Resolved static dependency neighborhood; runtime and build compatibility requires execution."
+      ]
+    },
+    {
+      "analyzer": "integration_execution",
+      "status": "unknown",
+      "analyzed_scope": [],
+      "excluded_scope": [],
+      "unavailable_capabilities": [
+        "observed test evidence: no successful recognized test execution supplied"
+      ],
+      "uncertainty": [
+        "No combined test evidence. Authorize an explicit command or --suite recommended."
+      ]
+    }
+  ],
+  "status": "incomplete",
+  "base": "84d71f0816ed3829811156266d8ff5fbc4f5dfbf",
+  "inputs": [
+    "a83463cb9da12bc28735ec41679ce56b939f5baa",
+    "2ca59cad7425b35b0bee25e2ed8d72e6658fd95d"
+  ],
+  "candidate_commit": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
+  "candidate_tree": "63b7e79563c3064d79ce16836217b291cbf05eb0",
+  "conflicts": [],
+  "changed": [
+    "backend.py",
+    "frontend.ts"
+  ],
+  "affected": [
+    "test_checkout.py"
+  ],
+  "affected_by": {
+    "test_checkout.py": [
+      "backend.py"
+    ]
+  },
+  "checks": [
+    {
+      "id": "textual_merge",
+      "status": "passed",
+      "evidence": "verified_tool",
+      "explanation": "Git combined all selected commits without textual conflicts."
+    },
+    {
+      "id": "declared_contract_configuration",
+      "status": "passed",
+      "evidence": "verified_static",
+      "explanation": "Declared contract configuration is absent or readable at both checkpoints."
+    },
+    {
+      "id": "declared_contracts",
+      "status": "incomplete",
+      "evidence": "verified_static",
+      "explanation": "Analyzed 0 of 0 declared bindings."
+    },
+    {
+      "id": "discovered_contracts",
+      "status": "incomplete",
+      "evidence": "proposed",
+      "explanation": "Compared supported discovered producer and consumer relationships; candidates remain proposed."
+    },
+    {
+      "id": "dependency_compatibility",
+      "status": "unknown",
+      "evidence": "inferred",
+      "explanation": "Resolved static dependency neighborhood; runtime and build compatibility requires execution."
+    },
+    {
+      "id": "integration_execution",
+      "status": "unknown",
+      "evidence": "unknown",
+      "explanation": "No combined test evidence. Authorize an explicit command or --suite recommended."
+    },
+    {
+      "id": "no_breaking_contracts",
+      "status": "passed",
+      "evidence": "verified_static",
+      "explanation": "No supported authoritative contract incompatibility was found and every declared obligation was analyzed; unknown and inferred relationships remain visible in coverage."
+    }
+  ],
+  "findings": [],
+  "diagnostics": [
+    {
+      "message": "explicit contract bindings unavailable: committed file \".radar/contracts.json\": file does not exist",
+      "severity": "warning"
+    },
+    {
+      "path": "test_checkout.py",
+      "message": "model Checkout inheritance is unresolved or unsupported",
+      "severity": "warning"
+    },
+    {
+      "path": "test_checkout.py",
+      "message": "model Checkout inheritance is unresolved or unsupported",
+      "severity": "warning"
+    },
+    {
+      "message": "Explicit contract graph unavailable: explicit contract bindings unavailable: committed file \".radar/contracts.json\": file does not exist",
+      "severity": "info"
+    }
+  ],
+  "limitations": [
+    "Static imports do not prove runtime dependency compatibility.",
+    "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.",
+    "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges.",
+    "Candidates are proposed static relationships, never proof of runtime behavior or automatically accepted bindings. Input is limited to 10000 supported files, 64 MiB total and 4 MiB per file; dependency and state directories are excluded.",
+    "Tree-sitter and bounded local import resolution support literal FastAPI/Pydantic producers and typed TypeScript fetch/Axios consumers; supported facts carry exact source provenance.",
+    "Dynamic registration, computed schemas, validators, middleware, runtime URL origins, complex inheritance and ambiguous exports remain unsupported or uncertain. Discovery is incomplete even when no findings appear."
+  ]
+}

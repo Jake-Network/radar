@@ -20,6 +20,8 @@ type Candidate struct {
 	Producer    string             `json:"producer"`
 	Consumer    string             `json:"consumer,omitempty"`
 	Contract    string             `json:"contract"`
+	SchemaPath  string             `json:"schema_path,omitempty"`
+	Pointer     string             `json:"pointer,omitempty"`
 	Endpoint    string             `json:"endpoint,omitempty"`
 	Method      string             `json:"method,omitempty"`
 	Fields      []string           `json:"fields"`
@@ -27,11 +29,23 @@ type Candidate struct {
 	Locations   []model.Provenance `json:"locations"`
 	Ambiguities []string           `json:"ambiguities,omitempty"`
 }
+
+// ConsumerUse records a literal typed request with no resolved local producer.
+// Type identifies a statically resolved type, not a runtime contract.
+type ConsumerUse struct {
+	Path      string             `json:"path"`
+	Endpoint  string             `json:"endpoint"`
+	Method    string             `json:"method"`
+	Type      string             `json:"type"`
+	Fields    []string           `json:"fields"`
+	Locations []model.Provenance `json:"locations"`
+}
 type Report struct {
 	Status           model.Status       `json:"status"`
 	Revision         string             `json:"revision"`
 	Schemas          []Schema           `json:"schemas"`
 	Candidates       []Candidate        `json:"candidates"`
+	Consumers        []ConsumerUse      `json:"consumers,omitempty"`
 	ProposedManifest contracts.Manifest `json:"proposed_manifest"`
 	Diagnostics      []model.Diagnostic `json:"diagnostics"`
 	Limitations      []string           `json:"limitations"`

@@ -1,0 +1,5 @@
+exit 2
+{
+  "error": "git rev-parse: exit status 128: fatal: Needed a single revision",
+  "status": "error"
+}

@@ -37,7 +37,7 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
-	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base) in private Git state and report conflicts, contract changes and failing evidence with the branches to look at, plus the tests that cover the change. Never executes repository code; a human runs `radar gate --run` to test the combined tree.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
+	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base) in private Git state and report conflicts, contract changes and failing evidence with the branches to look at, plus the tests that cover the change. In a workspace (radar workspace add) it checks every workspace repository, each on its own; cross-repo links are not checked yet. Repositories outside the workspace are not reachable here: a human registers them with radar workspace add. Never executes repository code; a human runs `radar gate --run` to test the combined tree.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("targets", "", "string", "comma-separated REPO:REF or REF targets; in a workspace, unnamed repos take part at their base", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("suite", "suite", "string", "preview a bounded selection without execution: targeted, balanced or full", false), p("max_commands", "max-commands", "integer", "command budget for the suite preview", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
@@ -277,6 +277,9 @@ func compactVerification(raw string) string {
 	if json.Unmarshal([]byte(raw), &full) != nil {
 		return raw
 	}
+	if _, ok := full["scope_summary"]; ok {
+		return compactWorkspace(full)
+	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
 	for _, key := range []string{"gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error"} {
 		if v, ok := full[key]; ok {
@@ -513,4 +516,82 @@ func agentBrief(full map[string]any) map[string]any {
 	}
 	brief["verify_next"] = bound(next, 8)
 	return brief
+}
+
+// compactWorkspace bounds a workspace gate report: the scope, each
+// repository's verdict and selection, what must be repaired, and the next
+// command. Full reports stay available with detail=true or CLI --json.
+func compactWorkspace(full map[string]any) string {
+	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for each repository's full report.", "suggested_repair_attempts": 2}
+	for _, key := range []string{"version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "cross_repo", "cross_repo_execution", "again", "replay_of", "digest", "run_id", "record_error", "verdict", "next", "configuration_inputs", "team_file", "excluded_repos"} {
+		if v, ok := full[key]; ok {
+			out[key] = v
+		}
+	}
+	repos := []any{}
+	list := func(v any) []any { l, _ := v.([]any); return l }
+	for _, raw := range list(full["repos"]) {
+		r, _ := raw.(map[string]any)
+		entry := map[string]any{}
+		for _, key := range []string{"id", "base_ref", "base", "base_source", "selection_source", "verdict", "error", "next", "attribution", "skipped_branches", "detached"} {
+			if v, ok := r[key]; ok {
+				entry[key] = v
+			}
+		}
+		branches := []any{}
+		for _, b := range list(r["branches"]) {
+			branch, _ := b.(map[string]any)
+			branches = append(branches, map[string]any{"ref": branch["ref"], "commit": branch["commit"], "source": branch["source"], "changed_count": len(list(branch["changed"]))})
+		}
+		entry["branches"] = branches
+		dirty := []any{}
+		for _, d := range list(r["dirty"]) {
+			wt, _ := d.(map[string]any)
+			count := len(list(wt["staged"])) + len(list(wt["unstaged"])) + len(list(wt["untracked"]))
+			dirty = append(dirty, map[string]any{"path": wt["path"], "branch": wt["branch"], "selected": wt["selected"], "uncommitted_count": count})
+		}
+		entry["dirty"] = dirty
+		if report, ok := r["report"].(map[string]any); ok {
+			brief := agentBrief(report)
+			entry["must_repair"] = brief["must_repair"]
+			entry["verify_next"] = brief["verify_next"]
+			entry["tests"] = brief["tests"]
+			if g, ok := report["gate"].(map[string]any); ok {
+				entry["required_checks"] = g["required_checks"]
+			}
+			entry["conflicts"] = report["conflicts"]
+			entry["candidate_tree"] = report["candidate_tree"]
+		}
+		repos = append(repos, entry)
+	}
+	out["repos"] = repos
+	if raw, exists := full["links"]; exists {
+		links := []any{}
+		for _, item := range list(raw) {
+			l, _ := item.(map[string]any)
+			entry := map[string]any{"id": l["id"], "producer": l["producer"], "consumer": l["consumer"], "status": l["status"]}
+			cells := []any{}
+			for _, item := range list(l["cells"]) {
+				c, _ := item.(map[string]any)
+				if c["status"] != "passed" {
+					cells = append(cells, c)
+				}
+			}
+			entry["unverified_cells"] = cells
+			links = append(links, entry)
+		}
+		out["links"] = links
+	}
+	if raw, exists := full["suggested_links"]; exists {
+		suggestions := list(raw)
+		if len(suggestions) > 3 {
+			suggestions = suggestions[:3]
+		}
+		out["suggested_links"] = suggestions
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }

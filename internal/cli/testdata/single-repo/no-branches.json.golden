@@ -1,0 +1,5 @@
+exit 2
+{
+  "error": "no branches to combine: no worktree branch has commits beyond main; name them, e.g. radar gate feature/a feature/b",
+  "status": "error"
+}

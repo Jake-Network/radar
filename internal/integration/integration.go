@@ -147,6 +147,21 @@ func (w *cappedWriter) Write(p []byte) (int, error) {
 }
 func (w *cappedWriter) String() string { return string(w.data) }
 
+// UnsupportedEntryError reports a tree entry the private candidate cannot
+// reproduce faithfully: a symlink, a submodule or an unsafe path.
+type UnsupportedEntryError struct {
+	Path   string
+	Unsafe error
+}
+
+func (e *UnsupportedEntryError) Error() string {
+	if e.Unsafe != nil {
+		return "unsafe tree path: " + e.Unsafe.Error()
+	}
+	return "preview refuses symlink or submodule: " + e.Path
+}
+func (e *UnsupportedEntryError) Unwrap() error { return e.Unsafe }
+
 func validateTree(ctx context.Context, root, sha string) error {
 	entries, e := gitrepo.Entries(ctx, root, sha)
 	if e != nil {
@@ -154,80 +169,84 @@ func validateTree(ctx context.Context, root, sha string) error {
 	}
 	for _, v := range entries {
 		if _, e := pathutil.RepoRelative(v.Path); e != nil {
-			return fmt.Errorf("unsafe tree path: %w", e)
+			return &UnsupportedEntryError{Path: v.Path, Unsafe: e}
 		}
 		if v.Mode != "100644" && v.Mode != "100755" {
-			return fmt.Errorf("preview refuses symlink or submodule: %s", v.Path)
+			return &UnsupportedEntryError{Path: v.Path}
 		}
 	}
 	return nil
 }
 
-func Preview(ctx context.Context, root string, o Options) (Report, error) {
-	r := Report{Status: model.StatusIncomplete, Inputs: []string{}, Conflicts: []string{}, Changed: []string{}, Affected: []string{}, Checks: []Check{}, Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Limitations: []string{"Static imports do not prove runtime dependency compatibility.", "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.", "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges."}}
-	if len(o.Branches) < 1 {
-		return r, errors.New("at least one branch required")
+// Candidate is the combined commit built from pinned inputs in a private Git
+// repository. Commit and Tree are empty when Conflicts is not. Close removes
+// the private repository; the source repository is never written.
+type Candidate struct {
+	// Source is the repository the objects were copied from.
+	Source string
+	// Dir is the private repository holding the candidate checkout.
+	Dir       string
+	Base      string
+	Inputs    []string
+	Commit    string
+	Tree      string
+	Conflicts []string
+}
+
+// Close removes the private repository. It is safe to call more than once.
+func (c *Candidate) Close() error {
+	if c == nil || c.Dir == "" {
+		return nil
 	}
-	if o.Suite != "" {
-		if _, e := testselection.NormalizeMode(o.Suite); e != nil {
-			return r, e
-		}
-	}
-	if o.MaxCommands < 0 || o.MaxCommands > 256 {
-		return r, errors.New("max commands must be between 1 and 256")
-	}
-	if o.Suite != "" && len(o.Command) > 0 {
-		return r, errors.New("--suite cannot be combined with an explicit command")
-	}
-	if o.Verify && (!o.AllowExecution || (len(o.Command) == 0 && o.Suite == "")) {
-		return r, errors.New("--verify requires --allow-execution and a command after --")
-	}
-	if !o.Verify && (o.AllowExecution || len(o.Command) > 0 || o.Suite != "") {
-		return r, errors.New("execution arguments require --verify")
-	}
-	if o.Timeout == 0 {
-		o.Timeout = 2 * time.Minute
-	}
-	if o.Timeout <= 0 || o.Timeout > 30*time.Minute {
-		return r, errors.New("timeout must be positive and at most 30 minutes")
-	}
-	if o.Plan != nil {
-		o.PlanDigest = planning.Digest(*o.Plan)
-	}
+	dir := c.Dir
+	c.Dir = ""
+	return os.RemoveAll(dir)
+}
+
+// BuildCandidate pins base and branches to commit SHAs and merges the
+// branches, in order, onto the base in a private repository. Without branches
+// the candidate is the base itself. Textual conflicts are reported in
+// Conflicts rather than as an error. The caller must Close the candidate.
+func BuildCandidate(ctx context.Context, root, base string, branches []string) (*Candidate, error) {
+	c := &Candidate{Source: root, Inputs: []string{}, Conflicts: []string{}}
 	var e error
-	r.Base, e = gitrepo.Resolve(ctx, root, o.Base)
+	c.Base, e = gitrepo.Resolve(ctx, root, base)
 	if e != nil {
-		return r, e
+		return c, e
 	}
-	for _, ref := range o.Branches {
+	for _, ref := range branches {
 		sha, e := gitrepo.Resolve(ctx, root, ref)
 		if e != nil {
-			return r, e
+			return c, e
 		}
-		r.Inputs = append(r.Inputs, sha)
+		c.Inputs = append(c.Inputs, sha)
 	}
-	for _, sha := range append([]string{r.Base}, r.Inputs...) {
+	for _, sha := range append([]string{c.Base}, c.Inputs...) {
 		if e = validateTree(ctx, root, sha); e != nil {
-			return r, e
+			return c, e
 		}
 	}
 	temp, e := os.MkdirTemp("", "radar-integration-")
 	if e != nil {
-		return r, e
+		return c, e
 	}
-	defer os.RemoveAll(temp)
+	c.Dir = temp
+	fail := func(e error) (*Candidate, error) {
+		c.Close()
+		return c, e
+	}
 	if _, e = run(ctx, temp, "init", "--quiet"); e != nil {
-		return r, e
+		return fail(e)
 	}
 	// Copy immutable objects through a pack stream. No alternates, hard links,
 	// clone hooks, source config copying, source refs or source objects are written.
 	copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	producer := command(copyCtx, root, "pack-objects", "--stdout", "--revs")
-	producer.Stdin = strings.NewReader(strings.Join(append([]string{r.Base}, r.Inputs...), "\n") + "\n")
+	producer.Stdin = strings.NewReader(strings.Join(append([]string{c.Base}, c.Inputs...), "\n") + "\n")
 	pipe, e := producer.StdoutPipe()
 	if e != nil {
-		return r, e
+		return fail(e)
 	}
 	consumer := command(copyCtx, temp, "index-pack", "--stdin")
 	consumer.Stdin = pipe
@@ -235,60 +254,140 @@ func Preview(ctx context.Context, root string, o Options) (Report, error) {
 	consumer.Stderr = io.Discard
 	producer.Stderr = io.Discard
 	if e = consumer.Start(); e != nil {
-		return r, e
+		return fail(e)
 	}
 	if e = producer.Start(); e != nil {
 		_ = pipe.Close()
 		_ = consumer.Wait()
-		return r, e
+		return fail(e)
 	}
 	producerErr := producer.Wait()
 	consumerErr := consumer.Wait()
 	if producerErr != nil || consumerErr != nil {
-		return r, errors.New("unable to copy integration objects")
+		return fail(errors.New("unable to copy integration objects"))
 	}
-	if _, e = run(ctx, temp, "checkout", "--quiet", "--detach", r.Base); e != nil {
-		return r, e
+	if _, e = run(ctx, temp, "checkout", "--quiet", "--detach", c.Base); e != nil {
+		return fail(e)
 	}
-	for _, sha := range r.Inputs {
+	for _, sha := range c.Inputs {
 		_, mergeErr := run(ctx, temp, "merge", "--no-ff", "--no-edit", "--no-verify", sha)
 		if mergeErr != nil {
 			unmerged, inspectErr := run(ctx, temp, "diff", "--name-only", "--diff-filter=U", "-z")
 			if inspectErr != nil {
-				return r, inspectErr
+				return fail(inspectErr)
 			}
 			for _, p := range strings.Split(unmerged, "\x00") {
 				if p != "" {
-					r.Conflicts = append(r.Conflicts, p)
+					c.Conflicts = append(c.Conflicts, p)
 				}
 			}
-			if len(r.Conflicts) == 0 {
-				return r, mergeErr
+			if len(c.Conflicts) == 0 {
+				return fail(mergeErr)
 			}
-			sort.Strings(r.Conflicts)
-			r.Status = model.StatusFailed
-			r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusFailed, Evidence: model.VerifiedTool, Explanation: "Git reported unmerged paths in the private candidate."})
-			f := model.NewFinding("integration_textual_conflict", "Resolve overlapping edits before integration.", model.VerifiedTool)
-			f.Severity = model.SeverityError
-			f.Remediation = "Reconcile the reported paths on the feature branches and repeat merge-check."
-			r.Findings = append(r.Findings, f)
-			// No candidate exists, so no contract obligation was analyzed.
-			r.contractUnverified = []string{"combined candidate could not be built because of textual conflicts"}
-			applyGate(&r, o)
-			return r, nil
+			sort.Strings(c.Conflicts)
+			return c, nil
 		}
 	}
-	r.CandidateCommit, e = gitrepo.Resolve(ctx, temp, "HEAD")
+	c.Commit, e = gitrepo.Resolve(ctx, temp, "HEAD")
+	if e != nil {
+		return fail(e)
+	}
+	c.Tree, e = run(ctx, temp, "rev-parse", "HEAD^{tree}")
+	if e != nil {
+		return fail(e)
+	}
+	if e = validateTree(ctx, temp, c.Commit); e != nil {
+		return fail(e)
+	}
+	return c, nil
+}
+
+func newReport() Report {
+	return Report{Status: model.StatusIncomplete, Inputs: []string{}, Conflicts: []string{}, Changed: []string{}, Affected: []string{}, Checks: []Check{}, Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Limitations: []string{"Static imports do not prove runtime dependency compatibility.", "Only the explicitly selected verification commands are observed; no comprehensive test coverage claim.", "Preview is a private filesystem, not an OS sandbox. Verification code inherits host privileges."}}
+}
+
+// validate checks execution options and fills defaults. It does not use the
+// candidate, so invocation errors precede any Git work.
+func validate(o Options) (Options, error) {
+	if o.Suite != "" {
+		if _, e := testselection.NormalizeMode(o.Suite); e != nil {
+			return o, e
+		}
+	}
+	if o.MaxCommands < 0 || o.MaxCommands > 256 {
+		return o, errors.New("max commands must be between 1 and 256")
+	}
+	if o.Suite != "" && len(o.Command) > 0 {
+		return o, errors.New("--suite cannot be combined with an explicit command")
+	}
+	if o.Verify && (!o.AllowExecution || (len(o.Command) == 0 && o.Suite == "")) {
+		return o, errors.New("--verify requires --allow-execution and a command after --")
+	}
+	if !o.Verify && (o.AllowExecution || len(o.Command) > 0 || o.Suite != "") {
+		return o, errors.New("execution arguments require --verify")
+	}
+	if o.Timeout == 0 {
+		o.Timeout = 2 * time.Minute
+	}
+	if o.Timeout <= 0 || o.Timeout > 30*time.Minute {
+		return o, errors.New("timeout must be positive and at most 30 minutes")
+	}
+	if o.Plan != nil {
+		o.PlanDigest = planning.Digest(*o.Plan)
+	}
+	return o, nil
+}
+
+// Preview builds the candidate for o.Base and o.Branches, analyzes it and
+// removes the private repository before returning.
+func Preview(ctx context.Context, root string, o Options) (Report, error) {
+	r := newReport()
+	if len(o.Branches) < 1 {
+		return r, errors.New("at least one branch required")
+	}
+	o, e := validate(o)
 	if e != nil {
 		return r, e
 	}
-	r.CandidateTree, e = run(ctx, temp, "rev-parse", "HEAD^{tree}")
+	c, e := BuildCandidate(ctx, root, o.Base, o.Branches)
+	defer c.Close()
+	if e != nil {
+		r.Base = c.Base
+		r.Inputs = c.Inputs
+		return r, e
+	}
+	return Analyze(ctx, c, o)
+}
+
+// Analyze checks a built candidate: contracts, discovered relationships,
+// dependency impact, test selection and, when authorized, execution. o.Base
+// and o.Branches are ignored; the candidate's pinned inputs are analyzed.
+func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
+	r := newReport()
+	o, e := validate(o)
 	if e != nil {
 		return r, e
 	}
-	if e = validateTree(ctx, temp, r.CandidateCommit); e != nil {
-		return r, e
+	if c == nil || (c.Dir == "" && len(c.Conflicts) == 0) {
+		return r, errors.New("candidate is not available")
 	}
+	temp := c.Dir
+	r.Base = c.Base
+	r.Inputs = append(r.Inputs, c.Inputs...)
+	if len(c.Conflicts) > 0 {
+		r.Conflicts = append(r.Conflicts, c.Conflicts...)
+		r.Status = model.StatusFailed
+		r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusFailed, Evidence: model.VerifiedTool, Explanation: "Git reported unmerged paths in the private candidate."})
+		f := model.NewFinding("integration_textual_conflict", "Resolve overlapping edits before integration.", model.VerifiedTool)
+		f.Severity = model.SeverityError
+		f.Remediation = "Reconcile the reported paths on the feature branches and repeat merge-check."
+		r.Findings = append(r.Findings, f)
+		// No candidate exists, so no contract obligation was analyzed.
+		r.contractUnverified = []string{"combined candidate could not be built because of textual conflicts"}
+		applyGate(&r, o)
+		return r, nil
+	}
+	r.CandidateCommit, r.CandidateTree = c.Commit, c.Tree
 	r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusPassed, Evidence: model.VerifiedTool, Explanation: "Git combined all selected commits without textual conflicts."})
 	r.Changed, e = gitrepo.ChangedFiles(ctx, temp, r.Base, r.CandidateCommit)
 	if e != nil {

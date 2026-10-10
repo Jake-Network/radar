@@ -1,0 +1,4 @@
+exit 2
+--- stdout
+--- stderr
+radar: no branches to combine: no worktree branch has commits beyond main; name them, e.g. radar gate feature/a feature/b
