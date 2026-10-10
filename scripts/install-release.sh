@@ -20,7 +20,7 @@ while (($#)); do
     esac
 done
 if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-    printf 'Specify an explicit published version, for example --version v0.1.0.\n' >&2
+    printf 'Specify an explicit published version, for example --version v0.1.1.\n' >&2
     exit 2
 fi
 case "$(uname -s)" in

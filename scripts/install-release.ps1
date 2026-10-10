@@ -90,7 +90,7 @@ function Invoke-RadarInstall {
         [scriptblock]$Download = ${function:Save-RadarDownload},
         [scriptblock]$CheckVersion = { param($binary) $result = & $binary version; if ($LASTEXITCODE -ne 0) { throw 'radar version failed.' }; $result })
     if ($ReleaseVersion -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') {
-        throw 'Specify an explicit published version, for example -Version v0.1.0.'
+        throw 'Specify an explicit published version, for example -Version v0.1.1.'
     }
     if ($Architecture -ne 'X64') { throw "Windows architecture $Architecture is unsupported; build from source on other systems." }
     if ([string]::IsNullOrWhiteSpace($InstallDirectory)) { throw 'Installation directory cannot be empty.' }

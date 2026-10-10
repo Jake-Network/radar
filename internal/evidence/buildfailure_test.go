@@ -105,7 +105,12 @@ func TestCargoBuildFailure(t *testing.T) {
 // Compilers driven by build tools print absolute paths inside the private
 // snapshot; only those, not toolchain or cache paths, name repository source.
 func TestAbsoluteSnapshotPaths(t *testing.T) {
-	dir := t.TempDir()
+	// Resolve the temporary root first (macOS reports /var as /private/var),
+	// so the link below is the only symlink between dir and inside.
+	dir, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
 	link := filepath.Join(t.TempDir(), "link")
 	if e := os.Symlink(dir, link); e != nil {
 		t.Fatal(e)

@@ -75,8 +75,10 @@ func goldenRepo(t *testing.T, branches map[string]map[string]string) (string, st
 	return root, base
 }
 
+// The private candidate lives under the host's temporary directory (/tmp on
+// Linux, /private/var/folders/... on macOS), so its whole path is volatile.
 var goldenVolatile = []*regexp.Regexp{
-	regexp.MustCompile(`radar-integration-[0-9]+`),
+	regexp.MustCompile(`(?:/[^/\s"]+)*/radar-integration-[0-9]+`),
 }
 
 func normalizeGolden(s, base string) string {

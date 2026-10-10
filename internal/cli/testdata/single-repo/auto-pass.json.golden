@@ -105,7 +105,7 @@ exit 0
                 "evidence": "inferred"
               },
               {
-                "repository": "/tmp/$VOLATILE",
+                "repository": "$VOLATILE",
                 "revision": "1a21186e60c4ce23e5fed1f25f92fc6e967641bf",
                 "path": "test_checkout.py",
                 "line": 3,

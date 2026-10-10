@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.1.0 — first public release
+## 0.1.1 — first published release
+
+Same behavior as 0.1.0. The `v0.1.0` tag failed macOS release qualification
+because two test fixtures assumed temporary files live under `/tmp`, so no
+0.1.0 binaries were published. 0.1.1 fixes those tests.
+
+## 0.1.0
 
 Radar checks what parallel coding-agent branches do **together** before they
 merge: it combines committed branches in private Git state and reports
@@ -62,5 +68,5 @@ conflicts, declared contract changes, impact and the tests to run, and with
 
 Pre-release development used milestone numbers 0.1–0.4. A `v0.4.0` tag
 was pushed but never published, and Go's module proxy cached it, so `go.mod`
-retracts v0.4.0 and v0.4.1. Use v0.1.0 or later. See
+retracts v0.4.0 and v0.4.1. Use v0.1.1 or later. See
 [RELEASING](docs/RELEASING.md).
