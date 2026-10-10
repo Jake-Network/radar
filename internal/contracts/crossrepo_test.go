@@ -189,3 +189,44 @@ func TestCheckLinkNewDeclarationAndMissingDirection(t *testing.T) {
 		t.Fatal("new link should use candidate declaration", r)
 	}
 }
+
+func TestCheckLinkMalformedBaselineCannotPass(t *testing.T) {
+	const schema = `{"properties":{"x":{"type":"string"}}}`
+	for _, side := range []string{"consumer", "link"} {
+		t.Run(side, func(t *testing.T) {
+			in := linkInput(t, schema, schema)
+			if side == "consumer" {
+				in.ConsumerBaseState = "invalid"
+			} else {
+				in.LinkBaseState = "invalid"
+			}
+			r := CheckLink(in)
+			if r.Status != model.StatusIncomplete || r.Cells[3].Reason == "" {
+				t.Fatalf("malformed baseline hidden by candidate: %+v", r)
+			}
+		})
+	}
+}
+
+func TestCheckLinkRetirementMustCoverDroppedObligation(t *testing.T) {
+	const schema = `{"properties":{"order":{"properties":{"name":{"type":"string"},"total":{"type":"number"}}},"x":{"type":"string"}}}`
+	for _, tc := range []struct {
+		name, dropped, retired string
+		want                   model.Status
+	}{
+		{"descendant cannot retire parent", "order", "order.name", model.StatusIncomplete},
+		{"same field retires obligation", "order", "order", model.StatusPassed},
+		{"parent retires descendant", "order.total", "order", model.StatusPassed},
+		{"sibling does not retire field", "order.total", "order.name", model.StatusIncomplete},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := linkInput(t, schema, schema)
+			in.ConsumerBase = []string{"x", tc.dropped}
+			in.ConsumerCandidate = []string{"x"}
+			in.Retirements = []Retirement{{ID: in.ID, Fields: []string{tc.retired}, Reason: "consumer migrated"}}
+			if r := CheckLink(in); r.Status != tc.want {
+				t.Fatalf("retirement coverage: %+v, want %s", r, tc.want)
+			}
+		})
+	}
+}

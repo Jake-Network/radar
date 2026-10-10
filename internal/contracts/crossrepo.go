@@ -66,7 +66,11 @@ func CheckLink(in LinkInput) LinkResult {
 				return true
 			}
 			for _, f := range ret.Fields {
-				if field != "" && FieldOverlaps(f, field) {
+				// Retirement must cover the entire dropped obligation. A
+				// descendant retires only part of its enclosing object.
+				declared := strings.ReplaceAll(field, "[]", "")
+				coverage := strings.ReplaceAll(f, "[]", "")
+				if field != "" && (declared == coverage || strings.HasPrefix(declared, coverage+".")) {
 					return true
 				}
 			}
@@ -185,6 +189,14 @@ func CheckLink(in LinkInput) LinkResult {
 		}
 		if c == 1 && obligationReason != "" {
 			cell.Reason = obligationReason
+			if cell.Status != model.StatusFailed {
+				cell.Status = model.StatusIncomplete
+			}
+		}
+		if c == 1 && (states[0] == "invalid" || linkStates[0] == "invalid") {
+			// Candidate declarations cannot reconstruct obligations hidden by
+			// a malformed baseline declaration.
+			cell.Reason = "baseline declaration is invalid; prior obligations are unknown"
 			if cell.Status != model.StatusFailed {
 				cell.Status = model.StatusIncomplete
 			}
