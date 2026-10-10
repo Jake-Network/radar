@@ -178,6 +178,11 @@ func distributionRootReady(dir, tool string) bool {
 	}
 	var home string
 	for _, entry := range entries {
+		// Java's directory inventory follows symlinks. Refuse them rather
+		// than miss an extra root that would make the wrapper reinstall.
+		if entry.Type()&os.ModeSymlink != 0 {
+			return false
+		}
 		if entry.IsDir() {
 			if home != "" {
 				return false
