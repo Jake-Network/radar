@@ -9,6 +9,7 @@ coverage.out
 **/.radar/active-plan
 .omx/
 .idea/
+.serena/
 
 /dist/
 

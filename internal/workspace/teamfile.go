@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -253,7 +254,7 @@ func applyTeamOnly(out Scope) (Scope, error) {
 		keep := map[string]bool{}
 		only := []string{}
 		for _, id := range out.Only {
-			if !containsID(out.All, id) {
+			if !slices.Contains(out.All, id) {
 				return Scope{}, out.unknown(id, "--only")
 			}
 			if !keep[id] {
@@ -271,13 +272,4 @@ func applyTeamOnly(out Scope) (Scope, error) {
 		out.Repos = selected
 	}
 	return out, nil
-}
-
-func containsID(ids []string, id string) bool {
-	for _, v := range ids {
-		if v == id {
-			return true
-		}
-	}
-	return false
 }

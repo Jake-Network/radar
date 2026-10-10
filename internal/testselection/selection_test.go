@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -242,7 +243,7 @@ func TestGoSelectionAvoidsUnrelatedRootPackages(t *testing.T) {
 }
 func TestNodeRecommendationUsesDeterministicTAPReporter(t *testing.T) {
 	argv, _ := commandFor(Test{Path: "test/example.test.js", PackageRoot: ".", Framework: "node-test"})
-	if !has(argv, "--test-reporter=tap") {
+	if !slices.Contains(argv, "--test-reporter=tap") {
 		t.Fatal("Node default reporter varies across versions", argv)
 	}
 }

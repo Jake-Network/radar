@@ -103,12 +103,9 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 	}
 	r := checkReport{Status: model.StatusPassed, Base: impact.Base, Head: impact.Head, Impact: impact, Declared: declared, Discovered: discovered, Findings: []model.Finding{}, Checks: []coverageCheck{}, Diagnostics: []model.Diagnostic{}, RepairBudget: 2,
 		Limitations: []string{"File dependencies are inferred from imports; compiler-resolved and runtime relationships are not established.", "Discovered producer-consumer candidates are static proposals, not authoritative runtime bindings.", "No build or tests execute in check; working-tree findings are informational. Use merge-check with explicit execution authorization for combined branches."}}
-	add := func(id string, status model.Status, evidence model.Evidence, message string) {
-		r.Checks = append(r.Checks, coverageCheck{ID: id, Status: status, Evidence: evidence, Explanation: message})
-	}
-	add("dependency_impact", model.StatusPassed, model.Inferred, "Changed files and reverse import dependencies analyzed in both source checkpoints.")
-	add("declared_contracts", declared.Status, model.VerifiedStatic, fmt.Sprintf("%d/%d declared bindings analyzed; absent or unreadable manifest leaves coverage incomplete.", declared.Analyzed, declared.Bindings))
-	add("discovered_contracts", discovered.Status, model.Inferred, "Supported static contract candidates compared; discovery does not verify runtime transport.")
+	r.addCheck("dependency_impact", model.StatusPassed, model.Inferred, "Changed files and reverse import dependencies analyzed in both source checkpoints.")
+	r.addCheck("declared_contracts", declared.Status, model.VerifiedStatic, fmt.Sprintf("%d/%d declared bindings analyzed; absent or unreadable manifest leaves coverage incomplete.", declared.Analyzed, declared.Bindings))
+	r.addCheck("discovered_contracts", discovered.Status, model.Inferred, "Supported static contract candidates compared; discovery does not verify runtime transport.")
 	r.Findings = append(r.Findings, declared.Findings...)
 	r.Findings = append(r.Findings, discovered.Findings...)
 	r.Diagnostics = append(r.Diagnostics, impact.Diagnostics...)
@@ -121,53 +118,18 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 	_, manifestErr := contracts.LoadManifest(a.ctx, a.root, o.head)
 	_, baselineManifestErr := contracts.LoadManifest(a.ctx, a.root, o.base)
 	if manifestErr == nil || !errors.Is(manifestErr, os.ErrNotExist) {
-		add("manifest_lint", lint.Status, model.VerifiedStatic, "Current declared manifest lint.")
-		if lint.Error != "" {
-			r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Path: contracts.ManifestPath, Severity: model.SeverityError, Message: lint.Error})
-		}
-		for _, binding := range lint.Bindings {
-			for _, issue := range binding.Issues {
-				f := model.NewFinding("manifest_lint", issue, model.VerifiedStatic)
-				f.Contract = binding.ID
-				f.Severity = model.SeverityWarning
-				f.Remediation = "Repair the declared schema or binding; do not discard dependency evidence merely to silence the finding."
-				f.Verification = "Re-run radar contracts and radar check."
-				r.Findings = append(r.Findings, f)
-			}
-		}
+		r.addManifestLint(lint)
 	}
 	if selectedPlan != nil {
 		pr := verification.VerifyWithEvidence(a.ctx, *selectedPlan, initial, a.root, nil)
 		r.Plan = &pr
 		r.Findings = append(r.Findings, pr.Findings...)
-		add("plan_verification", pr.Status, model.VerifiedStatic, "Plan criteria evaluated; this read-only command supplies no observed test evidence.")
+		r.addCheck("plan_verification", pr.Status, model.VerifiedStatic, "Plan criteria evaluated; this read-only command supplies no observed test evidence.")
 	} else {
-		add("plan_verification", model.StatusUnknown, model.Unknown, "No plan selected; architecture intent and acceptance criteria were not verified.")
+		r.addCheck("plan_verification", model.StatusUnknown, model.Unknown, "No plan selected; architecture intent and acceptance criteria were not verified.")
 	}
-	add("integration_tests", model.StatusUnknown, model.Unknown, "No tests executed or evidence claimed by this read-only analysis.")
-	for _, c := range r.Checks {
-		switch c.Status {
-		case model.StatusFailed:
-			r.Status = model.StatusFailed
-		case model.StatusError, model.StatusTimeout:
-			if r.Status != model.StatusFailed {
-				r.Status = model.StatusError
-			}
-		case model.StatusUnknown, model.StatusIncomplete, model.StatusBlocked:
-			if r.Status == model.StatusPassed || r.Status == model.StatusWarning {
-				r.Status = model.StatusIncomplete
-			}
-		case model.StatusWarning:
-			if r.Status == model.StatusPassed {
-				r.Status = model.StatusWarning
-			}
-		}
-	}
-	for _, d := range r.Diagnostics {
-		if d.Severity == model.SeverityError && r.Status != model.StatusFailed && r.Status != model.StatusError {
-			r.Status = model.StatusIncomplete
-		}
-	}
+	r.addCheck("integration_tests", model.StatusUnknown, model.Unknown, "No tests executed or evidence claimed by this read-only analysis.")
+	r.foldStatus()
 	if o.suggestTests || o.suite != "" {
 		proposal, err := recommend(a.ctx, a.root, o.head, initial, impact.Changed, selectedPlan)
 		if err != nil {
@@ -191,46 +153,9 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 	finalSource, finalSourceErr := checkSourceState(a.ctx, a.root, o.head)
 	r.Head = initial.Revision
 	sourceStable := initial.Revision == snapshot.Revision && initialSource == finalSource && initialSourceErr == nil && finalSourceErr == nil
-	if !sourceStable {
-		message := "Working-tree source changed during analysis or test recommendations; rerun before using these findings."
-		if initialSourceErr != nil || finalSourceErr != nil {
-			message = "Source stability could not be established within safe observation limits; rerun after resolving the reported coverage gap."
-			for _, err := range []error{initialSourceErr, finalSourceErr} {
-				if err != nil {
-					r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Severity: model.SeverityWarning, Message: err.Error()})
-				}
-			}
-		}
-		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: message})
-		if r.Status != model.StatusFailed && r.Status != model.StatusError {
-			r.Status = model.StatusIncomplete
-		}
-	} else {
-		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Source and configuration fingerprints were stable across analysis and test recommendation boundaries; transient changes between observations are not observed."})
-	}
-	if !sourceStable {
-		// Every passing analysis conclusion depends on the observed source, even
-		// when an explicit policy does not separately require source_stability.
-		for i := range r.Checks {
-			if r.Checks[i].Status == model.StatusPassed {
-				r.Checks[i].Status = model.StatusIncomplete
-				r.Checks[i].Evidence = model.Unknown
-				r.Checks[i].Explanation += " Source observation is unstable; this conclusion cannot satisfy a gate."
-			}
-		}
-	}
+	r.recordSourceStability(sourceStable, initialSourceErr, finalSourceErr)
 	checks := append([]gate.Check(nil), r.Checks...)
-	noBreaking := gate.NoBreaking(r.Findings, declared.Unestablished())
-	if noBreaking.Status != model.StatusFailed && ((manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist))) {
-		noBreaking.Status = model.StatusUnknown
-		noBreaking.Evidence = model.Unknown
-		noBreaking.Explanation = "Declared contract configuration could not be read; no incompatibility verdict can be established."
-	}
-	if !sourceStable && noBreaking.Status == model.StatusPassed {
-		noBreaking.Status = model.StatusIncomplete
-		noBreaking.Evidence = model.Unknown
-		noBreaking.Explanation = "Source changed during analysis; contract compatibility cannot be established from mixed observations."
-	}
+	noBreaking := checkNoBreaking(r.Findings, declared.Unestablished(), manifestErr, baselineManifestErr, sourceStable)
 	checks = append(checks, noBreaking)
 	selected := gate.Policy{Version: 1, Name: "supported-analysis", Require: []string{"dependency_impact", "source_stability", "no_breaking_contracts"}}
 	if policy != nil {
@@ -249,26 +174,7 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 		ids = append(ids, f.ID)
 	}
 	r.FeedbackDigest = model.StableID(ids...)
-	a.report(r, func(w io.Writer) {
-		fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
-		fmt.Fprintf(w, "Analysis: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
-		renderAffected(w, impact)
-		renderProposal(w, r.VerificationProposal)
-		renderSelection(w, r.Selection)
-		for _, c := range r.Checks {
-			fmt.Fprintf(w, "%s: %s — %s\n", c.ID, c.Status, c.Explanation)
-		}
-		for _, f := range r.Findings {
-			renderFinding(w, f)
-		}
-		for _, d := range r.Diagnostics {
-			fmt.Fprintf(w, "%s: %s %s\n", d.Severity, d.Path, d.Message)
-		}
-		for _, o := range r.Declared.Obligations {
-			fmt.Fprintf(w, "contract obligation %s: %s — %s\n", o.Binding, o.Kind, o.Explanation)
-		}
-		fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
-	})
+	a.report(r, func(w io.Writer) { renderCheck(w, r, impact) })
 	if policy != nil || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
 	}
@@ -282,4 +188,125 @@ func (a *app) checkWithRecommendation(o options, recommend func(context.Context,
 		return 1
 	}
 	return 0
+}
+
+func (r *checkReport) addCheck(id string, status model.Status, evidence model.Evidence, message string) {
+	r.Checks = append(r.Checks, coverageCheck{ID: id, Status: status, Evidence: evidence, Explanation: message})
+}
+
+// addManifestLint records the current manifest lint as a check, an error
+// diagnostic and one warning finding per binding issue.
+func (r *checkReport) addManifestLint(lint contracts.LintReport) {
+	r.addCheck("manifest_lint", lint.Status, model.VerifiedStatic, "Current declared manifest lint.")
+	if lint.Error != "" {
+		r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Path: contracts.ManifestPath, Severity: model.SeverityError, Message: lint.Error})
+	}
+	for _, binding := range lint.Bindings {
+		for _, issue := range binding.Issues {
+			f := model.NewFinding("manifest_lint", issue, model.VerifiedStatic)
+			f.Contract = binding.ID
+			f.Severity = model.SeverityWarning
+			f.Remediation = "Repair the declared schema or binding; do not discard dependency evidence merely to silence the finding."
+			f.Verification = "Re-run radar contracts and radar check."
+			r.Findings = append(r.Findings, f)
+		}
+	}
+}
+
+// foldStatus derives the analysis status from the checks and diagnostics.
+func (r *checkReport) foldStatus() {
+	for _, c := range r.Checks {
+		switch c.Status {
+		case model.StatusFailed:
+			r.Status = model.StatusFailed
+		case model.StatusError, model.StatusTimeout:
+			if r.Status != model.StatusFailed {
+				r.Status = model.StatusError
+			}
+		case model.StatusUnknown, model.StatusIncomplete, model.StatusBlocked:
+			if r.Status == model.StatusPassed || r.Status == model.StatusWarning {
+				r.Status = model.StatusIncomplete
+			}
+		case model.StatusWarning:
+			if r.Status == model.StatusPassed {
+				r.Status = model.StatusWarning
+			}
+		}
+	}
+	for _, d := range r.Diagnostics {
+		if d.Severity == model.SeverityError && r.Status != model.StatusFailed && r.Status != model.StatusError {
+			r.Status = model.StatusIncomplete
+		}
+	}
+}
+
+// recordSourceStability adds the source_stability check. Every passing
+// analysis conclusion depends on the observed source, so unstable source
+// downgrades them even when an explicit policy does not separately require
+// source_stability.
+func (r *checkReport) recordSourceStability(stable bool, initialErr, finalErr error) {
+	if !stable {
+		message := "Working-tree source changed during analysis or test recommendations; rerun before using these findings."
+		if initialErr != nil || finalErr != nil {
+			message = "Source stability could not be established within safe observation limits; rerun after resolving the reported coverage gap."
+			for _, err := range []error{initialErr, finalErr} {
+				if err != nil {
+					r.Diagnostics = append(r.Diagnostics, model.Diagnostic{Severity: model.SeverityWarning, Message: err.Error()})
+				}
+			}
+		}
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: message})
+		if r.Status != model.StatusFailed && r.Status != model.StatusError {
+			r.Status = model.StatusIncomplete
+		}
+	} else {
+		r.Checks = append(r.Checks, coverageCheck{ID: "source_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Source and configuration fingerprints were stable across analysis and test recommendation boundaries; transient changes between observations are not observed."})
+	}
+	if !stable {
+		for i := range r.Checks {
+			if r.Checks[i].Status == model.StatusPassed {
+				r.Checks[i].Status = model.StatusIncomplete
+				r.Checks[i].Evidence = model.Unknown
+				r.Checks[i].Explanation += " Source observation is unstable; this conclusion cannot satisfy a gate."
+			}
+		}
+	}
+}
+
+// checkNoBreaking derives no_breaking_contracts, downgrading a pass when the
+// declared configuration was unreadable or the source changed.
+func checkNoBreaking(findings []model.Finding, unestablished []string, manifestErr, baselineManifestErr error, sourceStable bool) gate.Check {
+	noBreaking := gate.NoBreaking(findings, unestablished)
+	if noBreaking.Status != model.StatusFailed && ((manifestErr != nil && !errors.Is(manifestErr, os.ErrNotExist)) || (baselineManifestErr != nil && !errors.Is(baselineManifestErr, os.ErrNotExist))) {
+		noBreaking.Status = model.StatusUnknown
+		noBreaking.Evidence = model.Unknown
+		noBreaking.Explanation = "Declared contract configuration could not be read; no incompatibility verdict can be established."
+	}
+	if !sourceStable && noBreaking.Status == model.StatusPassed {
+		noBreaking.Status = model.StatusIncomplete
+		noBreaking.Evidence = model.Unknown
+		noBreaking.Explanation = "Source changed during analysis; contract compatibility cannot be established from mixed observations."
+	}
+	return noBreaking
+}
+
+func renderCheck(w io.Writer, r checkReport, impact affectedReport) {
+	fmt.Fprintf(w, "Gate: %s — %s\n", r.Gate.Verdict, r.Gate.Explanation)
+	fmt.Fprintf(w, "Analysis: %s (%d changed files, %d dependent files)\n", r.Status, len(impact.Changed), len(impact.Affected))
+	renderAffected(w, impact)
+	renderProposal(w, r.VerificationProposal)
+	renderSelection(w, r.Selection)
+	for _, c := range r.Checks {
+		fmt.Fprintf(w, "%s: %s — %s\n", c.ID, c.Status, c.Explanation)
+	}
+	for _, f := range r.Findings {
+		renderFinding(w, f)
+	}
+	for _, d := range r.Diagnostics {
+		fmt.Fprintf(w, "%s: %s %s\n", d.Severity, d.Path, d.Message)
+	}
+	for _, o := range r.Declared.Obligations {
+		fmt.Fprintf(w, "contract obligation %s: %s — %s\n", o.Binding, o.Kind, o.Explanation)
+	}
+	fmt.Fprintln(w, "For agent repair feedback: rerun with --json; investigate each finding, repair, and verify again (suggested maximum: 2 attempts).")
 }

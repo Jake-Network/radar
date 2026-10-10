@@ -1,32 +1,25 @@
 // Package integration previews merges in a private object database. It never
 // shares writable Git state with the user's repository. This is filesystem
 // isolation, not an OS security sandbox; executing candidate code is opt-in.
+//
+// The Candidate built here is the one "candidate" across Radar: evidence pins
+// its identity as a CandidateCheckpoint when recording executions, and
+// verification accepts only records bound to that exact checkpoint.
 package integration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/checkpoint"
 	"github.com/Jake-Network/radar/internal/contracts"
-	"github.com/Jake-Network/radar/internal/discovery"
 	"github.com/Jake-Network/radar/internal/evidence"
 	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
-	"github.com/Jake-Network/radar/internal/graph"
 	"github.com/Jake-Network/radar/internal/model"
-	"github.com/Jake-Network/radar/internal/pathutil"
 	"github.com/Jake-Network/radar/internal/planning"
 	"github.com/Jake-Network/radar/internal/testselection"
-	"github.com/Jake-Network/radar/internal/verification"
 )
 
 type Options struct {
@@ -98,208 +91,6 @@ type Report struct {
 	// removed, narrowed, moved or retired; see contracts.ObligationChange.
 	ContractObligations []contracts.ObligationChange `json:"contract_obligations,omitempty"`
 	contractUnverified  []string
-}
-
-func environment() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		key, _, _ := strings.Cut(e, "=")
-		if !strings.HasPrefix(strings.ToUpper(key), "GIT_") {
-			env = append(env, e)
-		}
-	}
-	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+gitrepo.NullPath, "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0", "GIT_ATTR_NOSYSTEM=1", "GIT_NO_LAZY_FETCH=1", "GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2000-01-01T00:00:00Z")
-}
-func command(ctx context.Context, root string, args ...string) *exec.Cmd {
-	prefix := []string{"-C", root, "--no-pager", "-c", "core.hooksPath=" + gitrepo.NullPath, "-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + gitrepo.NullPath, "-c", "commit.gpgSign=false", "-c", "protocol.allow=never", "-c", "user.name=Radar preview", "-c", "user.email=preview@radar.invalid"}
-	c := exec.CommandContext(ctx, "git", append(prefix, args...)...)
-	c.Env = environment()
-	return c
-}
-func run(ctx context.Context, root string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	c := command(ctx, root, args...)
-	var out cappedWriter
-	c.Stdout = &out
-	c.Stderr = &out
-	e := c.Run()
-	if e != nil {
-		return out.String(), fmt.Errorf("git %s: %w", args[0], e)
-	}
-	return strings.TrimSpace(out.String()), nil
-}
-
-// cappedWriter retains only bounded Git diagnostics.
-// Verification output is never emitted: it can contain credentials or secrets.
-type cappedWriter struct{ data []byte }
-
-func (w *cappedWriter) Write(p []byte) (int, error) {
-	n := len(p)
-	if len(w.data) < 8192 {
-		remaining := 8192 - len(w.data)
-		if len(p) > remaining {
-			p = p[:remaining]
-		}
-		w.data = append(w.data, p...)
-	}
-	return n, nil
-}
-func (w *cappedWriter) String() string { return string(w.data) }
-
-// UnsupportedEntryError reports a tree entry the private candidate cannot
-// reproduce faithfully: a symlink, a submodule or an unsafe path.
-type UnsupportedEntryError struct {
-	Path   string
-	Unsafe error
-}
-
-func (e *UnsupportedEntryError) Error() string {
-	if e.Unsafe != nil {
-		return "unsafe tree path: " + e.Unsafe.Error()
-	}
-	return "preview refuses symlink or submodule: " + e.Path
-}
-func (e *UnsupportedEntryError) Unwrap() error { return e.Unsafe }
-
-func validateTree(ctx context.Context, root, sha string) error {
-	entries, e := gitrepo.Entries(ctx, root, sha)
-	if e != nil {
-		return e
-	}
-	for _, v := range entries {
-		if _, e := pathutil.RepoRelative(v.Path); e != nil {
-			return &UnsupportedEntryError{Path: v.Path, Unsafe: e}
-		}
-		if v.Mode != "100644" && v.Mode != "100755" {
-			return &UnsupportedEntryError{Path: v.Path}
-		}
-	}
-	return nil
-}
-
-// Candidate is the combined commit built from pinned inputs in a private Git
-// repository. Commit and Tree are empty when Conflicts is not. Close removes
-// the private repository; the source repository is never written.
-type Candidate struct {
-	// Source is the repository the objects were copied from.
-	Source string
-	// Dir is the private repository holding the candidate checkout.
-	Dir       string
-	Base      string
-	Inputs    []string
-	Commit    string
-	Tree      string
-	Conflicts []string
-}
-
-// Close removes the private repository. It is safe to call more than once.
-func (c *Candidate) Close() error {
-	if c == nil || c.Dir == "" {
-		return nil
-	}
-	dir := c.Dir
-	c.Dir = ""
-	return os.RemoveAll(dir)
-}
-
-// BuildCandidate pins base and branches to commit SHAs and merges the
-// branches, in order, onto the base in a private repository. Without branches
-// the candidate is the base itself. Textual conflicts are reported in
-// Conflicts rather than as an error. The caller must Close the candidate.
-func BuildCandidate(ctx context.Context, root, base string, branches []string) (*Candidate, error) {
-	c := &Candidate{Source: root, Inputs: []string{}, Conflicts: []string{}}
-	var e error
-	c.Base, e = gitrepo.Resolve(ctx, root, base)
-	if e != nil {
-		return c, e
-	}
-	for _, ref := range branches {
-		sha, e := gitrepo.Resolve(ctx, root, ref)
-		if e != nil {
-			return c, e
-		}
-		c.Inputs = append(c.Inputs, sha)
-	}
-	for _, sha := range append([]string{c.Base}, c.Inputs...) {
-		if e = validateTree(ctx, root, sha); e != nil {
-			return c, e
-		}
-	}
-	temp, e := os.MkdirTemp("", "radar-integration-")
-	if e != nil {
-		return c, e
-	}
-	c.Dir = temp
-	fail := func(e error) (*Candidate, error) {
-		c.Close()
-		return c, e
-	}
-	if _, e = run(ctx, temp, "init", "--quiet"); e != nil {
-		return fail(e)
-	}
-	// Copy immutable objects through a pack stream. No alternates, hard links,
-	// clone hooks, source config copying, source refs or source objects are written.
-	copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	producer := command(copyCtx, root, "pack-objects", "--stdout", "--revs")
-	producer.Stdin = strings.NewReader(strings.Join(append([]string{c.Base}, c.Inputs...), "\n") + "\n")
-	pipe, e := producer.StdoutPipe()
-	if e != nil {
-		return fail(e)
-	}
-	consumer := command(copyCtx, temp, "index-pack", "--stdin")
-	consumer.Stdin = pipe
-	consumer.Stdout = io.Discard
-	consumer.Stderr = io.Discard
-	producer.Stderr = io.Discard
-	if e = consumer.Start(); e != nil {
-		return fail(e)
-	}
-	if e = producer.Start(); e != nil {
-		_ = pipe.Close()
-		_ = consumer.Wait()
-		return fail(e)
-	}
-	producerErr := producer.Wait()
-	consumerErr := consumer.Wait()
-	if producerErr != nil || consumerErr != nil {
-		return fail(errors.New("unable to copy integration objects"))
-	}
-	if _, e = run(ctx, temp, "checkout", "--quiet", "--detach", c.Base); e != nil {
-		return fail(e)
-	}
-	for _, sha := range c.Inputs {
-		_, mergeErr := run(ctx, temp, "merge", "--no-ff", "--no-edit", "--no-verify", sha)
-		if mergeErr != nil {
-			unmerged, inspectErr := run(ctx, temp, "diff", "--name-only", "--diff-filter=U", "-z")
-			if inspectErr != nil {
-				return fail(inspectErr)
-			}
-			for _, p := range strings.Split(unmerged, "\x00") {
-				if p != "" {
-					c.Conflicts = append(c.Conflicts, p)
-				}
-			}
-			if len(c.Conflicts) == 0 {
-				return fail(mergeErr)
-			}
-			sort.Strings(c.Conflicts)
-			return c, nil
-		}
-	}
-	c.Commit, e = gitrepo.Resolve(ctx, temp, "HEAD")
-	if e != nil {
-		return fail(e)
-	}
-	c.Tree, e = run(ctx, temp, "rev-parse", "HEAD^{tree}")
-	if e != nil {
-		return fail(e)
-	}
-	if e = validateTree(ctx, temp, c.Commit); e != nil {
-		return fail(e)
-	}
-	return c, nil
 }
 
 func newReport() Report {
@@ -375,15 +166,7 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	r.Base = c.Base
 	r.Inputs = append(r.Inputs, c.Inputs...)
 	if len(c.Conflicts) > 0 {
-		r.Conflicts = append(r.Conflicts, c.Conflicts...)
-		r.Status = model.StatusFailed
-		r.Checks = append(r.Checks, Check{ID: "textual_merge", Status: model.StatusFailed, Evidence: model.VerifiedTool, Explanation: "Git reported unmerged paths in the private candidate."})
-		f := model.NewFinding("integration_textual_conflict", "Resolve overlapping edits before integration.", model.VerifiedTool)
-		f.Severity = model.SeverityError
-		f.Remediation = "Reconcile the reported paths on the feature branches and repeat merge-check."
-		r.Findings = append(r.Findings, f)
-		// No candidate exists, so no contract obligation was analyzed.
-		r.contractUnverified = []string{"combined candidate could not be built because of textual conflicts"}
+		reportConflicts(&r, c.Conflicts)
 		applyGate(&r, o)
 		return r, nil
 	}
@@ -393,77 +176,20 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	if e != nil {
 		return r, e
 	}
-	configurationCheck := Check{ID: "declared_contract_configuration", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Declared contract configuration is absent or readable at both checkpoints."}
-	for _, ref := range []string{r.Base, r.CandidateCommit} {
-		manifest, loadErr := contracts.LoadManifest(ctx, temp, ref)
-		if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
-			configurationCheck.Status = model.StatusError
-			configurationCheck.Evidence = model.Unknown
-			configurationCheck.Explanation = "Declared contract configuration cannot be read or parsed at " + ref + ": " + loadErr.Error()
-			continue
-		}
-		for _, binding := range manifest.Bindings {
-			schema, schemaErr := contracts.ReadSchema(ctx, temp, ref, binding.Schema)
-			if schemaErr == nil {
-				_, schemaErr = contracts.Analyzable(schema, binding.Pointer)
-			}
-			if schemaErr != nil && configurationCheck.Status != model.StatusError {
-				configurationCheck.Status = model.StatusIncomplete
-				configurationCheck.Evidence = model.Unknown
-				configurationCheck.Explanation = "Declared schema coverage is unavailable for " + binding.ID + " at " + ref + ": " + schemaErr.Error()
-			}
-		}
-	}
-
-	impact, e := contracts.Impact(ctx, temp, r.Base, r.CandidateCommit, verification.ApprovedRetirements(o.Plan)...)
-	if e != nil {
+	if e = analyzeContracts(ctx, temp, &r, o); e != nil {
 		return r, e
 	}
-	if unestablished := impact.Unestablished(); configurationCheck.Status == model.StatusPassed && len(unestablished) > 0 {
-		configurationCheck.Status = model.StatusIncomplete
-		configurationCheck.Evidence = model.Unknown
-		configurationCheck.Explanation = "Declared contract obligations are unverified: " + strings.Join(unestablished, "; ")
-	}
-	r.contractUnverified = impact.Unestablished()
-	r.ContractObligations = impact.Obligations
-	r.Checks = append(r.Checks, configurationCheck)
-	r.Findings = append(r.Findings, impact.Findings...)
-	r.Diagnostics = append(r.Diagnostics, impact.Diagnostics...)
-	r.Checks = append(r.Checks, Check{ID: "declared_contracts", Status: impact.Status, Evidence: model.VerifiedStatic, Explanation: fmt.Sprintf("Analyzed %d of %d declared bindings.", impact.Analyzed, impact.Bindings)})
-	discovered, e := discovery.Compare(ctx, temp, r.Base, r.CandidateCommit)
-	if e != nil {
+	if e = analyzeDiscovered(ctx, temp, &r); e != nil {
 		return r, e
 	}
-	r.Findings = append(r.Findings, discovered.Findings...)
-	r.Diagnostics = append(r.Diagnostics, discovered.Diagnostics...)
-	r.Limitations = append(r.Limitations, discovered.Limitations...)
-	r.Checks = append(r.Checks, Check{ID: "discovered_contracts", Status: discovered.Status, Evidence: model.Proposed, Explanation: "Compared supported discovered producer and consumer relationships; candidates remain proposed."})
 	snapshot, e := checkpoint.Index(ctx, temp, r.CandidateCommit)
 	if e != nil {
 		return r, e
 	}
 	r.Diagnostics = append(r.Diagnostics, snapshot.Diagnostics...)
-
-	g, e := graph.New(snapshot)
-	if e != nil {
+	if e = analyzeImpact(&r, snapshot); e != nil {
 		return r, e
 	}
-	r.AffectedBy = map[string][]string{}
-	for _, changed := range r.Changed {
-		if _, ok := g.Nodes[model.FileID(changed)]; !ok {
-			continue
-		}
-		for _, hop := range g.Distances(model.FileID(changed), "DEPENDS_ON", true, 0) {
-			if p := model.PathFromID(hop.ID); p != "" && p != changed {
-				r.AffectedBy[p] = append(r.AffectedBy[p], changed)
-			}
-		}
-	}
-	for p := range r.AffectedBy {
-		r.Affected = append(r.Affected, p)
-	}
-	sort.Strings(r.Affected)
-	r.Checks = append(r.Checks, Check{ID: "dependency_compatibility", Status: model.StatusUnknown, Evidence: model.Inferred, Explanation: "Resolved static dependency neighborhood; runtime and build compatibility requires execution."})
 	if o.SuggestTests || o.Suite != "" {
 		proposal, err := testselection.Recommend(ctx, temp, r.CandidateCommit, snapshot, r.Changed, o.Plan)
 		if err != nil {
@@ -472,335 +198,45 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 		r.VerificationProposal = &proposal
 	}
 	if o.Verify {
-		explicitCWD := o.CWD
-		if explicitCWD == "" {
-			explicitCWD = "."
-		}
-		selections := []testselection.Command{{ID: model.StableID("verification-command", explicitCWD, strings.Join(o.Command, "\x00")), Command: o.Command, CWD: explicitCWD, Tier: testselection.TierRequired}}
-		if o.Suite != "" {
-			selection, err := testselection.Plan(*r.VerificationProposal, r.Changed, o.Suite, o.MaxCommands)
-			if err != nil {
-				return r, err
-			}
-			r.Selection = &selection
-			selections = selection.Commands
-		}
-		executionCtx, cancelExecution := context.WithTimeout(ctx, o.Timeout)
-		defer cancelExecution()
-		executionStatus := model.StatusPassed
-		if len(selections) == 0 {
-			executionStatus = model.StatusUnknown
-		}
-		for _, selection := range selections {
-			r.Selected = append(r.Selected, selection.ID)
-		}
-		// skipped records a selected command that did not run. A required one
-		// blocks the gate; it is a coverage gap, never a test failure or pass.
-		requiredSkipped := 0
-		skipped := func(selection testselection.Command, reason, explanation string) {
-			if r.Selection != nil {
-				r.Selection.Omitted = append(r.Selection.Omitted, testselection.Omission{ID: selection.ID, Command: selection.Command, CWD: selection.CWD, TestFiles: selection.TestFiles, Tier: selection.Tier, Reason: reason, Explanation: explanation})
-			}
-			status := model.StatusBlocked
-			if selection.Tier == testselection.TierRequired || o.Suite == "" {
-				requiredSkipped++
-				if r.Selection != nil {
-					r.Selection.Blocking = append(r.Selection.Blocking, reason+": "+strings.Join(selection.Command, " "))
-				}
-			} else {
-				status = model.StatusWarning
-			}
-			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: status, Evidence: model.Unknown, Explanation: "Not executed (" + reason + "): " + explanation})
-		}
-		for _, selection := range selections {
-			if executionCtx.Err() != nil {
-				skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
-				continue
-			}
-			// Explicit commands keep their observed execution-error semantics.
-			if why := unavailable(temp, selection); o.Suite != "" && why != "" {
-				skipped(selection, "environment_unavailable", why+"; Radar does not install dependencies. Prepare the environment or declare a reviewed plan test_run rule (with link for untracked dependency directories).")
-				continue
-			}
-			executionOptions := o
-			executionOptions.Command = selection.Command
-			executionOptions.CWD = selection.CWD
-			if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
-				executionOptions.Timeout = time.Until(deadline)
-			}
-			ev := execute(executionCtx, temp, r, executionOptions)
-			ev.SelectionID = selection.ID
-			// Selection identity is also bound into the serialized artifact digest.
-			ev.ID = ""
-			data, _ := json.Marshal(ev)
-			ev.ID = model.StableID("integration-evidence-v1", string(data))
-			r.Executions = append(r.Executions, ev)
-			if o.Suite == "" {
-				r.Execution = &r.Executions[len(r.Executions)-1]
-			}
-			if selection.ID != "" {
-				r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.Status, Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
-			}
-			executionStatus = aggregateExecution(executionStatus, ev.Status)
-			if ev.Status != model.StatusPassed {
-				f := model.NewFinding("integration_execution_"+string(ev.Status), fmt.Sprintf("Combined verification command %q in %q returned %s (exit %d).", executionOptions.Command, executionOptions.CWD, ev.Status, ev.ExitCode), model.ObservedTest)
-				f.Severity = model.SeverityError
-				if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
-					f.Severity = model.SeverityWarning
-				}
-				f.Locations = ev.Observation.Locations
-				for i := range f.Locations {
-					f.Locations[i].Revision = r.CandidateCommit
-				}
-				if len(ev.Observation.FailedCases) > 0 {
-					f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
-				}
-				f.ID = model.StableID(r.CandidateTree, executionOptions.CWD, strings.Join(executionOptions.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
-				f.Remediation = "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
-				f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
-				r.Findings = append(r.Findings, f)
-			}
-			if ev.SourceAfterExecution != "unchanged" {
-				break
-			}
-		}
-		if len(r.Executions) < len(selections) && executionStatus == model.StatusPassed {
-			executionStatus = model.StatusIncomplete
-		}
-		if r.Selection != nil {
-			for _, omitted := range r.Selection.Omitted {
-				if omitted.Reason == "budget_exceeded" && omitted.Tier == testselection.TierRequired {
-					requiredSkipped++
-				}
-			}
-			if len(r.Selection.Blocking) > 0 && executionStatus == model.StatusPassed {
-				executionStatus = model.StatusIncomplete
-			}
-		}
-		if requiredSkipped > 0 && executionStatus == model.StatusPassed {
-			executionStatus = model.StatusIncomplete
-		}
-		explanation := fmt.Sprintf("Executed %d of %d selected commands against the combined candidate; output is hashed, not exposed.", len(r.Executions), len(selections))
-		if requiredSkipped > 0 {
-			explanation += fmt.Sprintf(" %d required command(s) were omitted or not executed; required verification is incomplete.", requiredSkipped)
-		}
-		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: executionStatus, Evidence: model.ObservedTest, Explanation: explanation})
-		if r.Selection != nil {
-			status, message := model.StatusPassed, r.Selection.Explanation
-			if len(r.Selection.Blocking) > 0 || len(r.Selection.Uncovered) > 0 {
-				status = model.StatusIncomplete
-			}
-			r.Checks = append(r.Checks, Check{ID: "test_selection", Status: status, Evidence: model.Inferred, Explanation: fmt.Sprintf("Mode %s selected %d of %d candidate commands (%d omitted, %d uncovered changed files). %s", r.Selection.Mode, len(r.Selection.Commands), r.Selection.Candidates, len(r.Selection.Omitted), len(r.Selection.Uncovered), message)})
+		if e = runVerification(ctx, temp, &r, o); e != nil {
+			return r, e
 		}
 	} else {
 		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "No combined test evidence. Authorize an explicit command or --suite recommended."})
 	}
-
-	sourceUnchanged := true
-	var records []evidence.Record
-	for _, ev := range r.Executions {
-		if ev.SourceAfterExecution != "unchanged" {
-			sourceUnchanged = false
-		}
-		if ev.PlanRecord != nil {
-			records = append(records, *ev.PlanRecord)
-		}
-	}
+	records, sourceUnchanged := executionRecords(r.Executions)
 	if !sourceUnchanged {
-		for i := range r.Executions {
-			ev := &r.Executions[i]
-			if ev.PlanRecord != nil {
-				invalid := evidence.InvalidateCandidateRecord(*ev.PlanRecord)
-				ev.PlanRecord = &invalid
-			}
-			if ev.Status == model.StatusPassed {
-				ev.Status = model.StatusIncomplete
-			}
-			if ev.SourceAfterExecution == "unchanged" {
-				ev.SourceAfterExecution = "invalidated_by_suite"
-			}
-			if ev.Observation.Status == model.StatusPassed {
-				ev.Observation.Status = model.StatusIncomplete
-			}
-			ev.ID = ""
-			data, _ := json.Marshal(ev)
-			ev.ID = model.StableID("integration-evidence-v1", string(data))
-		}
-		if o.Suite == "" && len(r.Executions) > 0 {
-			r.Execution = &r.Executions[0]
-		}
-		for i := range r.Checks {
-			if (strings.HasPrefix(r.Checks[i].ID, "test:") || r.Checks[i].ID == "integration_execution") && r.Checks[i].Status == model.StatusPassed {
-				r.Checks[i].Status = model.StatusIncomplete
-			}
-		}
+		invalidateExecutions(&r, o)
 	}
 	if o.Plan != nil {
-		identity, identityErr := evidence.RepositoryIdentity(ctx, temp)
-		if identityErr != nil {
-			return r, identityErr
-		}
-		cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
-		planReport := verification.VerifyCandidateWithEvidence(ctx, *o.Plan, snapshot, temp, cp, records, sourceUnchanged)
-		r.Plan = &planReport
-		r.Findings = append(r.Findings, planReport.Findings...)
-		r.Checks = append(r.Checks, Check{ID: "plan_verification", Status: planReport.Status, Evidence: model.VerifiedStatic, Explanation: "Reviewed exact-command criteria use only source-intact records from this combined candidate; unmatched observations remain informational."})
-		for _, criterion := range planReport.Checks {
-			r.Checks = append(r.Checks, Check{ID: "criterion:" + criterion.ID, Status: criterion.Status, Evidence: criterion.Evidence, Explanation: criterion.Explanation})
+		if e = verifyPlan(ctx, temp, &r, *o.Plan, snapshot, records, sourceUnchanged); e != nil {
+			return r, e
 		}
 	}
-
-	r.Status = model.StatusPassed
-	for _, c := range r.Checks {
-		if c.Status == model.StatusError || c.Status == model.StatusTimeout {
-			r.Status = model.StatusError
-			continue
-		}
-		if r.Status == model.StatusError {
-			continue
-		}
-		if c.Status == model.StatusFailed {
-			r.Status = model.StatusFailed
-			continue
-		}
-		if r.Status != model.StatusFailed && c.Status != model.StatusPassed {
-			r.Status = model.StatusIncomplete
-		}
-	}
+	r.Status = overallStatus(r.Checks)
 	applyGate(&r, o)
 	return r, nil
 }
 
-func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvidence {
-	started := time.Now()
-	ev := ExecutionEvidence{CandidateCommit: r.CandidateCommit, CandidateTree: r.CandidateTree, Base: r.Base, Inputs: r.Inputs, PlanDigest: o.PlanDigest, CWD: o.CWD, Command: append([]string(nil), o.Command...), Status: model.StatusPassed, ExitCode: 0, StartedAt: started.UTC().Format(time.RFC3339Nano)}
-
-	identity, identityErr := evidence.RepositoryIdentity(ctx, root)
-	cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
-	observation := evidence.CandidateObservation{Status: model.StatusError, ExitCode: -1}
-	var observeErr error
-	match := false
-	var declarationErr error
-	if o.Plan != nil {
-		match, declarationErr = evidence.CandidateDeclaration(*o.Plan, o.Command, o.CWD)
-	}
-	if identityErr != nil {
-		observeErr = identityErr
-	} else if declarationErr != nil {
-		observeErr = declarationErr
-	} else if match {
-		runResult, runErr := evidence.RunCandidate(ctx, root, cp, *o.Plan, o.Command, o.CWD, o.Timeout)
-		observeErr = runErr
-		if runErr == nil {
-			observation = runResult.Observation
+// overallStatus folds check statuses: error dominates, then failure, then
+// any non-passing check makes the report incomplete.
+func overallStatus(checks []Check) model.Status {
+	status := model.StatusPassed
+	for _, c := range checks {
+		if c.Status == model.StatusError || c.Status == model.StatusTimeout {
+			status = model.StatusError
+			continue
 		}
-		if runErr == nil {
-			ev.PlanRecord = &runResult.Record
+		if status == model.StatusError {
+			continue
 		}
-	} else {
-		observation, observeErr = evidence.ObserveCandidateAt(ctx, root, o.CWD, o.Command, o.Timeout)
-	}
-	ev.Observation = observation
-	ev.Status = observation.Status
-	ev.ExitCode = observation.ExitCode
-	ev.OutputDigest = observation.OutputDigest
-	if observeErr != nil {
-		ev.Status = model.StatusError
-		ev.ExitCode = -1
-		ev.ExecutionError = observeErr.Error()
-		ev.Observation.Status = model.StatusError
-		ev.Observation.ExitCode = -1
-	}
-	ev.DurationMS = time.Since(started).Milliseconds()
-	sourceCtx, sourceCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-	defer sourceCancel()
-	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, evidence.CandidateArtifacts(o.Plan))
-	if sourceErr != nil {
-		ev.SourceAfterExecution = "unknown"
-		if ev.Status != model.StatusFailed {
-			ev.Status = model.StatusError
+		if c.Status == model.StatusFailed {
+			status = model.StatusFailed
+			continue
 		}
-		ev.ExecutionError = sourceErr.Error()
-	} else if !after.Matches {
-		ev.SourceAfterExecution = "modified"
-		if ev.Status == model.StatusPassed {
-			ev.Status = model.StatusIncomplete
-		}
-	} else {
-		ev.SourceAfterExecution = "unchanged"
-	}
-
-	data, _ := json.Marshal(ev)
-	ev.ID = model.StableID("integration-evidence-v1", string(data))
-	return ev
-}
-
-func applyGate(r *Report, o Options) {
-	noBreaking := gate.NoBreaking(r.Findings, r.contractUnverified)
-	for _, c := range r.Checks {
-		// Configuration gaps never mask a confirmed incompatibility, except an
-		// unreadable configuration, which is an execution-grade error.
-		if c.ID == "declared_contract_configuration" && c.Status != model.StatusPassed && (noBreaking.Status != model.StatusFailed && (noBreaking.Status == model.StatusPassed || c.Status == model.StatusError)) {
-			noBreaking.Status = c.Status
-			noBreaking.Evidence = model.Unknown
-			noBreaking.Explanation = c.Explanation
+		if status != model.StatusFailed && c.Status != model.StatusPassed {
+			status = model.StatusIncomplete
 		}
 	}
-	// This is an actual derived observation, not a policy missing-evidence
-	// placeholder. Keep it in the report so later configuration evaluation
-	// uses the same evidence as this gate evaluation.
-	r.Checks = append(r.Checks, noBreaking)
-	p := gate.Policy{Version: 1, Name: "supported-integration", Require: []string{"textual_merge", "no_breaking_contracts"}}
-	if o.Verify {
-		p.Require = append(p.Require, "integration_execution")
-		if o.Suite != "" {
-			p.Require = append(p.Require, "test_selection")
-		}
-	}
-	if o.Policy != nil {
-		p = *o.Policy
-	}
-	r.Gate = gate.Evaluate(p, r.Checks)
-	r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
-}
-
-// unavailable reports why a selected runner cannot start in the candidate,
-// using only static checks: no repository code or package script runs.
-func unavailable(root string, c testselection.Command) string {
-	if len(c.Command) == 0 {
-		return "empty command"
-	}
-	dir, err := pathutil.ResolveInside(root, c.CWD)
-	if c.CWD == "" || c.CWD == "." {
-		dir, err = root, nil
-	}
-	if err != nil {
-		return "working directory " + c.CWD + " is outside the candidate"
-	}
-	if info, e := os.Stat(dir); e != nil || !info.IsDir() {
-		return "working directory " + c.CWD + " does not exist in the candidate"
-	}
-	tool := c.Command[0]
-	if strings.Contains(tool, "/") {
-		path, e := pathutil.ResolveInside(dir, tool)
-		if e != nil {
-			return "runner " + tool + " is outside the candidate"
-		}
-		if info, e := os.Stat(path); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
-			return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
-		}
-		return ""
-	}
-	if _, e := exec.LookPath(tool); e != nil {
-		return "runner " + tool + " is not on PATH"
-	}
-	return ""
-}
-
-func aggregateExecution(current, next model.Status) model.Status {
-	rank := map[model.Status]int{model.StatusPassed: 0, model.StatusUnknown: 1, model.StatusIncomplete: 1, model.StatusBlocked: 1, model.StatusWarning: 1, model.StatusFailed: 4, model.StatusTimeout: 3, model.StatusError: 3}
-	if rank[next] > rank[current] {
-		return next
-	}
-	return current
+	return status
 }

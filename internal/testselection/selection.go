@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os/exec"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -318,16 +319,8 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 		"Go modules with concrete package or dependency matches omit unrelated package fallback commands; unrecorded dependencies can still require broader tests.",
 		"Tool availability checks executables only; dependencies, setup and environment are not verified or installed.",
 	}}
-	for _, test := range inv.Tests {
-		if _, e := pathutil.RepoRelative(test.Path); e != nil {
-			return result, e
-		}
-		if _, e := pathutil.RepoRelative(test.PackageRoot); e != nil {
-			return result, e
-		}
-		if !inside(test.PackageRoot, test.Path) {
-			return result, errors.New("test path is outside its declared package root")
-		}
+	if e := validateInventory(inv); e != nil {
+		return result, e
 	}
 	available := o.ToolAvailable
 	if available == nil {
@@ -345,43 +338,154 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 	if pathTruncated {
 		result.Limitations = append(result.Limitations, "Impact traversal bounded to 50000 nodes and 16 evidence locations per path; inspect the indexed graph for omitted detail.")
 	}
-	groups := map[string]*Command{}
-	add := func(c Command) {
-		c.ID = commandID(c)
-		key := c.ID
-		if existing, ok := groups[key]; ok {
-			existing.TestFiles = unique(append(existing.TestFiles, c.TestFiles...))
-			existing.Affected = unique(append(existing.Affected, c.Affected...))
-			existing.EvidenceReasons = append(existing.EvidenceReasons, c.EvidenceReasons...)
-			if c.Priority > existing.Priority {
-				existing.Priority = c.Priority
-			}
-			return
-		}
-		groups[key] = &c
-	}
+	groups := commandGroups{}
 	if o.Plan != nil {
-		rules := []*planning.Rule{}
-		for _, criterion := range o.Plan.Acceptance {
-			rules = append(rules, criterion.Rule)
-		}
-		for _, constraint := range o.Plan.Constraints {
-			rules = append(rules, constraint.Rule)
-		}
-		for _, rule := range rules {
-			if rule == nil || rule.Kind != "test_run" {
-				continue
-			}
-			if e := planning.ValidateRule(*rule); e != nil {
-				return result, e
-			}
-			cwd := rule.CWD
-			if cwd == "" {
-				cwd = "."
-			}
-			add(Command{Command: append([]string(nil), rule.Command...), CWD: cwd, Framework: "plan-declared", TestFiles: []string{}, Affected: unique(changed), EvidenceReasons: []Reason{{Code: "plan_declared", Explanation: "Exact command declared by the supplied plan; explicit setup and environment still need review.", Evidence: model.Proposed}}, Priority: 100, ToolAvailable: available(rule.Command[0])})
+		if e := groups.addPlanCommands(*o.Plan, changed, available); e != nil {
+			return result, e
 		}
 	}
+	owners, roots := packageOwners(inv, changedSet)
+	directGoRoots := goRootsWithDirectMatch(inv, affected, changedSet)
+	for _, test := range inv.Tests {
+		priority, reason, files := testPriority(test, changedSet, changed, affected, contractImpact, owners, roots, directGoRoots)
+		if priority == 0 {
+			continue
+		}
+		omitUnsupported := func(explanation string) {
+			tier := TierRequired
+			if reason == "package_fallback" {
+				tier = TierOptional
+			}
+			result.Omitted = append(result.Omitted, Omission{ID: test.ID, CWD: test.PackageRoot, TestFiles: []string{test.Path}, Tier: tier, Reason: "unsupported_configuration", Explanation: explanation})
+		}
+		if test.Framework == "cargo" && !slices.Contains(inv.Manifests, path.Join(test.PackageRoot, "Cargo.toml")) {
+			result.Limitations = append(result.Limitations, "Cargo test has no discovered Cargo.toml: "+test.Path)
+			omitUnsupported("Cargo test has no discovered Cargo.toml")
+			continue
+		}
+		argv, cwd := commandFor(test)
+		if test.Framework == "go" && reason == "package_fallback" {
+			argv = []string{"go", "test", "-json", "./..."}
+		}
+		if len(argv) == 0 {
+			result.Limitations = append(result.Limitations, "No safely recognized runner for "+test.Path+"; inspect test configuration manually.")
+			omitUnsupported("No safely recognized runner for " + test.Framework)
+			continue
+		}
+		description := reasonDescriptions[reason]
+		locations := []model.Provenance{test.Evidence}
+		if reason == "dependency_impact" || reason == "declared_contract_impact" {
+			locations = append(locations, routes[test.Path]...)
+		}
+		toolAvailable := available(argv[0])
+		if test.Framework == "jest" || test.Framework == "vitest" {
+			toolAvailable = false
+		}
+		groups.add(Command{Command: argv, CWD: cwd, Framework: test.Framework, TestFiles: []string{test.Path}, Affected: unique(files), EvidenceReasons: []Reason{{Code: reason, Explanation: description, Evidence: model.Inferred, Locations: locations, RelatedFiles: unique(files)}}, Priority: priority, ToolAvailable: toolAvailable})
+	}
+	result.Commands = groups.commands()
+	if o.Limit > 0 && len(result.Commands) > o.Limit {
+		for _, c := range result.Commands[o.Limit:] {
+			c.Tier = tierFor(c)
+			result.Omitted = append(result.Omitted, omission(c, "recommendation_limit", "Recommendation limit reached before execution planning."))
+		}
+		result.Commands = result.Commands[:o.Limit]
+		result.Limitations = append(result.Limitations, "Recommendation limit reached; inspect inventory for omitted candidates.")
+	}
+	if len(result.Commands) == 0 {
+		result.Limitations = append(result.Limitations, "No supported relevant test commands discovered; supply explicit plan test_run rules.")
+	}
+	if len(inv.Diagnostics) > 0 {
+		result.Limitations = append(result.Limitations, "Inventory contains skipped inputs; inspect diagnostics.")
+	}
+	result.Limitations = unique(result.Limitations)
+	return result, nil
+}
+
+// validateInventory rejects test paths that escape the repository or their
+// declared package root.
+func validateInventory(inv Inventory) error {
+	for _, test := range inv.Tests {
+		if _, e := pathutil.RepoRelative(test.Path); e != nil {
+			return e
+		}
+		if _, e := pathutil.RepoRelative(test.PackageRoot); e != nil {
+			return e
+		}
+		if !inside(test.PackageRoot, test.Path) {
+			return errors.New("test path is outside its declared package root")
+		}
+	}
+	return nil
+}
+
+// commandGroups merges candidates that resolve to the same command ID.
+type commandGroups map[string]*Command
+
+func (groups commandGroups) add(c Command) {
+	c.ID = commandID(c)
+	key := c.ID
+	if existing, ok := groups[key]; ok {
+		existing.TestFiles = unique(append(existing.TestFiles, c.TestFiles...))
+		existing.Affected = unique(append(existing.Affected, c.Affected...))
+		existing.EvidenceReasons = append(existing.EvidenceReasons, c.EvidenceReasons...)
+		if c.Priority > existing.Priority {
+			existing.Priority = c.Priority
+		}
+		return
+	}
+	groups[key] = &c
+}
+
+// addPlanCommands adds the exact test_run commands declared by a plan.
+func (groups commandGroups) addPlanCommands(plan planning.Plan, changed []string, available func(string) bool) error {
+	rules := []*planning.Rule{}
+	for _, criterion := range plan.Acceptance {
+		rules = append(rules, criterion.Rule)
+	}
+	for _, constraint := range plan.Constraints {
+		rules = append(rules, constraint.Rule)
+	}
+	for _, rule := range rules {
+		if rule == nil || rule.Kind != "test_run" {
+			continue
+		}
+		if e := planning.ValidateRule(*rule); e != nil {
+			return e
+		}
+		cwd := rule.CWD
+		if cwd == "" {
+			cwd = "."
+		}
+		groups.add(Command{Command: append([]string(nil), rule.Command...), CWD: cwd, Framework: "plan-declared", TestFiles: []string{}, Affected: unique(changed), EvidenceReasons: []Reason{{Code: "plan_declared", Explanation: "Exact command declared by the supplied plan; explicit setup and environment still need review.", Evidence: model.Proposed}}, Priority: 100, ToolAvailable: available(rule.Command[0])})
+	}
+	return nil
+}
+
+// commands returns the merged commands, highest priority first.
+func (groups commandGroups) commands() []Command {
+	commands := []Command{}
+	for _, c := range groups {
+		c.TestFiles = unique(c.TestFiles)
+		c.Affected = unique(c.Affected)
+		sort.Slice(c.EvidenceReasons, func(i, j int) bool {
+			a, b := c.EvidenceReasons[i], c.EvidenceReasons[j]
+			return a.Code+strings.Join(a.RelatedFiles, "\x00") < b.Code+strings.Join(b.RelatedFiles, "\x00")
+		})
+		commands = append(commands, *c)
+	}
+	sort.Slice(commands, func(i, j int) bool {
+		if commands[i].Priority != commands[j].Priority {
+			return commands[i].Priority > commands[j].Priority
+		}
+		return commands[i].ID < commands[j].ID
+	})
+	return commands
+}
+
+// packageOwners maps each changed non-test file to the deepest test package
+// root that contains it, and returns the set of those roots.
+func packageOwners(inv Inventory, changedSet map[string]bool) (map[string]string, map[string]bool) {
 	roots := map[string]bool{}
 	owners := map[string]string{}
 	isTest := map[string]bool{}
@@ -406,8 +510,13 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			roots[best] = true
 		}
 	}
-	// Prefer concrete Go package/dependency matches over every test package in a
-	// root module. Without a match retain one conservative whole-module command.
+	return owners, roots
+}
+
+// goRootsWithDirectMatch prefers concrete Go package/dependency matches over
+// every test package in a root module. Without a match one conservative
+// whole-module command is retained.
+func goRootsWithDirectMatch(inv Inventory, affected map[string]string, changedSet map[string]bool) map[string]bool {
 	directGoRoots := map[string]bool{}
 	for _, test := range inv.Tests {
 		if test.Framework != "go" {
@@ -422,127 +531,70 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			}
 		}
 	}
-	for _, test := range inv.Tests {
-		priority := 0
-		reason := ""
-		files := []string{}
-		if changedSet[test.Path] {
-			priority = 90
-			reason = "changed_test"
-			files = append(files, test.Path)
-		} else if source, ok := affected[test.Path]; ok {
-			priority = 80
-			reason = "dependency_impact"
-			if contractImpact[test.Path] {
-				reason = "declared_contract_impact"
-			}
-			files = append(files, source)
-		}
-		// A test naming a changed data, schema or configuration file reads it
-		// at runtime more often than not; the match is lexical, not proof.
-		if priority == 0 {
-			for file := range changedSet {
-				if referenced(test, file) {
-					priority = 75
-					reason = "file_reference"
-					files = append(files, file)
-				}
-			}
-		}
-		if test.Framework == "go" && priority == 0 {
-			for file := range changedSet {
-				if strings.HasSuffix(file, ".go") && path.Dir(file) == path.Dir(test.Path) {
-					priority = 70
-					reason = "go_package_companion"
-					files = append(files, file)
-				}
-			}
-		}
-		if priority == 0 {
-			for file := range changedSet {
-				if owners[file] == test.PackageRoot && !(test.Framework == "go" && directGoRoots[test.PackageRoot]) {
-					priority = 30
-					reason = "package_fallback"
-					files = append(files, file)
-				}
-			}
-		}
-		if len(roots) > 1 && (test.PackageRoot == "." || priority > 0) && (strings.Contains("/"+test.Path, "/integration/") || strings.Contains(path.Base(test.Path), "integration") || strings.Contains("/"+test.Path, "/e2e/")) {
-			if priority < 85 {
-				priority = 85
-			}
-			reason = "cross_component_integration"
-			if len(files) == 0 {
-				files = unique(changed)
-			}
-		}
-		if priority == 0 {
-			continue
-		}
-		omitUnsupported := func(explanation string) {
-			tier := TierRequired
-			if reason == "package_fallback" {
-				tier = TierOptional
-			}
-			result.Omitted = append(result.Omitted, Omission{ID: test.ID, CWD: test.PackageRoot, TestFiles: []string{test.Path}, Tier: tier, Reason: "unsupported_configuration", Explanation: explanation})
-		}
-		if test.Framework == "cargo" && !has(inv.Manifests, path.Join(test.PackageRoot, "Cargo.toml")) {
-			result.Limitations = append(result.Limitations, "Cargo test has no discovered Cargo.toml: "+test.Path)
-			omitUnsupported("Cargo test has no discovered Cargo.toml")
-			continue
-		}
-		argv, cwd := commandFor(test)
-		if test.Framework == "go" && reason == "package_fallback" {
-			argv = []string{"go", "test", "-json", "./..."}
-		}
-		if len(argv) == 0 {
-			result.Limitations = append(result.Limitations, "No safely recognized runner for "+test.Path+"; inspect test configuration manually.")
-			omitUnsupported("No safely recognized runner for " + test.Framework)
-			continue
-		}
-		description := map[string]string{"changed_test": "Changed conventional test file.", "dependency_impact": "Test imports a changed file through recorded inferred dependency paths.", "declared_contract_impact": "Test imports a consumer reached through explicit producer/schema and declared contract dependencies; runtime usage remains unproven.", "go_package_companion": "Go test shares a package directory with changed Go source.", "package_fallback": "Conservative package-root fallback; a direct dependency was not established.", "file_reference": "Test source names a changed non-code file (for example a schema or fixture); lexical reference, runtime use unproven.", "cross_component_integration": "Integration-named suite prioritized because changes span multiple test package roots; naming is not semantic proof."}[reason]
-		locations := []model.Provenance{test.Evidence}
-		if reason == "dependency_impact" || reason == "declared_contract_impact" {
-			locations = append(locations, routes[test.Path]...)
-		}
-		toolAvailable := available(argv[0])
-		if test.Framework == "jest" || test.Framework == "vitest" {
-			toolAvailable = false
-		}
-		add(Command{Command: argv, CWD: cwd, Framework: test.Framework, TestFiles: []string{test.Path}, Affected: unique(files), EvidenceReasons: []Reason{{Code: reason, Explanation: description, Evidence: model.Inferred, Locations: locations, RelatedFiles: unique(files)}}, Priority: priority, ToolAvailable: toolAvailable})
-	}
-	for _, c := range groups {
-		c.TestFiles = unique(c.TestFiles)
-		c.Affected = unique(c.Affected)
-		sort.Slice(c.EvidenceReasons, func(i, j int) bool {
-			a, b := c.EvidenceReasons[i], c.EvidenceReasons[j]
-			return a.Code+strings.Join(a.RelatedFiles, "\x00") < b.Code+strings.Join(b.RelatedFiles, "\x00")
-		})
-		result.Commands = append(result.Commands, *c)
-	}
-	sort.Slice(result.Commands, func(i, j int) bool {
-		if result.Commands[i].Priority != result.Commands[j].Priority {
-			return result.Commands[i].Priority > result.Commands[j].Priority
-		}
-		return result.Commands[i].ID < result.Commands[j].ID
-	})
-	if o.Limit > 0 && len(result.Commands) > o.Limit {
-		for _, c := range result.Commands[o.Limit:] {
-			c.Tier = tierFor(c)
-			result.Omitted = append(result.Omitted, omission(c, "recommendation_limit", "Recommendation limit reached before execution planning."))
-		}
-		result.Commands = result.Commands[:o.Limit]
-		result.Limitations = append(result.Limitations, "Recommendation limit reached; inspect inventory for omitted candidates.")
-	}
-	if len(result.Commands) == 0 {
-		result.Limitations = append(result.Limitations, "No supported relevant test commands discovered; supply explicit plan test_run rules.")
-	}
-	if len(inv.Diagnostics) > 0 {
-		result.Limitations = append(result.Limitations, "Inventory contains skipped inputs; inspect diagnostics.")
-	}
-	result.Limitations = unique(result.Limitations)
-	return result, nil
+	return directGoRoots
 }
+
+// testPriority ranks why a test is relevant to the change. A zero priority
+// means the test is not selected.
+func testPriority(test Test, changedSet map[string]bool, changed []string, affected map[string]string, contractImpact map[string]bool, owners map[string]string, roots, directGoRoots map[string]bool) (int, string, []string) {
+	priority := 0
+	reason := ""
+	files := []string{}
+	if changedSet[test.Path] {
+		priority = 90
+		reason = "changed_test"
+		files = append(files, test.Path)
+	} else if source, ok := affected[test.Path]; ok {
+		priority = 80
+		reason = "dependency_impact"
+		if contractImpact[test.Path] {
+			reason = "declared_contract_impact"
+		}
+		files = append(files, source)
+	}
+	// A test naming a changed data, schema or configuration file reads it
+	// at runtime more often than not; the match is lexical, not proof.
+	if priority == 0 {
+		for file := range changedSet {
+			if referenced(test, file) {
+				priority = 75
+				reason = "file_reference"
+				files = append(files, file)
+			}
+		}
+	}
+	if test.Framework == "go" && priority == 0 {
+		for file := range changedSet {
+			if strings.HasSuffix(file, ".go") && path.Dir(file) == path.Dir(test.Path) {
+				priority = 70
+				reason = "go_package_companion"
+				files = append(files, file)
+			}
+		}
+	}
+	if priority == 0 {
+		for file := range changedSet {
+			if owners[file] == test.PackageRoot && !(test.Framework == "go" && directGoRoots[test.PackageRoot]) {
+				priority = 30
+				reason = "package_fallback"
+				files = append(files, file)
+			}
+		}
+	}
+	if len(roots) > 1 && (test.PackageRoot == "." || priority > 0) && (strings.Contains("/"+test.Path, "/integration/") || strings.Contains(path.Base(test.Path), "integration") || strings.Contains("/"+test.Path, "/e2e/")) {
+		if priority < 85 {
+			priority = 85
+		}
+		reason = "cross_component_integration"
+		if len(files) == 0 {
+			files = unique(changed)
+		}
+	}
+	return priority, reason, files
+}
+
+var reasonDescriptions = map[string]string{"changed_test": "Changed conventional test file.", "dependency_impact": "Test imports a changed file through recorded inferred dependency paths.", "declared_contract_impact": "Test imports a consumer reached through explicit producer/schema and declared contract dependencies; runtime usage remains unproven.", "go_package_companion": "Go test shares a package directory with changed Go source.", "package_fallback": "Conservative package-root fallback; a direct dependency was not established.", "file_reference": "Test source names a changed non-code file (for example a schema or fixture); lexical reference, runtime use unproven.", "cross_component_integration": "Integration-named suite prioritized because changes span multiple test package roots; naming is not semantic proof."}
+
 func inside(root, file string) bool { return root == "." || strings.HasPrefix(file, root+"/") }
 func unique(values []string) []string {
 	seen := map[string]bool{}
@@ -588,15 +640,6 @@ func commandFor(t Test) ([]string, string) {
 		return []string{"cargo", "test", "--manifest-path", path.Join(t.PackageRoot, "Cargo.toml")}, "."
 	}
 	return nil, t.PackageRoot
-}
-
-func has(values []string, want string) bool {
-	for _, v := range values {
-		if v == want {
-			return true
-		}
-	}
-	return false
 }
 
 func rootDepth(root string) int {

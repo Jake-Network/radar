@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -69,7 +70,7 @@ func harnessCounts(argv []string, data []byte) harnessResult {
 		return summaryWords(vitestSummary, text, "vitest")
 	case uses(argv, "jest"):
 		return summaryWords(jestSummary, text, "jest")
-	case name == "node" && contains(argv[1:], "--test"):
+	case name == "node" && slices.Contains(argv[1:], "--test"):
 		return nodeTest(text)
 	case name == "cargo" && argv[1] == "test":
 		return cargo(text)
@@ -77,18 +78,9 @@ func harnessCounts(argv []string, data []byte) harnessResult {
 	return harnessResult{}
 }
 
-func contains(list []string, value string) bool {
-	for _, v := range list {
-		if v == value {
-			return true
-		}
-	}
-	return false
-}
-
 func goTest(argv []string, data []byte) harnessResult {
 	r := harnessResult{Harness: "go-test-json"}
-	if !contains(argv[2:], "-json") {
+	if !slices.Contains(argv[2:], "-json") {
 		return harnessResult{}
 	}
 	for _, line := range bytes.Split(data, []byte{'\n'}) {

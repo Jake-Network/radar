@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -116,7 +117,7 @@ func TestNoLexicalFalseFieldsOrEndpoints(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, s := range r.Schemas {
-		if contains(s.Fields, "bogus") {
+		if slices.Contains(s.Fields, "bogus") {
 			t.Fatalf("method local became field: %+v", s)
 		}
 	}
@@ -144,7 +145,7 @@ func TestCommentIsNotFieldUse(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(r.Candidates) != 1 || contains(r.Candidates[0].Fields, "email") {
+	if len(r.Candidates) != 1 || slices.Contains(r.Candidates[0].Fields, "email") {
 		t.Fatalf("comment became use: %+v", r)
 	}
 }

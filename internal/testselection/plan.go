@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -234,7 +235,7 @@ func group(commands []Command) []Command {
 		}
 		paths = unique(paths)
 		// "./..." already covers every package below the module root.
-		if k.framework == "go" && has(paths, "./...") {
+		if k.framework == "go" && slices.Contains(paths, "./...") {
 			paths = []string{"./..."}
 		}
 		for start := 0; start < len(paths); start += maxGroupedFiles {
@@ -269,7 +270,7 @@ func group(commands []Command) []Command {
 
 func coversAny(args, chunk []string) bool {
 	for _, a := range args {
-		if has(chunk, a) || (a != "./..." && has(chunk, "./...")) {
+		if slices.Contains(chunk, a) || (a != "./..." && slices.Contains(chunk, "./...")) {
 			return true
 		}
 	}

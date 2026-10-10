@@ -8,28 +8,81 @@ import (
 	"strings"
 )
 
+// Validate checks a plan against the indexed snapshot. Findings are reported
+// in a fixed order: identity, requirements and criteria, constraints,
+// coverage, tasks and their coordination, contract deltas, decisions,
+// assumptions and review state.
 func Validate(p Plan, s model.Snapshot) Report {
 	r := Report{Status: model.StatusPassed, Revision: s.Revision, BaseRevision: p.BaseRevision, PlanDigest: Digest(p), Findings: []model.Finding{}, Checks: []Check{}}
-	add := func(code, msg string, severity model.Severity) {
-		evidence := model.VerifiedStatic
-		switch code {
-		case "component_owner_conflict", "integration_verification_missing", "unresolved_assumption", "incomplete_design", "unknown_component", "unresolved_consumer", "unverified_criterion", "requirement_verification":
-			evidence = model.Unknown
-		}
-		f := model.NewFinding(code, msg, evidence)
-		f.ID = model.StableID(s.Repository, r.PlanDigest, s.Revision, code, msg)
-		f.Severity = severity
-		f.Remediation = nextStepHints[code]
-		if f.Remediation != "" {
-			f.Verification = "Run radar preflight again against the same baseline after repair; implementation checks still require radar check and exact-state test evidence."
-		}
-		r.Findings = append(r.Findings, f)
-		if severity == model.SeverityError {
-			r.Status = model.StatusFailed
-		} else if r.Status == model.StatusPassed {
-			r.Status = model.StatusWarning
-		}
+	v := &validator{p: p, s: s, r: &r, req: map[string]bool{}, criteria: map[string]Criterion{}, nodes: map[string]model.Node{}}
+	v.identity()
+	for _, n := range s.Nodes {
+		v.nodes[n.ID] = n
 	}
+	v.requirementsAndCriteria()
+	v.constraints()
+	v.coverage()
+	v.tasks()
+	if _, err := Tasks(p); err != nil {
+		v.add("task_dag", err.Error(), model.SeverityError)
+	}
+	v.coordination()
+	if _, err := Project(p, s); err != nil {
+		v.add("graph_projection", err.Error(), model.SeverityError)
+	}
+	v.contractDeltas()
+	for _, f := range projectedConsumers(p, s) {
+		r.Findings = append(r.Findings, f)
+		r.Status = model.StatusFailed
+	}
+	v.decisions()
+	v.assumptions()
+	for _, field := range p.Incomplete {
+		v.add("incomplete_design", "design field incomplete: "+field, model.SeverityWarning)
+	}
+	if p.Approval != nil && !Approved(p) {
+		v.add("invalid_review", "review declaration does not match plan digest/checkpoint or design is incomplete", model.SeverityError)
+	}
+	r.Authoritative = false
+	r.NextSteps = NextSteps(r.Findings)
+	return r
+}
+
+// validator accumulates preflight findings for one plan and snapshot.
+type validator struct {
+	p        Plan
+	s        model.Snapshot
+	r        *Report
+	req      map[string]bool
+	criteria map[string]Criterion
+	nodes    map[string]model.Node
+}
+
+func (v *validator) add(code, msg string, severity model.Severity) {
+	s, r := v.s, v.r
+	evidence := model.VerifiedStatic
+	switch code {
+	case "component_owner_conflict", "integration_verification_missing", "unresolved_assumption", "incomplete_design", "unknown_component", "unresolved_consumer", "unverified_criterion", "requirement_verification":
+		evidence = model.Unknown
+	}
+	f := model.NewFinding(code, msg, evidence)
+	f.ID = model.StableID(s.Repository, r.PlanDigest, s.Revision, code, msg)
+	f.Severity = severity
+	f.Remediation = nextStepHints[code]
+	if f.Remediation != "" {
+		f.Verification = "Run radar preflight again against the same baseline after repair; implementation checks still require radar check and exact-state test evidence."
+	}
+	r.Findings = append(r.Findings, f)
+	if severity == model.SeverityError {
+		r.Status = model.StatusFailed
+	} else if r.Status == model.StatusPassed {
+		r.Status = model.StatusWarning
+	}
+}
+
+// identity checks the plan schema, identity and baseline.
+func (v *validator) identity() {
+	p, s, add := v.p, v.s, v.add
 	if p.SchemaVersion != SchemaVersion {
 		add("plan_schema", "unsupported schema_version; expected 1", model.SeverityError)
 	}
@@ -39,12 +92,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 	if p.BaseRevision == "" || p.BaseRevision != s.Revision {
 		add("stale_context", "plan base_revision does not match indexed revision", model.SeverityError)
 	}
-	req := map[string]bool{}
-	criteria := map[string]Criterion{}
-	nodes := map[string]model.Node{}
-	for _, n := range s.Nodes {
-		nodes[n.ID] = n
-	}
+}
+
+// requirementsAndCriteria checks requirement and acceptance criterion identities and links.
+func (v *validator) requirementsAndCriteria() {
+	p, add, req, criteria := v.p, v.add, v.req, v.criteria
 	for _, q := range p.Requirements {
 		if q.ID == "" || q.Intent == "" || req[q.ID] {
 			add("requirement_identity", "requirements need unique IDs and intent", model.SeverityError)
@@ -74,6 +126,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 	if len(p.Requirements) == 0 {
 		add("requirements_missing", "at least one requirement is required", model.SeverityError)
 	}
+}
+
+// constraints checks constraint identities and rules.
+func (v *validator) constraints() {
+	p, add := v.p, v.add
 	constraintIDs := map[string]bool{}
 	for _, c := range p.Constraints {
 		if c.ID == "" || c.Intent == "" || constraintIDs[c.ID] {
@@ -86,6 +143,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 			}
 		}
 	}
+}
+
+// coverage requires a verification criterion for every requirement.
+func (v *validator) coverage() {
+	p, add := v.p, v.add
 	for _, q := range p.Requirements {
 		covered := false
 		for _, c := range p.Acceptance {
@@ -101,6 +163,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 			add("requirement_verification", "requirement "+q.ID+" lacks a verification criterion", sev)
 		}
 	}
+}
+
+// tasks checks that each task is provable, linked and reviewed.
+func (v *validator) tasks() {
+	p, add, req, criteria, nodes := v.p, v.add, v.req, v.criteria, v.nodes
 	for _, t := range p.Tasks {
 		if t.Intent == "" || len(t.Requirements) == 0 || len(t.Acceptance) == 0 {
 			add("task_proof", "task "+t.ID+" needs intent, requirements and acceptance", model.SeverityError)
@@ -134,9 +201,12 @@ func Validate(p Plan, s model.Snapshot) Report {
 			add("review_required", "consequential task "+t.ID+" requires a digest-bound checkpoint review declaration", model.SeverityError)
 		}
 	}
-	if _, err := Tasks(p); err != nil {
-		add("task_dag", err.Error(), model.SeverityError)
-	}
+}
+
+// coordination flags unordered tasks that share components, contracts or only
+// separate test criteria.
+func (v *validator) coordination() {
+	p, add, criteria := v.p, v.add, v.criteria
 	// Unordered writers of a shared contract require explicit coordination.
 	byID := map[string]Task{}
 	for _, t := range p.Tasks {
@@ -196,9 +266,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 			}
 		}
 	}
-	if _, err := Project(p, s); err != nil {
-		add("graph_projection", err.Error(), model.SeverityError)
-	}
+}
+
+// contractDeltas checks projected contract changes.
+func (v *validator) contractDeltas() {
+	p, add, nodes := v.p, v.add, v.nodes
 	deltaIDs := map[string]bool{}
 	for _, d := range p.ContractDeltas {
 		if deltaIDs[d.Contract] {
@@ -236,10 +308,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 			}
 		}
 	}
-	for _, f := range projectedConsumers(p, s) {
-		r.Findings = append(r.Findings, f)
-		r.Status = model.StatusFailed
-	}
+}
+
+// decisions requires reviewed architecture decisions for consequential work.
+func (v *validator) decisions() {
+	p, add := v.p, v.add
 	consequential := false
 	for _, t := range p.Tasks {
 		if t.Consequential {
@@ -259,6 +332,11 @@ func Validate(p Plan, s model.Snapshot) Report {
 	if consequential && len(p.Decisions) == 0 {
 		add("decision_review", "consequential work requires an architecture decision with alternatives and tradeoffs", model.SeverityError)
 	}
+}
+
+// assumptions checks assumption identity, status and resolution.
+func (v *validator) assumptions() {
+	p, add := v.p, v.add
 	assumptionIDs := map[string]bool{}
 	for _, a := range p.Assumptions {
 		if strings.TrimSpace(a.Text) == "" {
@@ -281,15 +359,6 @@ func Validate(p Plan, s model.Snapshot) Report {
 			add("assumption_status", "assumption "+assumptionLabel(a)+"has unsupported status "+a.Status+"; use open, accepted or resolved", model.SeverityError)
 		}
 	}
-	for _, field := range p.Incomplete {
-		add("incomplete_design", "design field incomplete: "+field, model.SeverityWarning)
-	}
-	if p.Approval != nil && !Approved(p) {
-		add("invalid_review", "review declaration does not match plan digest/checkpoint or design is incomplete", model.SeverityError)
-	}
-	r.Authoritative = false
-	r.NextSteps = NextSteps(r.Findings)
-	return r
 }
 
 func assumptionLabel(a Assumption) string {

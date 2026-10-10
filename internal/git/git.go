@@ -60,13 +60,7 @@ const NullPath = "/dev/null"
 // replace objects.
 func command(ctx context.Context, root string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager", "-c", "core.fsmonitor=false", "-c", "protocol.allow=never"}, args...)...)
-	for _, entry := range os.Environ() {
-		key, _, _ := strings.Cut(entry, "=")
-		if !strings.HasPrefix(strings.ToUpper(key), "GIT_") {
-			cmd.Env = append(cmd.Env, entry)
-		}
-	}
-	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+NullPath, "GIT_NO_LAZY_FETCH=1")
+	cmd.Env = sanitizedEnv("GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+NullPath, "GIT_NO_LAZY_FETCH=1")
 	return cmd
 }
 
@@ -90,11 +84,27 @@ func runListing(ctx context.Context, root string, args ...string) ([]byte, error
 	return runLimit(ctx, root, maxListingBytes, listingTimeout, args...)
 }
 
-func Resolve(ctx context.Context, root, ref string) (string, error) {
+func validRef(ref string) error {
 	if ref == "" || strings.HasPrefix(ref, "-") || strings.ContainsAny(ref, "\x00\r\n") {
-		return "", errors.New("invalid Git reference")
+		return errors.New("invalid Git reference")
+	}
+	return nil
+}
+
+func Resolve(ctx context.Context, root, ref string) (string, error) {
+	if err := validRef(ref); err != nil {
+		return "", err
 	}
 	b, err := run(ctx, root, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+	return strings.TrimSpace(string(b)), err
+}
+
+// Tree resolves a revision to its tree object ID.
+func Tree(ctx context.Context, root, ref string) (string, error) {
+	if err := validRef(ref); err != nil {
+		return "", err
+	}
+	b, err := runLimit(ctx, root, MaxFileBytes, listingTimeout, "rev-parse", "--verify", "--end-of-options", ref+"^{tree}")
 	return strings.TrimSpace(string(b)), err
 }
 func Inspect(ctx context.Context, root string) (Info, error) {

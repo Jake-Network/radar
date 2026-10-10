@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -269,7 +270,7 @@ func Compare(ctx context.Context, root, base, head string) (Comparison, error) {
 			continue
 		}
 		for _, field := range c.Fields {
-			if contains(a.Fields, field) && !contains(b.Fields, field) {
+			if slices.Contains(a.Fields, field) && !slices.Contains(b.Fields, field) {
 				f := model.NewFinding("discovered_response_field_removed", fmt.Sprintf("Declared response field %s was removed from %s; %s still accesses it via %s", field, c.Contract, c.Consumer, c.Endpoint), model.Inferred)
 				f.ID = model.StableID(f.Code, c.ID, field)
 				f.Contract = c.Contract
@@ -286,14 +287,6 @@ func Compare(ctx context.Context, root, base, head string) (Comparison, error) {
 		r.Status = model.StatusWarning
 	}
 	return r, nil
-}
-func contains(values []string, want string) bool {
-	for _, v := range values {
-		if v == want {
-			return true
-		}
-	}
-	return false
 }
 
 func escapePointer(s string) string {

@@ -239,3 +239,46 @@ func (s Store) Recent(n int) []Record {
 	}
 	return out
 }
+
+// RunChange lists how a repeated selection differs from the previous run.
+type RunChange struct {
+	PreviousRun string   `json:"previous_run"`
+	Mode        string   `json:"mode"`
+	Added       []string `json:"added"`
+	Removed     []string `json:"removed"`
+	Moved       []string `json:"moved"`
+}
+
+// CompareRun reports which repository branches were added, removed or moved
+// to another commit since the previous run.
+func CompareRun(previous Record, results []Result) *RunChange {
+	c := &RunChange{PreviousRun: previous.RunID, Mode: previous.Selection.Mode, Added: []string{}, Removed: []string{}, Moved: []string{}}
+	before := map[string]string{}
+	for _, r := range previous.Repos {
+		for _, b := range r.Branches {
+			before[r.ID+":"+b.Ref] = b.Commit
+		}
+	}
+	now := map[string]bool{}
+	for _, r := range results {
+		for _, b := range r.Branches {
+			key := r.ID + ":" + b.Ref
+			now[key] = true
+			commit, ok := before[key]
+			switch {
+			case !ok:
+				c.Added = append(c.Added, key)
+			case commit != b.Commit:
+				c.Moved = append(c.Moved, key)
+			}
+		}
+	}
+	for _, r := range previous.Repos {
+		for _, b := range r.Branches {
+			if key := r.ID + ":" + b.Ref; !now[key] {
+				c.Removed = append(c.Removed, key)
+			}
+		}
+	}
+	return c
+}
