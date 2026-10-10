@@ -320,7 +320,7 @@
         },
         "junit": {
           "type": "string",
-          "description": "test_run only: snapshot-relative JUnit XML report written by command."
+          "description": "test_run only: snapshot-relative JUnit XML report written by command, or a directory whose regular TEST-*.xml files are all read (Maven Surefire, Gradle)."
         },
         "cwd": {
           "type": "string"

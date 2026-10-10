@@ -162,6 +162,9 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 			r.Status = model.StatusError
 			if runCtx.Err() != nil {
 				r.Status = model.StatusTimeout
+			} else if len(harnessCounts(step, setupOut.b.Bytes(), testDir).BuildErrors) > 0 {
+				// The setup build stopped on compiler errors in repository source.
+				r.Status = model.StatusFailed
 			}
 			r.OutputDigest = hex.EncodeToString(setupOut.sum())
 			r.OutputTail = string(setupOut.tailBytes())
@@ -180,10 +183,10 @@ func Run(ctx context.Context, root, ref string, p planning.Plan, argv []string, 
 	content := out.b.Bytes()
 	r.OutputDigest = hex.EncodeToString(out.sum())
 	r.OutputTail = string(append(setupOut.tailBytes(), out.tailBytes()...))
-	result := harnessCounts(argv, content)
+	result := harnessCounts(argv, content, testDir)
 	if spec.JUnit != "" {
 		if junit, err := readJUnit(testDir, spec.JUnit); err == nil {
-			result = junit
+			result = supplementJUnit(result, junit)
 		}
 	}
 	r.TestsRun, r.TestsFailed, r.TestsSkipped, r.Harness = result.Run, result.Failed, result.Skipped, result.Harness
@@ -271,6 +274,11 @@ func environment(privateHome string, passthrough []string) []string {
 		"CARGO_HOME":       existing(os.Getenv("CARGO_HOME"), join(home, ".cargo")),
 		"RUSTUP_HOME":      existing(os.Getenv("RUSTUP_HOME"), join(home, ".rustup")),
 		"npm_config_cache": existing(os.Getenv("npm_config_cache"), join(home, ".npm")),
+		// Gradle and the Maven wrapper keep distributions and dependencies
+		// here (Maven itself resolves ~/.m2 from the account, not $HOME).
+		"GRADLE_USER_HOME": existing(os.Getenv("GRADLE_USER_HOME"), join(home, ".gradle")),
+		"MAVEN_USER_HOME":  existing(os.Getenv("MAVEN_USER_HOME"), join(home, ".m2")),
+		"JAVA_HOME":        existing(os.Getenv("JAVA_HOME")),
 		"PYTHONUSERBASE":   existing(os.Getenv("PYTHONUSERBASE"), join(home, ".local")),
 		"VIRTUAL_ENV":      existing(os.Getenv("VIRTUAL_ENV")),
 	}

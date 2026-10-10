@@ -149,7 +149,7 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 		if count > maxSnapshotFiles*2 {
 			return errors.New("candidate input inventory exceeds file limit")
 		}
-		if !d.IsDir() && !tracked[rel] && !allowed[rel] && !indexer.ExcludedPath(rel) {
+		if !d.IsDir() && !tracked[rel] && !(d.Type().IsRegular() && declaredArtifact(allowed, rel)) && !indexer.ExcludedPath(rel) {
 			state.Matches = false
 			fmt.Fprintf(hash, "untracked:%s\x00", rel)
 		}
@@ -160,6 +160,17 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 	}
 	state.Digest = hex.EncodeToString(hash.Sum(nil))
 	return state, nil
+}
+
+// declaredArtifact reports whether rel names a declared JUnit file or an
+// immediate TEST-*.xml child that readJUnit consumes from a report directory.
+// The caller must also verify that the artifact is a regular file.
+func declaredArtifact(allowed map[string]bool, rel string) bool {
+	if allowed[rel] {
+		return true
+	}
+	name := filepath.Base(rel)
+	return allowed[filepath.ToSlash(filepath.Dir(rel))] && strings.HasPrefix(name, "TEST-") && strings.HasSuffix(name, ".xml")
 }
 
 func executionDirectory(root, cwd string) (string, error) {
@@ -329,6 +340,9 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 	defer cancel()
 	env := environment(home, spec.Env)
 	var out output
+	// observed is the argv whose output is decorated: a failed setup step
+	// that compiled the source is observed as that step.
+	observed := argv
 	finish := func(status model.Status) CandidateRun {
 		r.Status = status
 		r.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -346,7 +360,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		r.IntegrityDigest = integrity(r)
 		r.ID = "evidence:" + r.IntegrityDigest
 		observation := CandidateObservation{Status: r.Status, ExitCode: r.ExitCode, TestsRun: r.TestsRun, TestsFailed: r.TestsFailed, TestsSkipped: r.TestsSkipped, Harness: r.Harness, OutputDigest: r.OutputDigest}
-		decorateCandidateObservation(&observation, argv, out.b.Bytes(), root, dir, cwd)
+		decorateCandidateObservation(&observation, observed, out.b.Bytes(), root, dir, cwd)
 		return CandidateRun{Record: r, Observation: observation}
 	}
 	for _, step := range spec.Setup {
@@ -363,6 +377,12 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 			return finish(model.StatusTimeout), nil
 		}
 		if r.ExitCode != 0 {
+			// A setup build (cmake --build, make) that stopped on compiler
+			// errors in repository source observed the combined source fail.
+			if len(harnessCounts(step, out.b.Bytes(), dir).BuildErrors) > 0 {
+				observed = step
+				return finish(model.StatusFailed), nil
+			}
 			return finish(model.StatusError), nil
 		}
 	}
@@ -384,7 +404,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		return finish(model.StatusError), nil
 	}
 	r.ExitCode = state.ExitCode()
-	counts := harnessCounts(argv, out.b.Bytes())
+	counts := harnessCounts(argv, out.b.Bytes(), dir)
 	// Preserve observed failures even when the additionally declared report
 	// cannot be read. Missing report coverage cannot erase a failing test.
 	r.TestsRun = counts.Run
@@ -399,7 +419,7 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 			}
 			return finish(model.StatusError), nil
 		}
-		counts = junit
+		counts = supplementJUnit(counts, junit)
 	}
 	r.TestsRun = counts.Run
 	r.TestsFailed = counts.Failed
@@ -434,8 +454,9 @@ func ValidateCandidate(r Record, root string, c CandidateCheckpoint, p planning.
 	return nil
 }
 
-// CandidateArtifacts enumerates only exact declared JUnit output paths. It does
-// not exempt tracked inputs or arbitrary directories from source validation.
+// CandidateArtifacts enumerates only exact declared JUnit output paths, which
+// may be report directories. It does not exempt tracked inputs or undeclared
+// directories from source validation.
 func CandidateArtifacts(p *planning.Plan) []string {
 	var result []string
 	if p == nil {

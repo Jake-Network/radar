@@ -125,8 +125,9 @@ radar verify --plan .radar/plans/approved.json --ref IMPL_SHA --evidence EVIDENC
 - `test` runs one `test_run` command from the plan on a private copy of the
   commit. The rule may declare `cwd`, `env` (variable names to pass through),
   `link` (untracked directories such as `node_modules`), `setup` commands and
-  a `junit` report path. Radar stores the outcome and an output digest, not the
-  output itself.
+  a `junit` report path (a file, or a directory whose `TEST-*.xml` files are
+  all read, as Maven Surefire and Gradle write them). Radar stores the outcome
+  and an output digest, not the output itself.
 - `verify` checks the plan's rules against a commit and test records. Records
   from another commit or plan digest are rejected.
 

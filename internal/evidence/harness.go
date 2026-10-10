@@ -37,7 +37,43 @@ var (
 	vitestSummary = regexp.MustCompile(`(?m)^\s*Tests\s+(.+?)\s*\([0-9]+\)\s*$`)
 	nodeCount     = regexp.MustCompile(`(?m)^# (pass|fail|skipped|todo) ([0-9]+)$`)
 	cargoSummary  = regexp.MustCompile(`(?m)^test result: (?:ok|FAILED)\. ([0-9]+) passed; ([0-9]+) failed; ([0-9]+) ignored`)
+	// Surefire's per-module "Results:" totals; per-class lines carry a
+	// "Time elapsed" suffix and are not counted twice.
+	surefireTotal = regexp.MustCompile(`(?m)^\[(?:INFO|WARNING|ERROR)\] Tests run: ([0-9]+), Failures: ([0-9]+), Errors: ([0-9]+), Skipped: ([0-9]+)\s*$`)
+	// CTest counts skipped tests in "out of N" and lists them as not run.
+	ctestTotal   = regexp.MustCompile(`(?m)^\s*[0-9]+% tests passed, ([0-9]+) tests? failed out of ([0-9]+)\s*$`)
+	ctestSkipped = regexp.MustCompile(`(?m)^\s*[0-9]+ - \S.* \(Skipped\)\s*$`)
+	gtestPassed  = regexp.MustCompile(`(?m)^\[  PASSED  \] ([0-9]+) tests?\.`)
+	gtestFailed  = regexp.MustCompile(`(?m)^\[  FAILED  \] ([0-9]+) tests?, listed below`)
+	gtestSkipped = regexp.MustCompile(`(?m)^\[  SKIPPED \] ([0-9]+) tests?, listed below`)
 )
+
+// buildDriver reports argv that compiles C or C++: a build program, CMake's
+// build mode, or a compiler. Its output can hold compiler errors and, for
+// `make test`, CTest's summary.
+func buildDriver(argv []string) bool {
+	switch filepath.Base(argv[0]) {
+	case "make", "gmake", "ninja", "cc", "c++", "gcc", "g++", "clang", "clang++":
+		return true
+	case "cmake":
+		return slices.Contains(argv[1:], "--build")
+	case "meson":
+		return len(argv) > 1 && (argv[1] == "compile" || argv[1] == "test")
+	}
+	return false
+}
+
+// buildTool names the JVM build tool an argv invokes, directly or through
+// its wrapper script.
+func buildTool(argv []string) string {
+	switch filepath.Base(argv[0]) {
+	case "mvn", "mvnw", "mvn.cmd", "mvnw.cmd":
+		return "maven"
+	case "gradle", "gradlew", "gradle.bat", "gradlew.bat":
+		return "gradle"
+	}
+	return ""
+}
 
 func isUnittest(argv []string) bool {
 	name := filepath.Base(argv[0])
@@ -54,16 +90,23 @@ func uses(argv []string, tool string) bool {
 }
 
 // harnessCounts recognizes explicit results from supported harnesses, never
-// arbitrary success output.
-func harnessCounts(argv []string, data []byte) harnessResult {
-	if len(argv) < 2 {
+// arbitrary success output. dir is the command's working directory, used to
+// read absolute compiler paths; empty accepts only relative ones.
+func harnessCounts(argv []string, data []byte, dir string) harnessResult {
+	// Build programs and CTest can run bare; other runners need a
+	// subcommand or arguments to be recognized.
+	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) && filepath.Base(argv[0]) != "ctest" {
 		return harnessResult{}
 	}
 	text := ansi.ReplaceAllString(string(data), "")
 	name := filepath.Base(argv[0])
 	switch {
+	case buildDriver(argv):
+		r := ctest(text)
+		r.BuildErrors = ccBuildErrors(text, dir)
+		return r
 	case name == "go" && argv[1] == "test":
-		return goTest(argv, data)
+		return goTest(argv, data, dir)
 	case isUnittest(argv):
 		return unittest(text)
 	case uses(argv, "pytest") || uses(argv, "py.test"):
@@ -75,12 +118,82 @@ func harnessCounts(argv []string, data []byte) harnessResult {
 	case name == "node" && slices.Contains(argv[1:], "--test"):
 		return nodeTest(text)
 	case name == "cargo" && argv[1] == "test":
-		return cargo(text)
+		return cargo(text, dir)
+	case buildTool(argv) == "maven":
+		return maven(text, dir)
+	case buildTool(argv) == "gradle":
+		// Gradle prints no test counts; results come from its JUnit reports.
+		return harnessResult{BuildErrors: javaBuildErrors(text, dir)}
+	case name == "ctest":
+		r := ctest(text)
+		if slices.Contains(argv[1:], "--build-and-test") {
+			r.BuildErrors = ccBuildErrors(text, dir)
+		}
+		return r
+	case slices.ContainsFunc(argv[1:], func(a string) bool { return strings.HasPrefix(a, "--gtest_") }):
+		return gtest(text)
 	}
 	return harnessResult{}
 }
 
-func goTest(argv []string, data []byte) harnessResult {
+func ctest(text string) harnessResult {
+	var r harnessResult
+	skipped := len(ctestSkipped.FindAllString(text, -1))
+	total := 0
+	for _, m := range ctestTotal.FindAllStringSubmatch(text, -1) {
+		failed, _ := strconv.Atoi(m[1])
+		n, _ := strconv.Atoi(m[2])
+		r.Harness = "ctest"
+		r.Failed += failed
+		total += n
+	}
+	if r.Harness == "" {
+		return harnessResult{}
+	}
+	r.Skipped = min(skipped, total-r.Failed)
+	r.Run = total - r.Skipped
+	return r
+}
+
+func gtest(text string) harnessResult {
+	r := harnessResult{}
+	for _, m := range gtestPassed.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Run += n
+		r.Harness = "gtest"
+	}
+	for _, m := range gtestFailed.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Run += n
+		r.Failed += n
+		r.Harness = "gtest"
+	}
+	for _, m := range gtestSkipped.FindAllStringSubmatch(text, -1) {
+		n, _ := strconv.Atoi(m[1])
+		r.Skipped += n
+	}
+	if r.Harness == "" {
+		return harnessResult{}
+	}
+	return r
+}
+
+func maven(text, dir string) harnessResult {
+	r := harnessResult{BuildErrors: javaBuildErrors(text, dir)}
+	for _, m := range surefireTotal.FindAllStringSubmatch(text, -1) {
+		run, _ := strconv.Atoi(m[1])
+		failures, _ := strconv.Atoi(m[2])
+		errs, _ := strconv.Atoi(m[3])
+		skipped, _ := strconv.Atoi(m[4])
+		r.Harness = "maven-surefire"
+		r.Run += run - skipped
+		r.Failed += failures + errs
+		r.Skipped += skipped
+	}
+	return r
+}
+
+func goTest(argv []string, data []byte, dir string) harnessResult {
 	r := harnessResult{Harness: "go-test-json"}
 	if !slices.Contains(argv[2:], "-json") {
 		return harnessResult{}
@@ -103,7 +216,7 @@ func goTest(argv []string, data []byte) harnessResult {
 			r.Skipped++
 		}
 	}
-	r.BuildErrors = goBuildErrors(data)
+	r.BuildErrors = goBuildErrors(data, dir)
 	return r
 }
 
@@ -194,7 +307,7 @@ func nodeTest(text string) harnessResult {
 	return r
 }
 
-func cargo(text string) harnessResult {
+func cargo(text, dir string) harnessResult {
 	r := harnessResult{Harness: "cargo-test"}
 	for _, m := range cargoSummary.FindAllStringSubmatch(text, -1) {
 		passed, _ := strconv.Atoi(m[1])
@@ -204,15 +317,31 @@ func cargo(text string) harnessResult {
 		r.Failed += failed
 		r.Skipped += ignored
 	}
-	r.BuildErrors = cargoBuildErrors(text)
+	r.BuildErrors = cargoBuildErrors(text, dir)
 	return r
+}
+
+// supplementJUnit combines two observations of the same execution. Counts
+// may overlap, so take their maximum rather than adding them. A partial
+// report must never erase failures or compiler errors observed in stdout.
+func supplementJUnit(output, report harnessResult) harnessResult {
+	output.Run = max(output.Run, report.Run)
+	output.Failed = max(output.Failed, report.Failed)
+	output.Skipped = max(output.Skipped, report.Skipped)
+	output.Harness = report.Harness
+	return output
 }
 
 const maxJUnitBytes = 16 << 20
 
+// maxJUnitFiles bounds the per-class reports read from a report directory.
+const maxJUnitFiles = 4096
+
 // readJUnit parses a JUnit XML report written by the command inside the
 // snapshot. Every <testcase> counts; <failure>/<error> fail it and <skipped>
-// skips it. Any framework with a JUnit reporter is therefore supported.
+// skips it. Any framework with a JUnit reporter is therefore supported. A
+// directory (Maven Surefire, Gradle) contributes its regular TEST-*.xml files,
+// without recursion or symlinks, within the same total byte bound.
 func readJUnit(dest, report string) (harnessResult, error) {
 	clean, err := pathutil.RepoRelative(report)
 	if err != nil {
@@ -222,15 +351,80 @@ func readJUnit(dest, report string) (harnessResult, error) {
 	if err != nil {
 		return harnessResult{}, err
 	}
-	f, err := os.Open(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return harnessResult{}, err
 	}
+	if !info.IsDir() {
+		f, err := os.Open(path)
+		if err != nil {
+			return harnessResult{}, err
+		}
+		defer f.Close()
+		return parseJUnit(io.LimitReader(f, maxJUnitBytes))
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return harnessResult{}, err
+	}
+	total := harnessResult{Harness: "junit"}
+	var remaining int64 = maxJUnitBytes
+	files, cases := 0, 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.Type().IsRegular() || !strings.HasPrefix(name, "TEST-") || !strings.HasSuffix(name, ".xml") {
+			continue
+		}
+		if files++; files > maxJUnitFiles {
+			return harnessResult{}, errors.New("JUnit report directory exceeds file limit")
+		}
+		r, n, err := readJUnitFile(filepath.Join(path, name), remaining)
+		if err != nil {
+			return harnessResult{}, err
+		}
+		remaining -= n
+		total.Run += r.Run
+		total.Failed += r.Failed
+		total.Skipped += r.Skipped
+		cases += r.Run + r.Skipped
+	}
+	if cases == 0 {
+		return harnessResult{}, errors.New("JUnit report directory contains no test cases")
+	}
+	return total, nil
+}
+
+// readJUnitFile counts one report within the remaining byte budget and
+// returns the bytes it consumed.
+func readJUnitFile(path string, remaining int64) (harnessResult, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return harnessResult{}, 0, err
+	}
 	defer f.Close()
-	return parseJUnit(io.LimitReader(f, maxJUnitBytes))
+	info, err := f.Stat()
+	if err != nil {
+		return harnessResult{}, 0, err
+	}
+	if info.Size() > remaining {
+		return harnessResult{}, 0, errors.New("JUnit reports exceed byte limit")
+	}
+	r, _, err := countJUnit(io.LimitReader(f, remaining))
+	return r, info.Size(), err
 }
 
 func parseJUnit(reader io.Reader) (harnessResult, error) {
+	r, cases, err := countJUnit(reader)
+	if err != nil {
+		return harnessResult{}, err
+	}
+	if cases == 0 {
+		return harnessResult{}, errors.New("JUnit report contains no test cases")
+	}
+	return r, nil
+}
+
+func countJUnit(reader io.Reader) (harnessResult, int, error) {
 	r := harnessResult{Harness: "junit"}
 	d := xml.NewDecoder(reader)
 	inCase, failed, skipped, cases := false, false, false, 0
@@ -240,7 +434,7 @@ func parseJUnit(reader io.Reader) (harnessResult, error) {
 			break
 		}
 		if err != nil {
-			return harnessResult{}, err
+			return harnessResult{}, 0, err
 		}
 		switch t := token.(type) {
 		case xml.StartElement:
@@ -268,10 +462,7 @@ func parseJUnit(reader io.Reader) (harnessResult, error) {
 			}
 		}
 	}
-	if cases == 0 {
-		return harnessResult{}, errors.New("JUnit report contains no test cases")
-	}
-	return r, nil
+	return r, cases, nil
 }
 
 var missingModule = regexp.MustCompile(`(?m)^(?:E\s+)?ModuleNotFoundError: No module named`)

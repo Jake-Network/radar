@@ -15,7 +15,7 @@ type impactHop struct {
 	contract   bool
 }
 
-func dependencyImpact(snapshot model.Snapshot, changed map[string]bool) (map[string]string, map[string][]model.Provenance, map[string]bool, bool) {
+func dependencyImpact(snapshot model.Snapshot, changed map[string]bool) (map[string]string, map[string][]model.Provenance, map[string]bool, map[string][]string, bool) {
 	edges := append([]model.Edge(nil), snapshot.Edges...)
 	sort.Slice(edges, func(i, j int) bool {
 		a, b := edges[i], edges[j]
@@ -129,6 +129,7 @@ func dependencyImpact(snapshot model.Snapshot, changed map[string]bool) (map[str
 			queue = append(queue, hop.target)
 		}
 	}
+	reached, exhausted := reachingChanges(adjacency, files)
 	affected := map[string]string{}
 	fileRoutes := map[string][]model.Provenance{}
 	contractImpact := map[string]bool{}
@@ -139,5 +140,37 @@ func dependencyImpact(snapshot model.Snapshot, changed map[string]bool) (map[str
 			contractImpact[file] = crossed[id]
 		}
 	}
-	return affected, fileRoutes, contractImpact, truncated
+	return affected, fileRoutes, contractImpact, reached, truncated || exhausted
+}
+
+// reachingChanges lists, for each file, every changed file with a dependency
+// path to it, not only the first one the shared search met: a test that
+// imports a changed module also relates the changed files that module
+// imports, and a changed test still relates the changed sources it imports.
+// The search is bounded in total; reaching the bound truncates the result.
+func reachingChanges(adjacency map[string][]impactHop, changed []string) (map[string][]string, bool) {
+	reached := map[string][]string{}
+	budget := 1_000_000
+	for _, file := range changed {
+		start := model.FileID(file)
+		seen := map[string]bool{start: true}
+		frontier := []string{start}
+		for i := 0; i < len(frontier); i++ {
+			if budget--; budget < 0 {
+				return reached, true
+			}
+			for _, hop := range adjacency[frontier[i]] {
+				if !seen[hop.target] {
+					seen[hop.target] = true
+					frontier = append(frontier, hop.target)
+				}
+			}
+		}
+		for _, id := range frontier[1:] {
+			if f := model.PathFromID(id); f != "" && id == model.FileID(f) {
+				reached[f] = append(reached[f], file)
+			}
+		}
+	}
+	return reached, false
 }

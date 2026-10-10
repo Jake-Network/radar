@@ -48,6 +48,13 @@ func ObserveCandidate(ctx context.Context, dir string, argv []string, timeout ti
 
 // ObserveCandidateAt executes only inside a validated candidate subdirectory.
 func ObserveCandidateAt(ctx context.Context, root, cwd string, argv []string, timeout time.Duration) (CandidateObservation, error) {
+	return ObserveCandidateReport(ctx, root, cwd, argv, "", timeout)
+}
+
+// ObserveCandidateReport also reads the CWD-relative JUnit report the runner
+// is known to write. The report must not exist before the command runs, so a
+// committed or earlier report cannot stand in for this execution.
+func ObserveCandidateReport(ctx context.Context, root, cwd string, argv []string, report string, timeout time.Duration) (CandidateObservation, error) {
 	r := CandidateObservation{Status: model.StatusError, ExitCode: -1}
 	dir := root
 	if cwd != "" && cwd != "." {
@@ -67,6 +74,18 @@ func ObserveCandidateAt(ctx context.Context, root, cwd string, argv []string, ti
 	if timeout <= 0 || timeout > 30*time.Minute {
 		return r, errors.New("invalid verification timeout")
 	}
+	if report != "" {
+		clean, e := pathutil.RepoRelative(report)
+		if e != nil {
+			return r, e
+		}
+		if _, e = os.Lstat(filepath.Join(dir, filepath.FromSlash(clean))); e == nil {
+			return r, errors.New("stale JUnit report exists before candidate execution")
+		} else if !os.IsNotExist(e) {
+			return r, e
+		}
+		report = clean
+	}
 	home, e := os.MkdirTemp("", "radar-integration-home-")
 	if e != nil {
 		return r, e
@@ -81,7 +100,14 @@ func ObserveCandidateAt(ctx context.Context, root, cwd string, argv []string, ti
 		return r, nil
 	}
 	r.ExitCode = state.ExitCode()
-	result := harnessCounts(argv, out.b.Bytes())
+	result := harnessCounts(argv, out.b.Bytes(), dir)
+	if report != "" {
+		// Without a readable report the output-based result stands: a
+		// compile error is still observed, and no count is invented.
+		if junit, e := readJUnit(dir, report); e == nil {
+			result = supplementJUnit(result, junit)
+		}
+	}
 	r.TestsRun = result.Run
 	r.TestsFailed = result.Failed
 	r.TestsSkipped = result.Skipped
@@ -138,7 +164,7 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 	}
 	if r.Status == model.StatusFailed {
 		var build []sourceBuildError
-		for _, b := range harnessCounts(argv, data).BuildErrors {
+		for _, b := range harnessCounts(argv, data, dir).BuildErrors {
 			if cwd != "" && cwd != "." {
 				b.Path = filepath.ToSlash(filepath.Join(cwd, b.Path))
 			}
@@ -149,7 +175,14 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			r.Locations = append(r.Locations, model.Provenance{Path: b.Path, Line: b.Line, Method: "observed_compiler_error", Evidence: model.ObservedTest})
 		}
 		if len(build) > 0 {
-			r.Diagnosis = buildDiagnosis(filepath.Base(argv[0])+" "+argv[1], build)
+			// Name the subcommand (go test, cmake --build); a build program
+			// or compiler is named alone, since its first argument is a flag
+			// or a file.
+			tool := filepath.Base(argv[0])
+			if buildTool(argv) == "" && len(argv) > 1 && (!buildDriver(argv) || tool == "cmake") {
+				tool += " " + argv[1]
+			}
+			r.Diagnosis = buildDiagnosis(tool, build)
 		}
 	}
 	// Harness-like text printed by arbitrary programs is not an authentication

@@ -39,6 +39,8 @@ type Options struct {
 	// Progress, when set, hears what the gate is doing so a terminal can
 	// show it live. It is presentation only and never affects the report.
 	Progress func(Step)
+	// report is the selected command's runner-written JUnit path.
+	report string
 }
 
 // Step is one progress notification.

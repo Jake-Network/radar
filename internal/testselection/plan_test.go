@@ -170,3 +170,28 @@ func TestChangedTestDoesNotFallBackToSiblings(t *testing.T) {
 		t.Fatalf("%+v", p.Commands)
 	}
 }
+
+// A changed test still relates the changed sources it imports, and a
+// changed module reached only through another changed module is related too.
+func TestChangedTestAndTransitiveSourcesAreCovered(t *testing.T) {
+	root := writeTree(t, map[string]string{
+		"pkg/__init__.py": "",
+		"pkg/a.py":        "from pkg import b\n",
+		"pkg/b.py":        "X = 1\n",
+		"pkg/c.py":        "Y = 2\n",
+		"tests/test_a.py": "import unittest\nfrom pkg import a\nclass T(unittest.TestCase):\n def test_x(self): pass\n",
+	})
+	for _, changed := range [][]string{{"pkg/a.py", "pkg/b.py", "tests/test_a.py"}, {"pkg/a.py", "pkg/b.py"}} {
+		_, p := selectJava(t, root, changed...)
+		s, err := Plan(p, changed, ModeBalanced, 0)
+		if err != nil || len(s.Commands) != 1 || len(s.Uncovered) != 0 {
+			t.Fatalf("%v: commands %+v uncovered %v %v", changed, s.Commands, s.Uncovered, err)
+		}
+	}
+	// An unimported module stays uncovered.
+	changed := []string{"pkg/c.py", "tests/test_a.py"}
+	_, p := selectJava(t, root, changed...)
+	if s, _ := Plan(p, changed, ModeBalanced, 0); len(s.Uncovered) != 1 || s.Uncovered[0] != "pkg/c.py" {
+		t.Fatalf("unrelated module covered: %v", s.Uncovered)
+	}
+}

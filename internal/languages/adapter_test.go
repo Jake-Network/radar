@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Jake-Network/radar/internal/model"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,272 @@ func TestGoReceiverIdentity(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("Go package clause unindexed")
+	}
+}
+
+func TestJavaDeclarations(t *testing.T) {
+	a, ok := ForPath("src/main/java/com/shop/Inventory.java")
+	if !ok || a.Capability().Language != "java" {
+		t.Fatal("java adapter missing")
+	}
+	source := `package com.shop;
+
+import java.util.List;
+import com.shop.model.Item;
+import com.shop.util.*;
+import static com.shop.util.Strings.trim;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class Inventory {
+    static final int LIMIT = 3;
+    private final List<Item> items;
+    public Inventory(List<Item> items) { this.items = items; }
+    public Inventory() { this(List.of()); }
+    public int reserve(String sku) { int local = 1; return local; }
+    public int reserve(Item item) { return 2; }
+    record Hold(String sku, int count) {
+        Hold { if (count < 0) throw new IllegalArgumentException(); }
+    }
+    enum State { OPEN, CLOSED }
+    interface Listener { void changed(Item item); }
+    @interface Audited { String value(); }
+    static class Batch { void flush() {} }
+}
+`
+	r, err := a.Parse(context.Background(), Source{"repo", "rev", "src/main/java/com/shop/Inventory.java", []byte(source)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Diagnostics) > 0 {
+		t.Fatalf("valid Java rejected: %+v", r.Diagnostics)
+	}
+	if r.Package != "com.shop" {
+		t.Fatalf("package %q", r.Package)
+	}
+	got := map[string]string{}
+	for _, n := range r.Nodes {
+		if n.Kind != "file" && n.Kind != "module" {
+			got[n.Properties["qualified_name"]+"/"+n.ID[strings.LastIndex(n.ID, "#")+1:]] = n.Kind
+		}
+	}
+	want := map[string]string{
+		"com.shop/com.shop":                                     "package",
+		"Inventory/Inventory":                                   "class",
+		"Inventory.LIMIT/Inventory.LIMIT":                       "symbol",
+		"Inventory.items/Inventory.items":                       "symbol",
+		"Inventory.Inventory/Inventory.Inventory":               "function",
+		"Inventory.Inventory/Inventory.Inventory~1":             "function",
+		"Inventory.reserve/Inventory.reserve":                   "function",
+		"Inventory.reserve/Inventory.reserve~1":                 "function",
+		"Inventory.Hold/Inventory.Hold":                         "type",
+		"Inventory.Hold.Hold/Inventory.Hold.Hold":               "function",
+		"Inventory.State/Inventory.State":                       "type",
+		"Inventory.Listener/Inventory.Listener":                 "interface",
+		"Inventory.Listener.changed/Inventory.Listener.changed": "function",
+		"Inventory.Audited/Inventory.Audited":                   "interface",
+		"Inventory.Batch/Inventory.Batch":                       "class",
+		"Inventory.Batch.flush/Inventory.Batch.flush":           "function",
+	}
+	for k, kind := range want {
+		if got[k] != kind {
+			t.Errorf("%s: got %q want %q", k, got[k], kind)
+		}
+	}
+	for k := range got {
+		if strings.Contains(k, "local") {
+			t.Errorf("method local indexed as entity: %s", k)
+		}
+	}
+	var modules []string
+	for _, imp := range r.Imports {
+		modules = append(modules, imp.Module)
+	}
+	if strings.Join(modules, " ") != "java.util.List com.shop.model.Item com.shop.util.* com.shop.util.Strings.trim org.junit.jupiter.api.Assertions.*" {
+		t.Fatalf("imports %v", modules)
+	}
+}
+
+func TestJavaPackageInfoAndMalformed(t *testing.T) {
+	a, _ := ForPath("x/package-info.java")
+	r, err := a.Parse(context.Background(), Source{"repo", "rev", "x/package-info.java", []byte("@Deprecated\npackage com.shop.legacy;\n")})
+	if err != nil || r.Package != "com.shop.legacy" {
+		t.Fatalf("annotated package %q %v", r.Package, err)
+	}
+	r, err = a.Parse(context.Background(), Source{"repo", "rev", "x/Broken.java", []byte("package a;\nclass Broken { void run( { }\n")})
+	if err != nil || len(r.Diagnostics) == 0 {
+		t.Fatalf("malformed Java accepted: %+v %v", r.Diagnostics, err)
+	}
+	for _, n := range r.Nodes {
+		if n.Name == "run" {
+			t.Fatal("malformed method advertised")
+		}
+	}
+}
+
+func entityKinds(t *testing.T, path, source string) (map[string]string, Result) {
+	t.Helper()
+	a, ok := ForPath(path)
+	if !ok {
+		t.Fatalf("no adapter for %s", path)
+	}
+	r, err := a.Parse(context.Background(), Source{"repo", "rev", path, []byte(source)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, n := range r.Nodes {
+		if n.Kind != "file" && n.Kind != "module" {
+			got[n.ID[strings.Index(n.ID, "#")+1:]] = n.Kind
+		}
+	}
+	return got, r
+}
+
+func TestCDeclarations(t *testing.T) {
+	got, r := entityKinds(t, "src/list.c", `#include "util/strings.h"
+#include <stdio.h>
+#define LIMIT 3
+#define MAX(a,b) ((a)>(b)?(a):(b))
+#ifndef LIST_H
+#define LIST_H
+#endif
+typedef struct node { int v; struct node *next; } node_t;
+typedef int (*cmp_fn)(const void *, const void *);
+struct point { int x, y; };
+enum color { RED, GREEN };
+static int counter = 0, limit;
+int (*handler)(int);
+char *dup(const char *s);
+extern int total(int a, int b);
+static char **split(char *s) { int local = 1; struct point *p; return 0; }
+int main(void) { return total(1, 2); }
+`)
+	if len(r.Diagnostics) > 0 || r.Nodes[0].Language != "c" {
+		t.Fatalf("valid C rejected: %+v", r.Diagnostics)
+	}
+	want := map[string]string{
+		"LIMIT": "symbol", "MAX": "symbol", "node": "type", "node.v": "symbol", "node.next": "symbol", "node_t": "type",
+		"cmp_fn": "type", "point": "type", "point.x": "symbol", "point.y": "symbol", "color": "type",
+		"counter": "symbol", "limit": "symbol", "handler": "symbol", "dup": "function", "total": "function", "split": "function", "main": "function",
+	}
+	for k, kind := range want {
+		if got[k] != kind {
+			t.Errorf("%s: got %q want %q", k, got[k], kind)
+		}
+	}
+	for _, absent := range []string{"LIST_H", "local", "p", "split.local", "split.p", "node~1", "point~1"} {
+		if _, ok := got[absent]; ok {
+			t.Errorf("%s indexed: %v", absent, got)
+		}
+	}
+	if len(r.Imports) != 2 || r.Imports[0].Module != "util/strings.h" || r.Imports[0].System || r.Imports[1].Module != "stdio.h" || !r.Imports[1].System {
+		t.Fatalf("includes %+v", r.Imports)
+	}
+}
+
+func TestAnonymousRecordMembers(t *testing.T) {
+	for _, file := range []string{"anonymous.c", "anonymous.cpp", "anonymous.h"} {
+		t.Run(file, func(t *testing.T) {
+			got, result := entityKinds(t, file, "struct Outer { union { int x; double y; }; };\n")
+			if len(result.Diagnostics) != 0 || got["Outer.x"] != "symbol" || got["Outer.y"] != "symbol" {
+				t.Fatalf("anonymous union members lost: entities %v diagnostics %+v", got, result.Diagnostics)
+			}
+		})
+	}
+	got, result := entityKinds(t, "anonymous.c", "struct Outer { struct { int x; }; };\n")
+	if len(result.Diagnostics) != 0 || got["Outer.x"] != "symbol" {
+		t.Fatalf("anonymous C struct member lost: entities %v diagnostics %+v", got, result.Diagnostics)
+	}
+}
+
+func TestCppDeclarations(t *testing.T) {
+	got, r := entityKinds(t, "src/inventory.cpp", `#include "inventory.h"
+namespace shop::core {
+namespace {
+int helper() { return 1; }
+}
+class Inventory {
+ public:
+  Inventory(int n);
+  ~Inventory();
+  int reserve(int n);
+  static const int kMax = 3;
+  int& ref();
+  bool operator==(const Inventory&) const;
+  template <typename T> T get() const { return T(); }
+};
+int Inventory::reserve(int n) { return n; }
+Inventory::Inventory(int n) {}
+Inventory::~Inventory() {}
+template <typename T> struct Box { T v; };
+template <typename T> T Box<T>::unwrap() { return v; }
+std::ostream& operator<<(std::ostream& o, const Box<int>&);
+using Count = int;
+}
+extern "C" { int c_api(void); }
+TEST(InventoryTest, Reserves) { EXPECT_EQ(1, 1); }
+`)
+	if len(r.Diagnostics) > 0 || r.Nodes[0].Language != "cpp" {
+		t.Fatalf("valid C++ rejected: %+v", r.Diagnostics)
+	}
+	want := map[string]string{
+		"shop.core.helper": "function", "shop.core.Inventory": "class",
+		"shop.core.Inventory.Inventory": "function", "shop.core.Inventory.~Inventory": "function",
+		"shop.core.Inventory.reserve": "function", "shop.core.Inventory.reserve~1": "function",
+		"shop.core.Inventory.kMax": "symbol", "shop.core.Inventory.ref": "function", "shop.core.Inventory.operator==": "function",
+		"shop.core.Inventory.get": "function", "shop.core.Inventory.Inventory~1": "function", "shop.core.Inventory.~Inventory~1": "function",
+		"shop.core.Box": "type", "shop.core.Box.v": "symbol", "shop.core.Box.unwrap": "function",
+		"shop.core.operator<<": "function", "shop.core.Count": "type", "c_api": "function",
+	}
+	for k, kind := range want {
+		if got[k] != kind {
+			t.Errorf("%s: got %q want %q", k, got[k], kind)
+		}
+	}
+	for k := range got {
+		if strings.Contains(k, "TEST") || strings.Contains(k, "shop.core.shop") {
+			t.Errorf("unexpected entity %s", k)
+		}
+	}
+}
+
+func TestHeaderLanguage(t *testing.T) {
+	_, c := entityKinds(t, "include/list.h", "#ifndef LIST_H\n#define LIST_H\nstruct list { int n; };\nint list_len(const struct list *l);\n#endif\n")
+	if c.Nodes[0].Language != "c" || len(c.Diagnostics) > 0 {
+		t.Fatalf("C header %+v", c.Nodes[0])
+	}
+	got, cpp := entityKinds(t, "include/inventory.h", "#pragma once\nnamespace shop {\nclass Inventory {\n public:\n  int reserve(int n);\n};\n}\n")
+	if cpp.Nodes[0].Language != "cpp" || len(cpp.Diagnostics) > 0 || got["shop.Inventory.reserve"] != "function" {
+		t.Fatalf("C++ header %+v %v", cpp.Nodes[0], got)
+	}
+	for text, want := range map[string]bool{"struct s {\n public:\n  int n;\n};\n": true, "int f(int public_count);\n": false} {
+		if cppSyntax.MatchString(text) != want {
+			t.Errorf("C++ syntax in %q: want %v", text, want)
+		}
+	}
+	if _, commented := entityKinds(t, "include/g.h", "/* not a namespace :: */\nint g(void);\n"); commented.Nodes[0].Language != "c" {
+		t.Fatalf("comment made a C header C++: %+v", commented.Nodes[0])
+	}
+	_, broken := entityKinds(t, "include/broken.h", "struct broken {\n")
+	if broken.Nodes[0].Language != "c" || len(broken.Diagnostics) == 0 {
+		t.Fatalf("broken header %+v", broken)
+	}
+}
+
+func TestSplitQualified(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"reserve":                         {"", "reserve"},
+		"Inventory::reserve":              {"Inventory", "reserve"},
+		"::global":                        {"", "global"},
+		"a::Box<std::pair<int,int>>::get": {"a.Box", "get"},
+		"operator<<":                      {"", "operator<<"},
+		"Box<T>::operator<":               {"Box", "operator<"},
+		"cooperator":                      {"", "cooperator"},
+		"~Inventory":                      {"", "~Inventory"},
+	} {
+		scope, name := splitQualified(in)
+		if scope != want[0] || name != want[1] {
+			t.Errorf("%q: %q %q", in, scope, name)
+		}
 	}
 }

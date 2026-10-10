@@ -35,7 +35,7 @@ analysis path.
 | `cmd/radar` | entry point only: interactive menu on a terminal, `cli.Run` otherwise |
 | `cli` | command table, flags, human and JSON rendering, MCP server (reuses the command handlers) |
 | `indexer` | the one parse loop (`indexer.Build`) for both working tree and commits; import resolution |
-| `languages` | Tree-sitter adapters for TS/JS, Python, Go, Rust |
+| `languages` | Tree-sitter adapters for TS/JS, Python, Go, Rust, Java, C, C++ |
 | `checkpoint` | indexes commits straight from Git objects |
 | `contracts`, `contractgraph` | schema comparison and declared contract edges |
 | `discovery` | static contract candidates |

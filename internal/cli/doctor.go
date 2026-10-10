@@ -15,13 +15,13 @@ import (
 func (a *app) doctor(_ options) int {
 	info, e := gitrepo.Inspect(a.ctx, a.root)
 	tools := map[string]any{}
-	names := []string{"git", "node", "python3", "go", "cargo", "rust-analyzer", "scip-typescript", "scip-python"}
+	names := []string{"git", "node", "python3", "go", "cargo", "java", "mvn", "gradle", "cmake", "ctest", "make", "cc", "c++", "rust-analyzer", "scip-typescript", "scip-python"}
 	for _, tool := range names {
 		p, e := exec.LookPath(tool)
 		tools[tool] = map[string]any{"available": e == nil, "path": p}
 	}
 	_, stateErr := project.Read(a.stateRoot)
-	result := map[string]any{"version": Version, "root": a.root, "state_root": a.stateRoot, "initialized": stateErr == nil, "repository_identity": gitrepo.Identity(a.ctx, a.root), "capabilities": languages.Capabilities(), "external_tools": tools, "semantic_indexing": "unavailable: external tool presence does not enable semantic analysis", "import_resolution": "inferred from language path conventions (relative TS/JS, Python packages, go.mod modules, Rust crate/self/super paths)", "telemetry": false, "cloud_inference": false, "git": info}
+	result := map[string]any{"version": Version, "root": a.root, "state_root": a.stateRoot, "initialized": stateErr == nil, "repository_identity": gitrepo.Identity(a.ctx, a.root), "capabilities": languages.Capabilities(), "external_tools": tools, "semantic_indexing": "unavailable: external tool presence does not enable semantic analysis", "import_resolution": "inferred from language path conventions (relative TS/JS, Python packages, go.mod modules, Rust crate/self/super paths, Java declared packages, C/C++ include directories and header/source naming)", "telemetry": false, "cloud_inference": false, "git": info}
 	if e != nil {
 		result["git_diagnostic"] = e.Error()
 	}
@@ -64,9 +64,9 @@ func (a *app) doctor(_ options) int {
 		} else {
 			line("State", "not initialized "+p.dim("(radar gate works without it; radar init enables plan, evidence and graph commands)"))
 		}
-		line("Languages", "TypeScript/JavaScript, Python, Go, Rust "+p.dim("(structural parsing; no semantic analysis)"))
+		line("Languages", "TypeScript/JavaScript, Python, Go, Rust, Java, C/C++ "+p.dim("(structural parsing; no semantic analysis)"))
 		line("Git", toolList([]string{"git"}))
-		line("Test runners", toolList([]string{"python3", "node", "go", "cargo"}))
+		line("Test runners", toolList([]string{"python3", "node", "go", "cargo", "java", "mvn", "gradle", "ctest"}))
 		line("Index tools", toolList([]string{"rust-analyzer", "scip-typescript", "scip-python"})+" "+p.dim("(detected only; they do not enable semantic analysis)"))
 		line("Privacy", "no telemetry, no cloud inference")
 	})

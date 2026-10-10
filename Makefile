@@ -19,5 +19,7 @@ demo-all: build
 	bash examples/integration/demo.sh "$$(pwd)/bin/radar"
 	bash examples/intelligent-verification/demo.sh "$$(pwd)/bin/radar"
 	bash examples/selection-eval/demo.sh "$$(pwd)/bin/radar"
+	bash examples/java-maven/demo.sh "$$(pwd)/bin/radar"
+	bash examples/cpp-cmake/demo.sh "$$(pwd)/bin/radar"
 release:
 	bash scripts/release.sh dist

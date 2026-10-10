@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 
@@ -72,10 +73,31 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		executionOptions := o
 		executionOptions.Command = selection.Command
 		executionOptions.CWD = selection.CWD
+		executionOptions.report = selection.JUnit
 		if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
 			executionOptions.Timeout = time.Until(deadline)
 		}
-		ev := execute(executionCtx, temp, *r, executionOptions)
+		// JVM commands can share a report directory across tiers or chunks,
+		// and Maven -am also writes upstream reports. Each command needs fresh
+		// artifacts from the same immutable candidate, not an earlier run.
+		commandRoot := temp
+		var isolated *Candidate
+		if selection.Framework == "maven" || selection.Framework == "gradle" {
+			var err error
+			isolated, err = BuildCandidate(executionCtx, temp, r.CandidateCommit, nil)
+			if err != nil {
+				return fmt.Errorf("isolate Java verification: %w", err)
+			}
+			if isolated.Commit != r.CandidateCommit || isolated.Tree != r.CandidateTree {
+				_ = isolated.Close()
+				return fmt.Errorf("isolated Java verification candidate does not match the selected commit and tree")
+			}
+			commandRoot = isolated.Dir
+		}
+		ev := execute(executionCtx, commandRoot, *r, executionOptions)
+		if isolated != nil {
+			_ = isolated.Close()
+		}
 		ev.SelectionID = selection.ID
 		// Selection identity is also bound into the serialized artifact digest.
 		ev.ID = ""
@@ -172,7 +194,7 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 			ev.PlanRecord = &runResult.Record
 		}
 	} else {
-		observation, observeErr = evidence.ObserveCandidateAt(ctx, root, o.CWD, o.Command, o.Timeout)
+		observation, observeErr = evidence.ObserveCandidateReport(ctx, root, o.CWD, o.Command, o.report, o.Timeout)
 	}
 	ev.Observation = observation
 	ev.Status = observation.Status
@@ -188,7 +210,11 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	ev.DurationMS = time.Since(started).Milliseconds()
 	sourceCtx, sourceCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer sourceCancel()
-	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, evidence.CandidateArtifacts(o.Plan))
+	artifacts := evidence.CandidateArtifacts(o.Plan)
+	if o.report != "" && !match {
+		artifacts = append(artifacts, path.Join(o.CWD, o.report))
+	}
+	after, sourceErr := evidence.InspectCandidateSource(sourceCtx, root, cp, artifacts)
 	if sourceErr != nil {
 		ev.SourceAfterExecution = "unknown"
 		if ev.Status != model.StatusFailed {
@@ -282,7 +308,7 @@ func unavailable(root string, c testselection.Command) string {
 		if info, e := os.Stat(path); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
 			return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
 		}
-		return ""
+		return evidence.WrapperUnavailable(dir, c.Command)
 	}
 	if _, e := exec.LookPath(tool); e != nil {
 		return "runner " + tool + " is not on PATH"

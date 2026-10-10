@@ -14,7 +14,10 @@ Repository code runs only with `gate --run`, `merge-check --verify
 copy of the committed source, with a timeout, an output limit and a reduced
 environment: `PATH`, a private `HOME` and temp directory, offline settings for
 package managers, and read access to existing dependency caches. Inherited
-secrets and language startup variables are removed. A plan rule can add named
+secrets and language startup variables are removed. Build tools still read
+their own user configuration: Gradle reads `gradle.properties` in the shared
+`GRADLE_USER_HOME`, and Maven reads `~/.m2/settings.xml`, so values kept there
+reach the build. A plan rule can add named
 variables (`env`), linked directories (`link`) and `setup` commands, so review
 those the same way you review the test command.
 
