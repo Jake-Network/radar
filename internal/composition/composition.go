@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Jake-Network/radar/internal/discovery"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -32,6 +33,7 @@ const (
 	SelectionBase  = "base only"
 	BaseAuto       = "auto"
 	BaseNamed      = "named"
+	BaseTeam       = "team file"
 )
 
 // UnsupportedTree is the guidance for repositories whose trees hold
@@ -167,6 +169,9 @@ func pin(ctx context.Context, req Request) []Repo {
 			continue
 		}
 		p.BaseRef, p.BaseSource = req.Bases[sr.ID], BaseNamed
+		if p.BaseRef == "" && sr.TeamBase != "" {
+			p.BaseRef, p.BaseSource = sr.TeamBase, BaseTeam
+		}
 		if p.BaseRef == "" {
 			p.BaseSource = BaseAuto
 			if p.BaseRef = gitrepo.DefaultBranch(ctx, sr.Path); p.BaseRef == "" {
@@ -304,26 +309,50 @@ func short(sha string) string {
 // integration report of its candidate.
 type Result struct {
 	Repo
-	Report *integration.Report `json:"report,omitempty"`
+	Report    *integration.Report  `json:"report,omitempty"`
+	Files     map[string]FileSides `json:"-"`
+	Discovery *discovery.Report    `json:"-"`
 }
 
 // Build combines and analyzes every repository that has no error, one at a
 // time and each in its own private repository. A repository that fails to
 // build gets an error; the others are still built. With a replayed selection
 // the candidate must reproduce the recorded tree.
-func Build(ctx context.Context, repos []Repo, o integration.Options) []Result {
+func Build(ctx context.Context, repos []Repo, o integration.Options, teams ...*Team) []Result {
+	var team *Team
+	if len(teams) > 0 {
+		team = teams[0]
+	}
 	results := []Result{}
-	for _, r := range repos {
+	cacheTeam := team
+	ordered := append([]Repo(nil), repos...)
+	if team != nil {
+		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ID == team.Home && ordered[j].ID != team.Home })
+	}
+	for _, r := range ordered {
 		res := Result{Repo: r}
 		if r.Error == "" {
-			res.Report = build(ctx, &res.Repo, o)
+			res.Report = build(ctx, &res, o, cacheTeam)
 		}
 		results = append(results, res)
+		if team != nil && res.ID == team.Home {
+			if candidate, err := workspace.ParseTeam(res.Files[workspace.TeamPath].Candidate); err == nil {
+				copy := *team
+				copy.File = unionTeam(team.File, candidate)
+				cacheTeam = &copy
+			}
+		}
 	}
+	order := map[string]int{}
+	for i, r := range repos {
+		order[r.ID] = i
+	}
+	sort.SliceStable(results, func(i, j int) bool { return order[results[i].ID] < order[results[j].ID] })
 	return results
 }
 
-func build(ctx context.Context, r *Repo, o integration.Options) *integration.Report {
+func build(ctx context.Context, res *Result, o integration.Options, team *Team) *integration.Report {
+	r := &res.Repo
 	c, err := integration.BuildCandidate(ctx, r.Path, r.Base, commits(r.Branches))
 	defer c.Close()
 	var unsupported *integration.UnsupportedEntryError
@@ -341,6 +370,7 @@ func build(ctx context.Context, r *Repo, o integration.Options) *integration.Rep
 			return nil
 		}
 	}
+	cacheFiles(ctx, res, c, team)
 	report, err := integration.Analyze(ctx, c, o)
 	if err != nil {
 		failed(r, "radar gate --again", "%s: %v", r.ID, err)
@@ -353,7 +383,7 @@ func build(ctx context.Context, r *Repo, o integration.Options) *integration.Rep
 // ordered input SHAs, candidate trees (or conflicts) and the algorithm. It
 // excludes paths, times and temporary directories, so the same selection
 // has the same digest from any checkout, and a moved repository keeps it.
-func Digest(results []Result) string {
+func Digest(results []Result, teams ...*Team) string {
 	type entry struct {
 		ID        string   `json:"id"`
 		Base      string   `json:"base"`
@@ -371,7 +401,11 @@ func Digest(results []Result) string {
 		entries = append(entries, e)
 	}
 	sort.Slice(entries, func(a, b int) bool { return entries[a].ID < entries[b].ID })
-	data, _ := json.Marshal(map[string]any{"algorithm": Algorithm, "repos": entries})
+	input := map[string]any{"algorithm": Algorithm, "repos": entries}
+	if len(teams) > 0 && teams[0] != nil {
+		input["team"] = teams[0].Digest
+	}
+	data, _ := json.Marshal(input)
 	sum := sha256.Sum256(data)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }

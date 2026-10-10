@@ -54,19 +54,22 @@ type RecordRepo struct {
 // Record is a run's snapshot: enough to repeat its selection (--again) or
 // rebuild its exact commits (--replay).
 type Record struct {
-	Version   int          `json:"version"`
-	RunID     string       `json:"run_id"`
-	CreatedAt string       `json:"created_at"`
-	Workspace string       `json:"workspace"`
-	Key       string       `json:"key"`
-	Digest    string       `json:"digest"`
-	Verdict   string       `json:"verdict"`
-	Selection Selection    `json:"selection"`
-	Repos     []RecordRepo `json:"repos"`
+	Version   int                  `json:"version"`
+	RunID     string               `json:"run_id"`
+	CreatedAt string               `json:"created_at"`
+	Workspace string               `json:"workspace"`
+	Key       string               `json:"key"`
+	Digest    string               `json:"digest"`
+	Verdict   string               `json:"verdict"`
+	Selection Selection            `json:"selection"`
+	Repos     []RecordRepo         `json:"repos"`
+	Team      *Team                `json:"team_file,omitempty"`
+	TeamHome  *workspace.ScopeRepo `json:"team_home,omitempty"`
+	Links     []Link               `json:"links,omitempty"`
 }
 
 // NewRecord captures the pinned state of results.
-func NewRecord(scope workspace.Scope, selection Selection, results []Result, digest, verdict string) Record {
+func NewRecord(scope workspace.Scope, selection Selection, results []Result, digest, verdict string, teams ...*Team) Record {
 	rec := Record{Version: RecordVersion, Workspace: scope.Workspace, Key: scope.Key, Digest: digest, Verdict: verdict, Selection: selection, Repos: []RecordRepo{}}
 	for _, r := range results {
 		rr := RecordRepo{ID: r.ID, Path: r.Path, CommonDir: r.CommonDir, BaseRef: r.BaseRef, Base: r.Base, BaseSource: r.BaseSource, Selection: r.Selection, Branches: []Branch{}, Error: r.Error}
@@ -77,6 +80,13 @@ func NewRecord(scope workspace.Scope, selection Selection, results []Result, dig
 			rr.CandidateCommit, rr.CandidateTree, rr.Conflicts = r.Report.CandidateCommit, r.Report.CandidateTree, r.Report.Conflicts
 		}
 		rec.Repos = append(rec.Repos, rr)
+	}
+	if len(teams) > 0 && teams[0] != nil {
+		copy := *teams[0]
+		copy.File = nil
+		rec.Team = &copy
+		rec.TeamHome = teams[0].locator
+		rec.Links = CheckLinks(results, teams[0])
 	}
 	return rec
 }
