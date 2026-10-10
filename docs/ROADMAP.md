@@ -22,9 +22,8 @@ that proves them and a failure case that shows the limit.
   `__init__` does not select every test.
 - Native selectors (Jest `--findRelatedTests`, Vitest `related`, Nx affected,
   pytest-testmon), run under the same consent and environment rules as tests.
-- Java: Tree-sitter indexing, Maven and literal Gradle module roots, JUnit
-  selection. Planned before C/C++ because it fits the existing contract model
-  and JUnit reader.
+- Java contract discovery: literal Spring MVC and JAX-RS endpoints with their
+  response types as proposed bindings.
 - C/C++: include edges per compilation configuration, `compile_commands.json`
   as data, CTest and GoogleTest results.
 - Compiler-backed semantics (SCIP, go/types, rust-analyzer, tsc) and

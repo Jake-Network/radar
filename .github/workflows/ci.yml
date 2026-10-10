@@ -48,6 +48,10 @@ jobs:
         run: bash examples/intelligent-verification/demo.sh /tmp/radar
       - name: Gate safety and bounded selection demo
         run: bash examples/selection-eval/demo.sh /tmp/radar
+      - name: Java Maven combination demo (runner JDK and Maven)
+        env:
+          RADAR_DEMO_REQUIRE: "1"
+        run: bash examples/java-maven/demo.sh /tmp/radar --prime
       - name: Offline binary installer checks
         run: bash scripts/install-release-test.sh
       - name: Native release packaging

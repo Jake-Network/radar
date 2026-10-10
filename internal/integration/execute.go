@@ -288,7 +288,7 @@ func unavailable(root string, c testselection.Command) string {
 		if info, e := os.Stat(path); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
 			return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
 		}
-		return ""
+		return evidence.WrapperUnavailable(dir, c.Command)
 	}
 	if _, e := exec.LookPath(tool); e != nil {
 		return "runner " + tool + " is not on PATH"

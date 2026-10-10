@@ -23,7 +23,7 @@ const MaxTotalSourceBytes = 64 << 20
 // maxManifestBytes bounds auxiliary build manifests read for import resolution.
 const maxManifestBytes = 1 << 20
 
-var excluded = map[string]bool{".git": true, ".omx": true, ".agents": true, ".codex": true, ".aws": true, ".radar": true, "node_modules": true, "vendor": true, "target": true, "dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true, ".next": true, "coverage": true}
+var excluded = map[string]bool{".git": true, ".omx": true, ".agents": true, ".codex": true, ".aws": true, ".radar": true, "node_modules": true, ".gradle": true, "vendor": true, "target": true, "dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true, ".next": true, "coverage": true}
 
 // ExcludedPath applies one generated and private directory policy to every source.
 func ExcludedPath(p string) bool {
@@ -131,7 +131,7 @@ func Build(ctx context.Context, repository, revision string, p Provider) (model.
 		}
 		result.Edges = append(result.Edges, parsed.Edges...)
 		result.Diagnostics = append(result.Diagnostics, parsed.Diagnostics...)
-		r.addSource(entry.Path, parsed.Imports)
+		r.addSource(entry.Path, parsed)
 		fp := provenance
 		fp.Path = entry.Path
 		fileID := model.FileID(entry.Path)

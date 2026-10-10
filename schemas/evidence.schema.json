@@ -107,6 +107,7 @@
         "vitest",
         "node-test",
         "cargo-test",
+        "maven-surefire",
         "junit"
       ]
     },

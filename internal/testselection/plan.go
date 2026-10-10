@@ -210,6 +210,7 @@ func group(commands []Command) []Command {
 	buckets := map[key][]Command{}
 	var order []key
 	var out []Command
+	commands, out = groupJava(commands)
 	for _, c := range commands {
 		prefix, ok := pathPrefix(c)
 		if !ok {
@@ -268,6 +269,63 @@ func group(commands []Command) []Command {
 	return out
 }
 
+// groupJava merges targeted Maven and Gradle commands for one module and
+// tier into one build invocation selecting all their test classes, and
+// returns the remaining commands for path grouping.
+func groupJava(commands []Command) ([]Command, []Command) {
+	type key struct{ framework, cwd, tier, junit, fixed string }
+	buckets := map[key][]Command{}
+	var order []key
+	var rest, out []Command
+	for _, c := range commands {
+		fixed, _, ok := javaClasses(c)
+		if !ok {
+			rest = append(rest, c)
+			continue
+		}
+		k := key{c.Framework, c.CWD, c.Tier, c.JUnit, strings.Join(fixed, "\x00")}
+		if _, seen := buckets[k]; !seen {
+			order = append(order, k)
+		}
+		buckets[k] = append(buckets[k], c)
+	}
+	for _, k := range order {
+		members := buckets[k]
+		if len(members) == 1 {
+			out = append(out, members[0])
+			continue
+		}
+		fixed := strings.Split(k.fixed, "\x00")
+		var classes []string
+		for _, c := range members {
+			_, cs, _ := javaClasses(c)
+			classes = append(classes, cs...)
+		}
+		classes = unique(classes)
+		for start := 0; start < len(classes); start += maxGroupedFiles {
+			chunk := classes[start:min(start+maxGroupedFiles, len(classes))]
+			merged := Command{Command: withJavaClasses(k.framework, fixed, chunk), CWD: k.cwd, Framework: k.framework, Tier: k.tier, JUnit: k.junit, TestFiles: []string{}, Affected: []string{}, ToolAvailable: true}
+			for _, c := range members {
+				if _, cs, _ := javaClasses(c); !coversAny(cs, chunk) {
+					continue
+				}
+				merged.TestFiles = append(merged.TestFiles, c.TestFiles...)
+				merged.Affected = append(merged.Affected, c.Affected...)
+				merged.EvidenceReasons = append(merged.EvidenceReasons, c.EvidenceReasons...)
+				merged.ToolAvailable = merged.ToolAvailable && c.ToolAvailable
+				merged.Priority = max(merged.Priority, c.Priority)
+				merged.GroupedFrom = append(merged.GroupedFrom, c.ID)
+			}
+			merged.TestFiles = unique(merged.TestFiles)
+			merged.Affected = unique(merged.Affected)
+			merged.GroupedFrom = unique(merged.GroupedFrom)
+			merged.ID = commandID(merged)
+			out = append(out, merged)
+		}
+	}
+	return rest, out
+}
+
 func coversAny(args, chunk []string) bool {
 	for _, a := range args {
 		if slices.Contains(chunk, a) || (a != "./..." && slices.Contains(chunk, "./...")) {
@@ -319,6 +377,7 @@ func fullSuite(p Proposal) []Command {
 	}
 	type key struct{ framework, root string }
 	seen := map[key][]string{}
+	runs := map[key]*javaRun{}
 	var order []key
 	tools := map[string]bool{}
 	for _, c := range p.Commands {
@@ -330,10 +389,13 @@ func fullSuite(p Proposal) []Command {
 			order = append(order, k)
 		}
 		seen[k] = append(seen[k], t.Path)
+		if t.java != nil {
+			runs[k] = t.java
+		}
 	}
 	for _, k := range order {
 		var argv []string
-		cwd := k.root
+		cwd, junit := k.root, ""
 		switch k.framework {
 		case "pytest":
 			argv = []string{"python3", "-m", "pytest"}
@@ -370,15 +432,24 @@ func fullSuite(p Proposal) []Command {
 			argv = []string{"./node_modules/.bin/vitest", "run"}
 		case "cargo":
 			argv, cwd = []string{"cargo", "test", "--manifest-path", path.Join(k.root, "Cargo.toml")}, "."
+		case "maven", "gradle":
+			run := runs[k]
+			if run == nil {
+				continue
+			}
+			argv, cwd, junit = run.argv(k.framework, true), run.cwd, run.junit
 		default:
 			continue
 		}
 		available, known := tools[k.framework+"\x00"+cwd]
 		if !known {
-			_, err := exec.LookPath(argv[0])
-			available = err == nil
+			lookPath := func(tool string) bool { _, err := exec.LookPath(tool); return err == nil }
+			available = lookPath(argv[0])
+			if junit != "" {
+				available = javaToolAvailable(argv, lookPath)
+			}
 		}
-		c := Command{Command: argv, CWD: cwd, Framework: k.framework, Tier: TierRequired, TestFiles: unique(seen[k]), Affected: []string{}, Priority: 50, ToolAvailable: available, EvidenceReasons: []Reason{{Code: "full_suite", Explanation: "Whole discovered suite for this framework and package root; the runner's configuration selects tests.", Evidence: model.Inferred}}}
+		c := Command{Command: argv, CWD: cwd, Framework: k.framework, Tier: TierRequired, TestFiles: unique(seen[k]), Affected: []string{}, Priority: 50, ToolAvailable: available, JUnit: junit, EvidenceReasons: []Reason{{Code: "full_suite", Explanation: "Whole discovered suite for this framework and package root; the runner's configuration selects tests.", Evidence: model.Inferred}}}
 		c.ID = commandID(c)
 		out = append(out, c)
 	}

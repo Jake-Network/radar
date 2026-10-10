@@ -11,7 +11,8 @@ import (
 // source failed to build, when its output matches a known shape. It is a fixed sentence built from a bounded name,
 // never raw output, so persisted evidence keeps only the output digest.
 type Diagnosis struct {
-	// Kind is runner_missing (python -m RUNNER could not find RUNNER),
+	// Kind is runner_missing (python -m RUNNER could not find RUNNER, or a
+	// Maven/Gradle wrapper found no JVM),
 	// command_missing (the shell could not find a program), module_missing
 	// (an import failed: a dependency absent from this environment, or a
 	// module a branch renamed or removed) or build_failed (the compiler
@@ -32,6 +33,8 @@ var (
 	importMissing  = regexp.MustCompile(`(?m)ModuleNotFoundError: No module named '([^'\s]+)'`)
 	commandMissing = regexp.MustCompile(`(?m)^(?:[^:\n]*: )?(?:[0-9]+: )?([^\s:/]+): (?:command )?not found\s*$`)
 	nodeMissing    = regexp.MustCompile(`Cannot find module '([^'\s]+)'`)
+	// Maven and Gradle wrappers stop before building when no JVM is found.
+	jvmMissing = regexp.MustCompile(`JAVA_HOME is not set and no 'java' command could be found|JAVA_HOME (?:environment variable )?is not defined correctly|Unable to locate a Java Runtime`)
 )
 
 // diagnose recognizes a missing runner, program or module in the output of a
@@ -48,6 +51,9 @@ func diagnose(argv []string, exit int, data []byte) *Diagnosis {
 		if regexp.MustCompile(`No module named '?` + regexp.QuoteMeta(runner) + `'?\s*$`).MatchString(firstMatchingLine(text, "No module named")) {
 			return &Diagnosis{Kind: "runner_missing", Name: runner, Message: fmt.Sprintf("%s is not installed for %s (it reported \"No module named %s\")", runner, tool, runner)}
 		}
+	}
+	if buildTool(argv) != "" && jvmMissing.MatchString(text) {
+		return &Diagnosis{Kind: "runner_missing", Name: "java", Message: fmt.Sprintf("java is not installed or not on PATH (%s could not find a JVM)", tool)}
 	}
 	if m := commandMissing.FindStringSubmatch(text); exit == 127 && m != nil && safeName.MatchString(m[1]) {
 		return &Diagnosis{Kind: "command_missing", Name: m[1], Message: fmt.Sprintf("%s is not installed or not on PATH (it reported \"%s: not found\"); untracked directories such as node_modules are not copied into the private candidate", m[1], m[1])}

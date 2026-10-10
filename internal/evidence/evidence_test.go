@@ -405,3 +405,46 @@ func TestMissingModuleIsEnvironmentErrorNotFailure(t *testing.T) {
 		t.Fatal("observed failures hidden")
 	}
 }
+
+// A wrapper whose pinned distribution is not cached would download it
+// before offline mode applies, so it is reported unavailable instead.
+func TestWrapperUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	gradleHome, mavenHome := t.TempDir(), t.TempDir()
+	t.Setenv("GRADLE_USER_HOME", gradleHome)
+	t.Setenv("MAVEN_USER_HOME", mavenHome)
+	if why := WrapperUnavailable(dir, []string{"./gradlew", "test"}); !strings.Contains(why, "absent") {
+		t.Fatalf("missing properties: %q", why)
+	}
+	write := func(rel, content string) {
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("gradle/wrapper/gradle-wrapper.properties", "distributionBase=GRADLE_USER_HOME\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip\n")
+	write(".mvn/wrapper/maven-wrapper.properties", "distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip\n")
+	if why := WrapperUnavailable(dir, []string{"./gradlew", "test"}); !strings.Contains(why, "gradle-8.10.2-bin is not cached in GRADLE_USER_HOME") {
+		t.Fatalf("uncached gradle: %q", why)
+	}
+	if why := WrapperUnavailable(dir, []string{"./mvnw", "test"}); !strings.Contains(why, "apache-maven-3.9.9-bin is not cached in MAVEN_USER_HOME") {
+		t.Fatalf("uncached maven: %q", why)
+	}
+	for _, d := range []string{filepath.Join(gradleHome, "wrapper", "dists", "gradle-8.10.2-bin", "abc"), filepath.Join(mavenHome, "wrapper", "dists", "apache-maven-3.9.9-bin", "def")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, argv := range [][]string{{"./gradlew", "test"}, {"./mvnw", "test"}, {"mvn", "test"}, {"go", "test"}} {
+		if why := WrapperUnavailable(dir, argv); why != "" {
+			t.Fatalf("%v: %q", argv, why)
+		}
+	}
+	write("gradle/wrapper/gradle-wrapper.properties", "distributionUrl=https\\://example.invalid/../../x y.zip\n")
+	if why := WrapperUnavailable(dir, []string{"./gradlew"}); !strings.Contains(why, "not a plain archive name") {
+		t.Fatalf("unsafe distribution name: %q", why)
+	}
+}

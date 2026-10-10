@@ -271,6 +271,11 @@ func environment(privateHome string, passthrough []string) []string {
 		"CARGO_HOME":       existing(os.Getenv("CARGO_HOME"), join(home, ".cargo")),
 		"RUSTUP_HOME":      existing(os.Getenv("RUSTUP_HOME"), join(home, ".rustup")),
 		"npm_config_cache": existing(os.Getenv("npm_config_cache"), join(home, ".npm")),
+		// Gradle and the Maven wrapper keep distributions and dependencies
+		// here (Maven itself resolves ~/.m2 from the account, not $HOME).
+		"GRADLE_USER_HOME": existing(os.Getenv("GRADLE_USER_HOME"), join(home, ".gradle")),
+		"MAVEN_USER_HOME":  existing(os.Getenv("MAVEN_USER_HOME"), join(home, ".m2")),
+		"JAVA_HOME":        existing(os.Getenv("JAVA_HOME")),
 		"PYTHONUSERBASE":   existing(os.Getenv("PYTHONUSERBASE"), join(home, ".local")),
 		"VIRTUAL_ENV":      existing(os.Getenv("VIRTUAL_ENV")),
 	}
@@ -317,4 +322,52 @@ func linkDependencies(root, dest string, links []string) error {
 		}
 	}
 	return nil
+}
+
+// WrapperUnavailable explains why a Gradle or Maven wrapper in dir would
+// have to download its pinned distribution, which Radar never lets a run do:
+// the wrapper fetches it before the build tool's offline mode applies. It
+// reads the committed wrapper properties and the shared user homes as data
+// and returns "" when the distribution is already cached.
+func WrapperUnavailable(dir string, argv []string) string {
+	if len(argv) == 0 {
+		return ""
+	}
+	var properties, homeVar, homeDefault string
+	switch filepath.Base(argv[0]) {
+	case "gradlew":
+		properties, homeVar, homeDefault = filepath.Join("gradle", "wrapper", "gradle-wrapper.properties"), "GRADLE_USER_HOME", ".gradle"
+	case "mvnw":
+		properties, homeVar, homeDefault = filepath.Join(".mvn", "wrapper", "maven-wrapper.properties"), "MAVEN_USER_HOME", ".m2"
+	default:
+		return ""
+	}
+	full, err := pathutil.ResolveInside(dir, filepath.ToSlash(properties))
+	if err != nil {
+		return "wrapper properties " + filepath.ToSlash(properties) + " are absent"
+	}
+	data, err := os.ReadFile(full)
+	if err != nil || len(data) > 64<<10 {
+		return "wrapper properties " + filepath.ToSlash(properties) + " are unreadable"
+	}
+	var url string
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "distributionUrl="); ok {
+			url = strings.ReplaceAll(strings.TrimSpace(v), `\:`, ":")
+		}
+	}
+	name := strings.TrimSuffix(strings.TrimSuffix(url[strings.LastIndex(url, "/")+1:], ".zip"), ".tar.gz")
+	if name == "" || !safeName.MatchString(name) {
+		return "wrapper distributionUrl is missing or not a plain archive name"
+	}
+	home := os.Getenv(homeVar)
+	if home == "" {
+		if user, err := os.UserHomeDir(); err == nil {
+			home = filepath.Join(user, homeDefault)
+		}
+	}
+	if entries, err := os.ReadDir(filepath.Join(home, "wrapper", "dists", name)); err != nil || len(entries) == 0 {
+		return "wrapper distribution " + name + " is not cached in " + homeVar + " and Radar does not download it"
+	}
+	return ""
 }

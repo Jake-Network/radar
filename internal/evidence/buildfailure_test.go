@@ -205,3 +205,119 @@ func TestObserveCandidateGoBuildFailure(t *testing.T) {
 		t.Fatalf("locations %+v", r.Locations)
 	}
 }
+
+// mavenCompileOutput is `mvn -o -B test` when a branch renamed a method
+// another branch still calls (javac through maven-compiler-plugin).
+func mavenCompileOutput(dir string) string {
+	use := filepath.Join(dir, "core", "src", "main", "java", "com", "shop", "Use.java")
+	return "[INFO] --- compiler:3.13.0:compile (default-compile) @ core ---\n" +
+		"[INFO] -------------------------------------------------------------\n" +
+		"[ERROR] COMPILATION ERROR : \n" +
+		"[INFO] -------------------------------------------------------------\n" +
+		"[ERROR] " + use + ":[5,12] cannot find symbol\n" +
+		"  symbol:   method reserve(java.lang.String)\n" +
+		"  location: variable inventory of type com.shop.Inventory\n" +
+		"[INFO] 1 error\n" +
+		"[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.13.0:compile (default-compile) on project core: Compilation failure\n" +
+		"[ERROR] " + use + ":[5,12] cannot find symbol\n" +
+		"[ERROR]   symbol:   method reserve(java.lang.String)\n" +
+		"[ERROR]   location: variable inventory of type com.shop.Inventory\n"
+}
+
+func gradleCompileOutput(dir string) string {
+	use := filepath.Join(dir, "core", "src", "main", "java", "com", "shop", "Use.java")
+	return "> Task :core:compileJava FAILED\n" +
+		use + ":5: error: cannot find symbol\n" +
+		"        inventory.reserve(\"a\");\n" +
+		"                 ^\n" +
+		"  symbol:   method reserve(String)\n" +
+		"  location: variable inventory of type Inventory\n" +
+		"1 error\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\n" +
+		"Execution failed for task ':core:compileJava'.\n> Compilation failed; see the compiler error output for details.\n"
+}
+
+func TestJavaBuildFailureIsSourceFailure(t *testing.T) {
+	dir := t.TempDir()
+	use := filepath.Join(dir, "core", "src", "main", "java", "com", "shop", "Use.java")
+	if e := os.MkdirAll(filepath.Dir(use), 0o755); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(use, []byte("package com.shop;\n"), 0o644); e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range []struct {
+		argv   []string
+		output string
+	}{
+		{[]string{"./mvnw", "-o", "-B", "test"}, mavenCompileOutput(dir)},
+		{[]string{"mvn", "-o", "test"}, mavenCompileOutput(dir)},
+		{[]string{"./gradlew", "--offline", ":core:test"}, gradleCompileOutput(dir)},
+	} {
+		r := harnessCounts(c.argv, []byte(c.output), dir)
+		want := sourceBuildError{Path: "core/src/main/java/com/shop/Use.java", Line: 5, Symbol: "reserve"}
+		if len(r.BuildErrors) != 1 || r.BuildErrors[0] != want {
+			t.Fatalf("%v: build errors %+v", c.argv, r.BuildErrors)
+		}
+		if s := outcome(false, 1, r, false, c.argv, []byte(c.output)); s != model.StatusFailed {
+			t.Fatalf("%v: classified %s", c.argv, s)
+		}
+		obs := CandidateObservation{Status: model.StatusFailed, ExitCode: 1}
+		decorateCandidateObservation(&obs, c.argv, []byte(c.output), dir, dir, ".")
+		if obs.Diagnosis == nil || obs.Diagnosis.Kind != "build_failed" || obs.Diagnosis.Name != "reserve" || len(obs.Locations) != 1 {
+			t.Fatalf("%v: diagnosis %+v locations %+v", c.argv, obs.Diagnosis, obs.Locations)
+		}
+	}
+}
+
+func TestJavaBuildFailureEnvironmentNegatives(t *testing.T) {
+	dir := t.TempDir()
+	compile := mavenCompileOutput(dir)
+	cases := map[string]string{
+		"offline dependency":  "[ERROR] Failed to execute goal on project core: Could not resolve dependencies for project com.shop:core:jar:1.0: Cannot access central (https://repo.maven.apache.org/maven2) in offline mode\n" + compile,
+		"gradle offline":      "> Could not resolve all files for configuration ':core:compileClasspath'.\n   > No cached version of org.junit:junit-bom:5.10.0 available for offline mode.\n" + gradleCompileOutput(dir),
+		"external package":    strings.Replace(compile, "cannot find symbol", "package org.apache.commons.lang3 does not exist", 2),
+		"toolchain":           "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.13.0:compile: Fatal error compiling: error: release version 21 not supported\n[ERROR] COMPILATION ERROR : \n",
+		"outside directory":   strings.ReplaceAll(compile, dir, "/home/u/.m2/repository/x"),
+		"relative escape":     strings.ReplaceAll(compile, dir, ".."),
+		"no compile failure":  "[ERROR] " + filepath.Join(dir, "A.java") + ":[1,1] cannot find symbol\n",
+		"unknown runner text": compile,
+	}
+	for name, output := range cases {
+		argv := []string{"mvn", "-o", "test"}
+		if name == "gradle offline" {
+			argv = []string{"gradle", "--offline", "test"}
+		}
+		if name == "unknown runner text" {
+			argv = []string{"make", "test"}
+		}
+		r := harnessCounts(argv, []byte(output), dir)
+		if len(r.BuildErrors) != 0 {
+			t.Errorf("%s: attributed to source: %+v", name, r.BuildErrors)
+		}
+		if s := outcome(false, 1, r, false, argv, []byte(output)); s != model.StatusError {
+			t.Errorf("%s: classified %s", name, s)
+		}
+	}
+}
+
+func TestSurefireSummaryAndMissingJVM(t *testing.T) {
+	output := "[INFO] Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.05 s <<< FAILURE! -- in com.shop.InventoryTest\n" +
+		"[INFO] Results:\n[INFO] \n[ERROR] Tests run: 3, Failures: 1, Errors: 1, Skipped: 1\n" +
+		"[INFO] Results:\n[INFO] \n[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0\n"
+	r := harnessCounts([]string{"./mvnw", "-o", "test"}, []byte(output), "")
+	if r.Harness != "maven-surefire" || r.Run != 6 || r.Failed != 2 || r.Skipped != 1 {
+		t.Fatalf("surefire totals %+v", r)
+	}
+	if r := harnessCounts([]string{"./gradlew", "test"}, []byte("BUILD SUCCESSFUL in 3s\n"), ""); r.Run != 0 || r.Harness != "" {
+		t.Fatalf("gradle output counted %+v", r)
+	}
+	for _, argv := range [][]string{{"./gradlew", "test"}, {"./mvnw", "test"}} {
+		d := diagnose(argv, 1, []byte("\nERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.\n"))
+		if d == nil || d.Kind != "runner_missing" || d.Name != "java" || !d.Environment() {
+			t.Fatalf("%v: missing JVM diagnosis %+v", argv, d)
+		}
+	}
+	if d := diagnose([]string{"python3", "-m", "pytest"}, 1, []byte("JAVA_HOME is not set and no 'java' command could be found")); d != nil {
+		t.Fatalf("JVM diagnosis outside a JVM build %+v", d)
+	}
+}

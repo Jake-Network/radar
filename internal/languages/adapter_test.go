@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Jake-Network/radar/internal/model"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +152,104 @@ func TestGoReceiverIdentity(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("Go package clause unindexed")
+	}
+}
+
+func TestJavaDeclarations(t *testing.T) {
+	a, ok := ForPath("src/main/java/com/shop/Inventory.java")
+	if !ok || a.Capability().Language != "java" {
+		t.Fatal("java adapter missing")
+	}
+	source := `package com.shop;
+
+import java.util.List;
+import com.shop.model.Item;
+import com.shop.util.*;
+import static com.shop.util.Strings.trim;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class Inventory {
+    static final int LIMIT = 3;
+    private final List<Item> items;
+    public Inventory(List<Item> items) { this.items = items; }
+    public Inventory() { this(List.of()); }
+    public int reserve(String sku) { int local = 1; return local; }
+    public int reserve(Item item) { return 2; }
+    record Hold(String sku, int count) {
+        Hold { if (count < 0) throw new IllegalArgumentException(); }
+    }
+    enum State { OPEN, CLOSED }
+    interface Listener { void changed(Item item); }
+    @interface Audited { String value(); }
+    static class Batch { void flush() {} }
+}
+`
+	r, err := a.Parse(context.Background(), Source{"repo", "rev", "src/main/java/com/shop/Inventory.java", []byte(source)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Diagnostics) > 0 {
+		t.Fatalf("valid Java rejected: %+v", r.Diagnostics)
+	}
+	if r.Package != "com.shop" {
+		t.Fatalf("package %q", r.Package)
+	}
+	got := map[string]string{}
+	for _, n := range r.Nodes {
+		if n.Kind != "file" && n.Kind != "module" {
+			got[n.Properties["qualified_name"]+"/"+n.ID[strings.LastIndex(n.ID, "#")+1:]] = n.Kind
+		}
+	}
+	want := map[string]string{
+		"com.shop/com.shop":                                     "package",
+		"Inventory/Inventory":                                   "class",
+		"Inventory.LIMIT/Inventory.LIMIT":                       "symbol",
+		"Inventory.items/Inventory.items":                       "symbol",
+		"Inventory.Inventory/Inventory.Inventory":               "function",
+		"Inventory.Inventory/Inventory.Inventory~1":             "function",
+		"Inventory.reserve/Inventory.reserve":                   "function",
+		"Inventory.reserve/Inventory.reserve~1":                 "function",
+		"Inventory.Hold/Inventory.Hold":                         "type",
+		"Inventory.Hold.Hold/Inventory.Hold.Hold":               "function",
+		"Inventory.State/Inventory.State":                       "type",
+		"Inventory.Listener/Inventory.Listener":                 "interface",
+		"Inventory.Listener.changed/Inventory.Listener.changed": "function",
+		"Inventory.Audited/Inventory.Audited":                   "interface",
+		"Inventory.Batch/Inventory.Batch":                       "class",
+		"Inventory.Batch.flush/Inventory.Batch.flush":           "function",
+	}
+	for k, kind := range want {
+		if got[k] != kind {
+			t.Errorf("%s: got %q want %q", k, got[k], kind)
+		}
+	}
+	for k := range got {
+		if strings.Contains(k, "local") {
+			t.Errorf("method local indexed as entity: %s", k)
+		}
+	}
+	var modules []string
+	for _, imp := range r.Imports {
+		modules = append(modules, imp.Module)
+	}
+	if strings.Join(modules, " ") != "java.util.List com.shop.model.Item com.shop.util.* com.shop.util.Strings.trim org.junit.jupiter.api.Assertions.*" {
+		t.Fatalf("imports %v", modules)
+	}
+}
+
+func TestJavaPackageInfoAndMalformed(t *testing.T) {
+	a, _ := ForPath("x/package-info.java")
+	r, err := a.Parse(context.Background(), Source{"repo", "rev", "x/package-info.java", []byte("@Deprecated\npackage com.shop.legacy;\n")})
+	if err != nil || r.Package != "com.shop.legacy" {
+		t.Fatalf("annotated package %q %v", r.Package, err)
+	}
+	r, err = a.Parse(context.Background(), Source{"repo", "rev", "x/Broken.java", []byte("package a;\nclass Broken { void run( { }\n")})
+	if err != nil || len(r.Diagnostics) == 0 {
+		t.Fatalf("malformed Java accepted: %+v %v", r.Diagnostics, err)
+	}
+	for _, n := range r.Nodes {
+		if n.Name == "run" {
+			t.Fatal("malformed method advertised")
+		}
 	}
 }

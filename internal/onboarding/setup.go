@@ -70,7 +70,7 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 		r.Diagnostics = append(r.Diagnostics, "No Git checkout detected; checkpoint and merge analysis require Git history.")
 	}
 	r.Root = root
-	for _, name := range []string{"radar", "git", "codex", "claude", "bash", "node", "python3", "go", "cargo"} {
+	for _, name := range []string{"radar", "git", "codex", "claude", "bash", "node", "python3", "go", "cargo", "java"} {
 		_, e := exec.LookPath(name)
 		r.Tools[name] = e == nil
 	}

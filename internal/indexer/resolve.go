@@ -14,7 +14,7 @@ import (
 // resolver maps import specifiers to repository files using each language's
 // path conventions. Results are inferred: no compiler, PYTHONPATH or Cargo
 // workspace configuration is consulted. TypeScript uses tsconfig aliases and
-// repository package names (tsresolve.go).
+// repository package names (tsresolve.go). Java keys on declared packages.
 type resolver struct {
 	files             map[string]bool // every non-excluded repository path
 	sources           map[string]bool // indexed source files
@@ -24,10 +24,12 @@ type resolver struct {
 	tsconfigs         map[string]tsConfig         // tsconfig.json/jsconfig.json path -> options
 	packages          map[string]workspacePackage // package.json name -> package
 	ambiguousPackages map[string]bool
+	javaTypes         map[string][]string // declared package + "." + file stem -> files
+	javaPackages      map[string][]string // declared package -> files
 }
 
 func newResolver() *resolver {
-	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}}
+	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}, javaTypes: map[string][]string{}, javaPackages: map[string][]string{}}
 }
 
 // addManifest records build configuration consulted by import resolution.
@@ -48,11 +50,18 @@ func isManifest(p string) bool {
 	return base == "go.mod" || base == "package.json" || base == "jsconfig.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
 }
 
-func (r *resolver) addSource(p string, imports []languages.Import) {
+func (r *resolver) addSource(p string, parsed languages.Result) {
 	r.sources[p] = true
 	dir := path.Dir(p)
 	r.byDir[dir] = append(r.byDir[dir], p)
-	r.imports[p] = imports
+	r.imports[p] = parsed.Imports
+	// A public top-level Java type lives in the file named after it. Types in
+	// the unnamed package cannot be imported, so they are not recorded.
+	if strings.HasSuffix(p, ".java") && parsed.Package != "" {
+		stem := strings.TrimSuffix(path.Base(p), ".java")
+		r.javaTypes[parsed.Package+"."+stem] = append(r.javaTypes[parsed.Package+"."+stem], p)
+		r.javaPackages[parsed.Package] = append(r.javaPackages[parsed.Package], p)
+	}
 }
 
 func (r *resolver) addGoModule(p string, content []byte) {
@@ -107,6 +116,8 @@ func (r *resolver) resolve(importer string, imp languages.Import) []string {
 		return r.goPackage(imp.Module)
 	case "rust":
 		return r.rust(importer, imp.Module)
+	case "java":
+		return r.java(imp.Module)
 	}
 	return nil
 }
@@ -285,4 +296,36 @@ func (r *resolver) rust(importer, spec string) []string {
 	}
 	// The item lives in the module file itself (a.rs, a/mod.rs or the crate root).
 	return r.first(base+".rs", path.Join(base, "mod.rs"), path.Join(base, "lib.rs"), path.Join(base, "main.rs"))
+}
+
+// java resolves a single-type, on-demand (.*) or static import to the file
+// declaring the type. Trailing segments are dropped for nested types and
+// static members, but never past a repository package: a.b.Missing stays
+// unresolved rather than matching an unrelated file. A type declared by two
+// files (duplicated across modules) is ambiguous and left unresolved.
+func (r *resolver) java(spec string) []string {
+	name, wildcard := strings.CutSuffix(spec, ".*")
+	for n := name; n != ""; {
+		if files := r.javaTypes[n]; len(files) > 0 {
+			if len(files) > 1 {
+				return nil
+			}
+			return files
+		}
+		if files := r.javaPackages[n]; len(files) > 0 {
+			if !wildcard || n != name {
+				return nil
+			}
+			// import a.b.*; loads any type of package a.b.
+			out := append([]string(nil), files...)
+			sort.Strings(out)
+			return out
+		}
+		i := strings.LastIndex(n, ".")
+		if i < 0 {
+			break
+		}
+		n = n[:i]
+	}
+	return nil
 }

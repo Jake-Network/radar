@@ -37,7 +37,22 @@ var (
 	vitestSummary = regexp.MustCompile(`(?m)^\s*Tests\s+(.+?)\s*\([0-9]+\)\s*$`)
 	nodeCount     = regexp.MustCompile(`(?m)^# (pass|fail|skipped|todo) ([0-9]+)$`)
 	cargoSummary  = regexp.MustCompile(`(?m)^test result: (?:ok|FAILED)\. ([0-9]+) passed; ([0-9]+) failed; ([0-9]+) ignored`)
+	// Surefire's per-module "Results:" totals; per-class lines carry a
+	// "Time elapsed" suffix and are not counted twice.
+	surefireTotal = regexp.MustCompile(`(?m)^\[(?:INFO|WARNING|ERROR)\] Tests run: ([0-9]+), Failures: ([0-9]+), Errors: ([0-9]+), Skipped: ([0-9]+)\s*$`)
 )
+
+// buildTool names the JVM build tool an argv invokes, directly or through
+// its wrapper script.
+func buildTool(argv []string) string {
+	switch filepath.Base(argv[0]) {
+	case "mvn", "mvnw", "mvn.cmd", "mvnw.cmd":
+		return "maven"
+	case "gradle", "gradlew", "gradle.bat", "gradlew.bat":
+		return "gradle"
+	}
+	return ""
+}
 
 func isUnittest(argv []string) bool {
 	name := filepath.Base(argv[0])
@@ -77,8 +92,28 @@ func harnessCounts(argv []string, data []byte, dir string) harnessResult {
 		return nodeTest(text)
 	case name == "cargo" && argv[1] == "test":
 		return cargo(text, dir)
+	case buildTool(argv) == "maven":
+		return maven(text, dir)
+	case buildTool(argv) == "gradle":
+		// Gradle prints no test counts; results come from its JUnit reports.
+		return harnessResult{BuildErrors: javaBuildErrors(text, dir)}
 	}
 	return harnessResult{}
+}
+
+func maven(text, dir string) harnessResult {
+	r := harnessResult{BuildErrors: javaBuildErrors(text, dir)}
+	for _, m := range surefireTotal.FindAllStringSubmatch(text, -1) {
+		run, _ := strconv.Atoi(m[1])
+		failures, _ := strconv.Atoi(m[2])
+		errs, _ := strconv.Atoi(m[3])
+		skipped, _ := strconv.Atoi(m[4])
+		r.Harness = "maven-surefire"
+		r.Run += run - skipped
+		r.Failed += failures + errs
+		r.Skipped += skipped
+	}
+	return r
 }
 
 func goTest(argv []string, data []byte, dir string) harnessResult {

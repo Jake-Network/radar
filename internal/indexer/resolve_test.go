@@ -182,3 +182,59 @@ func TestStripJSONC(t *testing.T) {
 		t.Fatal(v)
 	}
 }
+
+// Java imports resolve through declared packages, not directory layout.
+func TestJavaImportResolution(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"core/src/main/java/com/shop/Inventory.java":    "package com.shop;\nimport com.shop.model.Item;\nimport java.util.List;\npublic class Inventory {}\n",
+		"core/src/main/java/com/shop/model/Item.java":   "package com.shop.model;\npublic record Item(String sku) {}\n",
+		"core/src/main/java/com/shop/model/Price.java":  "package com.shop.model;\npublic class Price { public static class Tax {} }\n",
+		"core/src/main/java/com/shop/util/Strings.java": "package com.shop.util;\npublic final class Strings { public static String trim(String s) { return s; } }\n",
+		"api/src/main/java/com/shop/api/Handler.java":   "package com.shop.api;\nimport com.shop.model.*;\nimport static com.shop.util.Strings.trim;\nimport com.shop.model.Price.Tax;\nimport com.shop.model.Missing;\nclass Handler {}\n",
+		"api/src/main/java/com/shop/api/Wild.java":      "package com.shop.api;\nimport static com.shop.util.Strings.*;\nimport com.shop.dup.Twin;\nclass Wild {}\n",
+		"legacy/Misplaced.java":                         "package com.shop.model;\npublic class Misplaced {}\n",
+		"a/src/main/java/com/shop/dup/Twin.java":        "package com.shop.dup;\npublic class Twin {}\n",
+		"b/src/main/java/com/shop/dup/Twin.java":        "package com.shop.dup;\npublic class Twin {}\n",
+		"api/src/main/java/com/shop/api/Unnamed.java":   "class Unnamed {}\n",
+		"api/src/main/java/com/shop/api/UsesNamed.java": "package com.shop.api;\nimport Unnamed;\nclass UsesNamed {}\n",
+	}
+	for p, content := range files {
+		full := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Index(context.Background(), root, "WORKTREE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range s.Edges {
+		if e.Kind == "DEPENDS_ON" {
+			if e.Provenance.Evidence != model.Inferred || e.Provenance.Method != "import_path_resolution:java" {
+				t.Fatalf("edge provenance %+v", e.Provenance)
+			}
+			got[strings.TrimPrefix(e.From, "file:")+" -> "+strings.TrimPrefix(e.To, "file:")] = true
+		}
+	}
+	want := []string{
+		"core/src/main/java/com/shop/Inventory.java -> core/src/main/java/com/shop/model/Item.java",
+		"api/src/main/java/com/shop/api/Handler.java -> core/src/main/java/com/shop/model/Item.java",
+		"api/src/main/java/com/shop/api/Handler.java -> core/src/main/java/com/shop/model/Price.java",
+		"api/src/main/java/com/shop/api/Handler.java -> legacy/Misplaced.java",
+		"api/src/main/java/com/shop/api/Handler.java -> core/src/main/java/com/shop/util/Strings.java",
+		"api/src/main/java/com/shop/api/Wild.java -> core/src/main/java/com/shop/util/Strings.java",
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing %s", w)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("unexpected edges: %v", got)
+	}
+}

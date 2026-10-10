@@ -181,7 +181,7 @@ keeps the single-repository behavior above. Design and later stages:
   incompatibilities into failures.
 - **Dependency impact:** it builds an import graph for TypeScript/JavaScript
   (relative imports, tsconfig `paths`/`baseUrl`, workspace package names),
-  Python, Go and Rust, then follows it from the changed files to their
+  Python, Go, Rust and Java, then follows it from the changed files to their
   dependents.
 - **Tests:** it selects the tests related to the combined change. With `--run`,
   it runs them on the combined tree with a time and command budget. Tests it

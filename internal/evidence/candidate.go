@@ -175,7 +175,11 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			r.Locations = append(r.Locations, model.Provenance{Path: b.Path, Line: b.Line, Method: "observed_compiler_error", Evidence: model.ObservedTest})
 		}
 		if len(build) > 0 {
-			r.Diagnosis = buildDiagnosis(filepath.Base(argv[0])+" "+argv[1], build)
+			tool := filepath.Base(argv[0])
+			if buildTool(argv) == "" {
+				tool += " " + argv[1]
+			}
+			r.Diagnosis = buildDiagnosis(tool, build)
 		}
 	}
 	// Harness-like text printed by arbitrary programs is not an authentication

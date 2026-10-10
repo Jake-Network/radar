@@ -11,6 +11,7 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	goGrammar "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	javaGrammar "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	jsGrammar "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	pyGrammar "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	rustGrammar "github.com/tree-sitter/tree-sitter-rust/bindings/go"
@@ -27,6 +28,9 @@ type Result struct {
 	Diagnostics []model.Diagnostic
 	// Imports keeps raw specifiers for later repository-level path resolution.
 	Imports []Import
+	// Package is the declared Java package, which import resolution and test
+	// selection key on instead of the directory layout.
+	Package string
 }
 
 // Import is one import specifier as written in a source file. Names lists
@@ -67,6 +71,8 @@ func ForPath(path string) (Adapter, bool) {
 		a = syntaxAdapter{"go", sitter.NewLanguage(goGrammar.Language())}
 	case ".rs":
 		a = syntaxAdapter{"rust", sitter.NewLanguage(rustGrammar.Language())}
+	case ".java":
+		a = syntaxAdapter{"java", sitter.NewLanguage(javaGrammar.Language())}
 	default:
 		return nil, false
 	}
@@ -74,7 +80,7 @@ func ForPath(path string) (Adapter, bool) {
 }
 func Capabilities() []Capability {
 	var out []Capability
-	for _, p := range []string{"x.ts", "x.js", "x.py", "x.go", "x.rs"} {
+	for _, p := range []string{"x.ts", "x.js", "x.py", "x.go", "x.rs", "x.java"} {
 		a, _ := ForPath(p)
 		out = append(out, a.Capability())
 	}
@@ -150,11 +156,8 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 			continue
 		}
 		owner, scope := f.owner, f.scope
-		kind := definitionKind(n)
-		nameNode := n.ChildByFieldName("name")
-		if n.Kind() == "package_clause" && n.NamedChildCount() > 0 {
-			nameNode = n.NamedChild(0)
-		}
+		kind := definitionKind(n, a.language)
+		nameNode := declarationName(n)
 		if n.Kind() == "method_declaration" {
 			if receiver := n.ChildByFieldName("receiver"); receiver != nil && receiver.NamedChildCount() > 0 {
 				if typ := receiver.NamedChild(0).ChildByFieldName("type"); typ != nil {
@@ -169,6 +172,9 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 			occurrence := duplicates[key]
 			duplicates[key]++
 			id := model.EntityID(kind, s.Path, qualified, occurrence)
+			if kind == "package" && a.language == "java" && result.Package == "" {
+				result.Package = name
+			}
 			props := map[string]string{"qualified_name": qualified, "syntax_kind": n.Kind()}
 			result.Nodes = append(result.Nodes, model.Node{ID: id, Kind: kind, Name: name, Language: a.language, Properties: props, Provenance: provenance(n)})
 			result.Edges = append(result.Edges, model.Edge{ID: model.StableID(owner, "DEFINES", id), From: owner, To: id, Kind: "DEFINES", Provenance: provenance(n)})
@@ -243,21 +249,44 @@ func importedMembers(n *sitter.Node, source []byte, language string) []string {
 	return names
 }
 
-func definitionKind(n *sitter.Node) string {
+// declarationName returns the node naming a declaration. Package clauses
+// carry their name as the first identifier-shaped child, not a name field.
+func declarationName(n *sitter.Node) *sitter.Node {
 	switch n.Kind() {
-	case "package_clause":
+	case "package_clause", "package_declaration":
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			switch c := n.NamedChild(i); c.Kind() {
+			case "package_identifier", "identifier", "scoped_identifier":
+				return c
+			}
+		}
+		return nil
+	}
+	return n.ChildByFieldName("name")
+}
+
+func definitionKind(n *sitter.Node, language string) string {
+	switch n.Kind() {
+	case "package_clause", "package_declaration":
 		return "package"
-	case "function_declaration", "function_definition", "function_item", "method_definition", "method_declaration", "function_signature":
+	case "function_declaration", "function_definition", "function_item", "method_definition", "method_declaration", "function_signature", "constructor_declaration", "compact_constructor_declaration":
 		return "function"
 	case "class_declaration", "class_definition", "abstract_class_declaration":
 		return "class"
-	case "interface_declaration", "trait_item":
+	case "interface_declaration", "trait_item", "annotation_type_declaration":
 		return "interface"
-	case "type_alias_declaration", "type_spec", "struct_item", "enum_item", "type_item", "enum_declaration":
+	case "type_alias_declaration", "type_spec", "struct_item", "enum_item", "type_item", "enum_declaration", "record_declaration":
 		return "type"
 	case "mod_item":
 		return "module"
 	case "variable_declarator":
+		if language == "java" {
+			// Fields and interface constants; method locals are not entities.
+			if parent := n.Parent(); parent != nil && (parent.Kind() == "field_declaration" || parent.Kind() == "constant_declaration") {
+				return "symbol"
+			}
+			return ""
+		}
 		if v := n.ChildByFieldName("value"); v != nil && (v.Kind() == "arrow_function" || v.Kind() == "function_expression") {
 			return "function"
 		}
@@ -327,6 +356,28 @@ func importNames(n *sitter.Node, source []byte, language string) []string {
 		if s := n.ChildByFieldName("argument"); s != nil {
 			return []string{s.Utf8Text(source)}
 		}
+	case "import_declaration":
+		// import a.b.C; import a.b.*; import static a.b.C.m; Static
+		// members resolve through their enclosing type.
+		if language != "java" {
+			return nil
+		}
+		name, wildcard := "", false
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			switch c := n.NamedChild(i); c.Kind() {
+			case "scoped_identifier", "identifier":
+				name = c.Utf8Text(source)
+			case "asterisk":
+				wildcard = true
+			}
+		}
+		if name == "" {
+			return nil
+		}
+		if wildcard {
+			name += ".*"
+		}
+		return []string{name}
 	}
 	return nil
 }

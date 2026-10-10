@@ -12,6 +12,7 @@ reported as `unknown` or `incomplete`, never as a pass.
 | Python | declarations, imports | absolute modules from the importer's directory, project root or `src/`; relative imports |
 | Go | declarations, imports | packages inside any `go.mod` module in the repository |
 | Rust | declarations, imports | `crate::`, `self::`, `super::` and `mod name;` |
+| Java | declarations, imports | single-type, on-demand (`.*`) and static imports, by each file's declared `package` and file name |
 
 Parsing is Tree-sitter, built into the binary. There is no type checking, call
 resolution or runtime tracing. Import edges (`DEPENDS_ON`) are labeled
@@ -23,6 +24,11 @@ imports. Two repository packages with the same name are left unresolved.
 Imports from outside the repository stay as unresolved `module` nodes.
 TypeScript variance annotations (`interface X<in T>`) are not parsed by the
 bundled grammar; those declarations are skipped with a warning.
+
+Java types used from the same package need no import, so they get no edge;
+test selection relates same-package tests instead. A type declared by two files
+is left unresolved. Fully qualified names used without an import, reflection,
+generated sources (annotation processors, Lombok) and Kotlin are not handled.
 
 Working-tree indexing honors `.gitignore`. Symlinks and submodules in a
 combined tree are refused.
@@ -83,9 +89,10 @@ the reference fixture.
 ## Tests
 
 Recognized result formats: `go test -json`, `python -m unittest`, `pytest`,
-Jest, Vitest, `node --test`, `cargo test`, and any JUnit XML report declared
-with `junit`: one file, or a directory of `TEST-*.xml` files. Inventory and
-selection are described in [TEST_SELECTION](TEST_SELECTION.md).
+Jest, Vitest, `node --test`, `cargo test`, Maven Surefire totals, the JUnit
+reports Maven and Gradle write for selected commands, and any JUnit XML report
+declared with `junit`: one file, or a directory of `TEST-*.xml` files.
+Inventory and selection are described in [TEST_SELECTION](TEST_SELECTION.md).
 
 ## Plans
 

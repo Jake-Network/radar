@@ -34,6 +34,16 @@ var (
 	cargoLocation = regexp.MustCompile(`^\s*--> (\S+\.rs):([0-9]+):[0-9]+`)
 	cargoMissing  = regexp.MustCompile("^(?:cannot find (?:value|function|type|struct|trait|macro|module) |unresolved import |failed to resolve: .*?)`([A-Za-z_][A-Za-z0-9_:]{0,99})`")
 	sourceSymbol  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:]{0,99}$`)
+	// javac reports through Maven as "[ERROR] FILE:[L,C] msg" and directly
+	// (Gradle) as "FILE:L: error: msg"; "symbol:" lines name what is missing.
+	javaCompile = regexp.MustCompile(`COMPILATION ERROR|Compilation failure|Compilation failed`)
+	mavenError  = regexp.MustCompile(`^\[ERROR\] (\S+\.java):\[([0-9]+),[0-9]+\] (.*)$`)
+	javacError  = regexp.MustCompile(`^(\S+\.java):([0-9]+): error: (.*)$`)
+	javacSymbol = regexp.MustCompile(`^(?:\[ERROR\])?\s+symbol:\s+(?:class|interface|enum|record|method|variable|static) ([A-Za-z_$][A-Za-z0-9_$]{0,99})`)
+	// Dependency resolution, offline caches, toolchains and package lookups
+	// cannot be told apart from an absent dependency, so a build mentioning
+	// one is never attributed to the source.
+	javaDependency = regexp.MustCompile(`Could not resolve (?:dependencies|all (?:files|dependencies|artifacts))|offline mode|No cached version|Non-resolvable parent POM|could not be resolved|Could not find artifact|invalid (?:target|source) release|release version [0-9]+ not supported|Unsupported class file major version|Could not install Gradle distribution|Could not determine java version|package [A-Za-z0-9_.]+ does not exist|class file for [A-Za-z0-9_.$]+ not found|bad class file`)
 )
 
 // sourcePath accepts compiler paths that name repository files: relative to
@@ -179,4 +189,50 @@ func buildDiagnosis(tool string, errs []sourceBuildError) *Diagnosis {
 		name = filepath.Base(name)
 	}
 	return &Diagnosis{Kind: "build_failed", Name: name, Message: fmt.Sprintf("the combined source does not compile (%s); the first compiler error is at %s", tool, where)}
+}
+
+// javaBuildErrors reads javac errors from Maven or Gradle output when the
+// build reports a compilation failure. Errors located outside the execution
+// directory, or any dependency or toolchain message, make the failure
+// environmental.
+func javaBuildErrors(text, dir string) []sourceBuildError {
+	if !javaCompile.MatchString(text) || javaDependency.MatchString(text) {
+		return nil
+	}
+	var errs []sourceBuildError
+	seen := map[sourceBuildError]bool{}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		m := mavenError.FindStringSubmatch(line)
+		if m == nil {
+			m = javacError.FindStringSubmatch(line)
+		}
+		if m == nil {
+			continue
+		}
+		path, ok := sourcePath(dir, m[1])
+		if !ok {
+			return nil
+		}
+		n, _ := strconv.Atoi(m[2])
+		e := sourceBuildError{Path: path, Line: n}
+		if strings.HasPrefix(m[3], "cannot find symbol") {
+			for _, next := range lines[i+1 : min(i+5, len(lines))] {
+				if s := javacSymbol.FindStringSubmatch(strings.TrimRight(next, "\r")); s != nil {
+					e.Symbol = s[1]
+					break
+				}
+			}
+		}
+		// Maven repeats each error in its goal failure summary.
+		if seen[e] {
+			continue
+		}
+		seen[e] = true
+		if len(errs) < maxBuildErrors {
+			errs = append(errs, e)
+		}
+	}
+	return errs
 }
