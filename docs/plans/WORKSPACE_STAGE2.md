@@ -77,7 +77,7 @@ cli.gate
 | `internal/cli/workspace_gate.go` | 호출 해석, `workspaceReport`(JSON v1), 렌더링, `workspaceNext`, `scopeSummary`, `repoLine` | `cross_repo`를 실제 결과로 바꾸고 연결 줄과 수정 단서를 추가한다 |
 | `internal/cli/workspace.go` | `workspace add/remove/show` | `connect`를 추가한다 |
 | `internal/cli/commands.go` | 명령 테이블, `advancedFlags`, `advancedUsage`(help --all 전용) | `connect`는 help 계층에 맞게 등록한다(5.8) |
-| `internal/cli/mcp.go` | `radar_gate`의 `targets`·`with`, `compactWorkspace` | 연결 요약을 추가한다 |
+| `internal/cli/mcp.go` | `radar_gate`의 `targets`(`with`는 고정 root 밖을 읽으므로 MCP에 없다), `compactWorkspace` | 연결 요약을 추가한다 |
 | `schemas/workspace-report.schema.json` | workspace report v1. `cross_repo.status`는 지금 `const "not_checked"` | 연결 결과를 담도록 넓힌다(5.7) |
 
 ### 2.3 지켜야 하는 불변식

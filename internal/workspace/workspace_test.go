@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestIDs(t *testing.T) {
@@ -269,6 +271,55 @@ func TestRegistryConcurrentUpdates(t *testing.T) {
 	}
 }
 
+func TestStaleLockTakeoverKeepsTheNewLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), RegistryFile+".lock")
+	old := time.Now().Add(-2 * staleLock)
+	os.WriteFile(path, []byte("1 crashed\n"), 0o600)
+	os.Chtimes(path, old, old)
+	// Every waiter that saw the stale lock tries to break it; after the
+	// first takes the lock, the rest must leave that fresh lock alone.
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	holders, maxHolders := 0, 0
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			unlock, err := lock(path)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			mu.Lock()
+			holders++
+			maxHolders = max(maxHolders, holders)
+			mu.Unlock()
+			time.Sleep(5 * time.Millisecond)
+			mu.Lock()
+			holders--
+			mu.Unlock()
+			unlock()
+		}()
+	}
+	wg.Wait()
+	if maxHolders != 1 {
+		t.Fatal("lock held by", maxHolders, "writers at once")
+	}
+	// A writer whose lock was taken over does not remove its successor's.
+	unlock, err := lock(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(path, []byte("2 successor\n"), 0o600)
+	unlock()
+	if b, _ := os.ReadFile(path); string(b) != "2 successor\n" {
+		t.Fatal("removed another holder's lock", string(b))
+	}
+	if _, err = os.Stat(path + ".break"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("break lock left behind", err)
+	}
+}
+
 func TestLoadRejectsInvalidRegistry(t *testing.T) {
 	dir := t.TempDir()
 	if r, err := Load(dir); err != nil || len(r.Workspaces) != 0 {
@@ -279,5 +330,20 @@ func TestLoadRejectsInvalidRegistry(t *testing.T) {
 		if _, err := Load(dir); err == nil {
 			t.Fatal("accepted", body)
 		}
+	}
+}
+
+func TestShellPathStaysOneArgument(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip(err)
+	}
+	for _, p := range []string{"/src/orders", "/src/my repo", "/src/a\nrm -rf x", "/src/a\nb", "/src/it's", "~/x", "/src/$(id)", "/src/a\tb", "-x", ""} {
+		out, err := exec.Command("sh", "-c", "set -- "+ShellPath(p)+"; printf '%s|%s' \"$#\" \"$1\"").CombinedOutput()
+		if err != nil || string(out) != "1|"+p {
+			t.Errorf("%q quoted as %s: %q %v", p, ShellPath(p), out, err)
+		}
+	}
+	if ShellPath("/src/orders") != "/src/orders" {
+		t.Error("safe path quoted")
 	}
 }

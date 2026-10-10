@@ -153,7 +153,7 @@
     },
     "verdict": {
       "enum": ["pass", "fail", "blocked", "error"],
-      "description": "Worst repository or declared link verdict; blocked renders as NOT VERIFIED."
+      "description": "Worst repository or declared link verdict, in the order fail, error, blocked, pass: a failure decides the workspace even when another repository could not be checked. blocked renders as NOT VERIFIED."
     },
     "next": {
       "type": "string",

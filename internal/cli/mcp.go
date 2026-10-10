@@ -37,7 +37,7 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
-	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base) in private Git state and report conflicts, contract changes and failing evidence with the branches to look at, plus the tests that cover the change. In a workspace (radar workspace add) it checks every workspace repository, each on its own; cross-repo links are not checked yet. Never executes repository code; a human runs `radar gate --run` to test the combined tree.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("targets", "", "string", "comma-separated REPO:REF or REF targets; in a workspace, unnamed repos take part at their base", false), p("with", "with", "array", "repository paths to also check in this run (relative to the repository root)", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
+	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base) in private Git state and report conflicts, contract changes and failing evidence with the branches to look at, plus the tests that cover the change. In a workspace (radar workspace add) it checks every workspace repository, each on its own; cross-repo links are not checked yet. Repositories outside the workspace are not reachable here: a human registers them with radar workspace add. Never executes repository code; a human runs `radar gate --run` to test the combined tree.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("targets", "", "string", "comma-separated REPO:REF or REF targets; in a workspace, unnamed repos take part at their base", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("suite", "suite", "string", "preview a bounded selection without execution: targeted, balanced or full", false), p("max_commands", "max-commands", "integer", "command budget for the suite preview", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_contracts_discover", "discover", "Discover proposed contract candidates with static evidence; does not accept or overwrite authoritative bindings.", []toolParam{p("ref", "ref", "string", "checkpoint (default working tree)", false)}},
@@ -62,9 +62,6 @@ func (t toolSpec) schema() map[string]any {
 	required := []string{}
 	for _, param := range t.params {
 		properties[param.name] = map[string]any{"type": param.kind, "description": param.description}
-		if param.kind == "array" {
-			properties[param.name] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": param.description}
-		}
 		if param.required {
 			required = append(required, param.name)
 		}
@@ -100,18 +97,6 @@ func (t toolSpec) args(arguments map[string]any) ([]string, error) {
 			}
 			if v {
 				args = append(args, "--"+param.flag)
-			}
-			continue
-		case []any:
-			if param.kind != "array" {
-				return nil, fmt.Errorf("argument %s must be a %s", param.name, param.kind)
-			}
-			for _, item := range v {
-				text, ok := item.(string)
-				if !ok {
-					return nil, fmt.Errorf("argument %s must be an array of strings", param.name)
-				}
-				args = append(args, "--"+param.flag+"="+text)
 			}
 			continue
 		case float64:

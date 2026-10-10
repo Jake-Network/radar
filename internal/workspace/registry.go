@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -218,19 +220,28 @@ func WriteAtomic(path string, data []byte) error {
 }
 
 func lock(path string) (func(), error) {
+	token, err := lockToken()
+	if err != nil {
+		return nil, fmt.Errorf("workspace registry lock: %w", err)
+	}
 	deadline := time.Now().Add(lockTimeout)
 	for {
 		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
-			f.WriteString(strconv.Itoa(os.Getpid()) + "\n")
-			f.Close()
-			return func() { os.Remove(path) }, nil
+			_, err = f.WriteString(token)
+			if closeErr := f.Close(); err == nil {
+				err = closeErr
+			}
+			if err != nil {
+				os.Remove(path)
+				return nil, fmt.Errorf("workspace registry lock: %w", err)
+			}
+			return func() { unlockOwned(path, token) }, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, fmt.Errorf("workspace registry lock: %w", err)
 		}
-		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > staleLock {
-			os.Remove(path)
+		if breakStale(path) {
 			continue
 		}
 		if time.Now().After(deadline) {
@@ -238,4 +249,47 @@ func lock(path string) (func(), error) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// lockToken identifies one lock holder: its process and a random suffix.
+func lockToken() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return strconv.Itoa(os.Getpid()) + " " + hex.EncodeToString(b) + "\n", nil
+}
+
+// unlockOwned removes the lock only while it still holds token, so a writer
+// whose stale lock was taken over never removes its successor's lock.
+func unlockOwned(path, token string) {
+	if b, err := os.ReadFile(path); err == nil && string(b) == token {
+		os.Remove(path)
+	}
+}
+
+// breakStale removes a lock older than staleLock. Waiters remove it only
+// while holding a second lock and after checking its age again there, so a
+// waiter that saw the stale lock never removes the fresh lock another waiter
+// took after breaking it. It reports whether the caller should retry now.
+func breakStale(path string) bool {
+	if info, err := os.Stat(path); err != nil || time.Since(info.ModTime()) <= staleLock {
+		return false
+	}
+	breaker := path + ".break"
+	f, err := os.OpenFile(breaker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		// Breaking takes milliseconds; a break lock this old was left by a
+		// waiter that crashed while breaking.
+		if info, statErr := os.Stat(breaker); statErr == nil && time.Since(info.ModTime()) > staleLock {
+			os.Remove(breaker)
+		}
+		return false
+	}
+	f.Close()
+	defer os.Remove(breaker)
+	if info, err := os.Stat(path); err == nil && time.Since(info.ModTime()) > staleLock {
+		os.Remove(path)
+	}
+	return true
 }

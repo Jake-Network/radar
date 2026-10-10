@@ -385,3 +385,29 @@ func TestStoreKeepsRecentRunsAndConcurrentSaves(t *testing.T) {
 		t.Fatal("key path traversal")
 	}
 }
+
+func TestSaveReportsAnUnreadableRunsDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	s := Store{Dir: filepath.Join(t.TempDir(), "runs", "shop")}
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Not searchable: every Stat of a run directory fails with EACCES.
+	os.Chmod(s.Dir, 0o600)
+	defer os.Chmod(s.Dir, 0o700)
+	done := make(chan error, 1)
+	go func() {
+		rec := Record{}
+		done <- s.Save(&rec, func() any { return nil })
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("saved into an unreadable directory")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Save kept retrying run IDs")
+	}
+}
