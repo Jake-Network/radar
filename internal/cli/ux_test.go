@@ -74,7 +74,7 @@ func TestDoctorFirstRunDetection(t *testing.T) {
 			t.Fatalf("%+v", d)
 		}
 		_, out, _ := run(t, root, "doctor")
-		if !strings.Contains(out, "no worktree branch has commits beyond main") || !strings.Contains(out, "no tests found") {
+		if !strings.Contains(out, "no worktree branch has commits beyond main") || !strings.Contains(out, "no tests found") || !strings.Contains(out, "no uncommitted changes") {
 			t.Fatal(out)
 		}
 	})
@@ -84,6 +84,26 @@ func TestDoctorFirstRunDetection(t *testing.T) {
 		put(t, dir, "a.py", "A = 2\n")
 		if d := doctorProjectOf(t, root); !strings.HasPrefix(d.Next, "commit the agents' work") {
 			t.Fatalf("%+v", d)
+		}
+		_, out, _ := run(t, root, "doctor")
+		if strings.Contains(out, "no uncommitted changes") || !strings.Contains(out, "agent-a: 0 staged, 1 unstaged, 0 untracked") {
+			t.Fatal(out)
+		}
+	})
+	t.Run("unavailable dirty linked worktree", func(t *testing.T) {
+		root, agent := agentRepo(t, map[string]string{"a.py": "A = 1\n"})
+		dir := agent("agent-a", map[string]string{"a.py": "A = 2\n"})
+		put(t, dir, "a.py", "A = 3\n")
+		if err := os.Rename(dir, dir+"-offline"); err != nil {
+			t.Fatal(err)
+		}
+		d := doctorProjectOf(t, root)
+		if d.Worktrees != 2 || len(d.Dirty) != 0 || !strings.Contains(strings.Join(d.Problems, "\n"), "worktree inspection unavailable for "+dir+":") || !strings.HasPrefix(d.Next, "restore access to the worktrees") {
+			t.Fatalf("%+v", d)
+		}
+		code, out, _ := run(t, root, "doctor")
+		if code != 0 || strings.Contains(out, "no uncommitted changes") || !strings.Contains(out, "inspection incomplete") || !strings.Contains(out, "worktree inspection unavailable for "+dir+":") {
+			t.Fatalf("%d %s", code, out)
 		}
 	})
 	t.Run("not a repository", func(t *testing.T) {

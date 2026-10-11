@@ -150,6 +150,65 @@ func TestWatchAutomaticallyRechecksCommittedChanges(t *testing.T) {
 	}
 }
 
+func TestWatchCompletedWorktreeInclusionMetadata(t *testing.T) {
+	for _, includeDirty := range []bool{false, true} {
+		t.Run(fmt.Sprintf("include-dirty=%t", includeDirty), func(t *testing.T) {
+			root, agent := checkoutRepo(t)
+			selected := agent("selected", map[string]string{"backend.py": "def price():\n    return 2\n"})
+			put(t, selected, "private-note.txt", "saved change\n")
+			args := []string{"selected"}
+			want := map[string][2]bool{"main": {true, false}, "selected": {true, false}}
+			original := map[string]string{"main": gitTest(t, root, "rev-parse", "HEAD"), "selected": gitTest(t, selected, "rev-parse", "HEAD")}
+			if includeDirty {
+				// This branch has no commits beyond the base, so only dirty
+				// auto-selection adds it to the pinned inputs.
+				dirty := agent("dirty-at-base", nil)
+				put(t, dirty, "new_module.py", "VALUE = 3\n")
+				args = []string{"--include-dirty"}
+				want["selected"] = [2]bool{true, true}
+				want["dirty-at-base"] = [2]bool{true, true}
+				original["dirty-at-base"] = gitTest(t, dirty, "rev-parse", "HEAD")
+			} else {
+				excluded := agent("excluded", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
+				want["excluded"] = [2]bool{false, false}
+				original["excluded"] = gitTest(t, excluded, "rev-parse", "HEAD")
+			}
+			var completed watch.Event
+			watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+				if e.Type == watch.Completed {
+					completed = e
+					cancel()
+				}
+			}, args...)
+			if watchVerdict(t, completed) != "pass" {
+				t.Fatal("static check", watchReport(t, completed))
+			}
+			state := completed.State.Value.(map[string]any)
+			worktrees := state["worktrees"].([]any)
+			if len(worktrees) != len(want) {
+				t.Fatal("worktrees", worktrees)
+			}
+			for _, value := range worktrees {
+				w := value.(map[string]any)
+				branch := w["branch"].(string)
+				flags, ok := want[branch]
+				if !ok || w["commit_included"] != flags[0] || w["uncommitted_included"] != flags[1] {
+					t.Fatalf("incorrect inclusion for %q: %+v", branch, w)
+				}
+				if w["commit"] != original[branch] {
+					t.Fatalf("original commit provenance changed for %q: %+v", branch, w)
+				}
+			}
+			if includeDirty {
+				refs := state["branches"].([]any)
+				if len(refs) != 2 || !strings.Contains(fmt.Sprint(refs), "dirty-at-base") {
+					t.Fatal("dirty branch absent from pinned selection", state)
+				}
+			}
+		})
+	}
+}
+
 func watchSourceFingerprint(t *testing.T, root string) string {
 	t.Helper()
 	var state bytes.Buffer

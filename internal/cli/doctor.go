@@ -32,7 +32,9 @@ type doctorProject struct {
 	Problems  []string        `json:"problems"`
 	Workspace string          `json:"workspace,omitempty"`
 	Next      string          `json:"next"`
-	testsErr  error
+
+	testsErr            error
+	worktreesIncomplete bool
 }
 
 type doctorDirty struct {
@@ -123,7 +125,9 @@ func (a *app) doctor(_ options) int {
 			more(p.mark("·") + " skipped: " + s)
 		}
 		worktrees := plural(proj.Worktrees, "worktree", "worktrees") + " checked out"
-		if len(proj.Dirty) == 0 {
+		if proj.worktreesIncomplete {
+			worktrees += "; inspection incomplete"
+		} else if len(proj.Dirty) == 0 {
 			worktrees += "; no uncommitted changes"
 		}
 		line("Worktrees", worktrees)
@@ -229,10 +233,15 @@ func (a *app) inspectProject() *doctorProject {
 		}
 	}
 	if worktrees, err := gitrepo.InspectWorktrees(a.ctx, a.root); err != nil {
+		d.worktreesIncomplete = true
 		d.Problems = append(d.Problems, "worktree inspection unavailable: "+err.Error())
 	} else {
 		d.Worktrees = len(worktrees)
 		for _, w := range worktrees {
+			if w.InspectionError != "" {
+				d.worktreesIncomplete = true
+				d.Problems = append(d.Problems, "worktree inspection unavailable for "+w.Path+": "+w.InspectionError)
+			}
 			if n := len(w.Staged) + len(w.Unstaged) + len(w.Untracked); n > 0 {
 				d.Dirty = append(d.Dirty, doctorDirty{Path: w.Path, Branch: w.Branch, Staged: len(w.Staged), Unstaged: len(w.Unstaged), Untracked: len(w.Untracked)})
 			}
@@ -267,6 +276,8 @@ func (a *app) inspectProject() *doctorProject {
 		d.Workspace = inv.scope.Workspace
 	}
 	switch {
+	case d.worktreesIncomplete:
+		d.Next = "restore access to the worktrees and resolve the worktree inspection problems, then: radar doctor"
 	case d.Workspace != "":
 		d.Next = fmt.Sprintf("radar gate   (this repository is in workspace %q, so gate checks every repository in it; radar workspace show lists them)", d.Workspace)
 	case d.Base == "":

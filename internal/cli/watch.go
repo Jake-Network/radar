@@ -149,6 +149,10 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 			input.Worktrees[wi].UncommittedIncluded = true
 		}
 	}
+	for i := range input.Worktrees {
+		w := &input.Worktrees[i]
+		w.CommitIncluded = w.Commit == input.Base || slices.Contains(input.SHAs, w.Commit)
+	}
 	if o.policy != "" {
 		path := o.policy
 		if !filepath.IsAbs(path) {
