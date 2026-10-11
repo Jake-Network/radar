@@ -1,2 +1,2 @@
 isError true
-{"agent_brief":{"changed_file_count":0,"changed_files":null,"contract_impact":[],"must_repair":[],"must_repair_count":0,"tests":{"executed":[],"executed_count":0,"failed":[],"not_run":[]},"verify_next":[]},"detail_hint":"Use detail=true or CLI --json for full provenance and inventory.","status":"error","suggested_repair_attempts":2}
+{"detail_hint":"Use detail=true or CLI --json for full provenance and inventory.","error":"no branches to combine: no worktree branch has commits beyond main","next":"commit work on an agent branch, or name branches: radar gate feature/a feature/b (radar doctor shows what Radar sees)","status":"error","suggested_repair_attempts":2}

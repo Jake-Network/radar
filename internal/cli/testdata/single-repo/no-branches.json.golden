@@ -1,5 +1,6 @@
 exit 2
 {
-  "error": "no branches to combine: no worktree branch has commits beyond main; name them, e.g. radar gate feature/a feature/b",
+  "error": "no branches to combine: no worktree branch has commits beyond main",
+  "next": "commit work on an agent branch, or name branches: radar gate feature/a feature/b (radar doctor shows what Radar sees)",
   "status": "error"
 }

@@ -116,7 +116,7 @@ func (a *app) mergeCheck(o options) int {
 		renderProposal(w, r.VerificationProposal)
 		renderSelection(w, r.Selection)
 		for _, c := range r.Checks {
-			fmt.Fprintf(w, "  %s%s %s: %s\n", p.status(c.Status, string(c.Status)), strings.Repeat(" ", max(0, 12-len(c.Status))), c.ID, c.Explanation)
+			fmt.Fprintf(w, "  %s%s %s: %s\n", p.status(c.Status, string(c.Status)), strings.Repeat(" ", max(0, 14-len(c.Status))), c.ID, c.Explanation)
 		}
 		for _, p := range r.Conflicts {
 			fmt.Fprintf(w, "  Conflict: %s\n", p)

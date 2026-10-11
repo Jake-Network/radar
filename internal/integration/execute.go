@@ -3,7 +3,9 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -341,6 +343,12 @@ func unavailable(root string, c testselection.Command) string {
 	tool := c.Command[0]
 	if strings.Contains(tool, "/") {
 		path, e := pathutil.ResolveInside(dir, tool)
+		if errors.Is(e, fs.ErrNotExist) {
+			if strings.Contains(tool, "node_modules/") {
+				return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
+			}
+			return "runner " + tool + " is absent from the private candidate (not committed, or removed by a branch)"
+		}
 		if e != nil {
 			return "runner " + tool + " is outside the candidate"
 		}

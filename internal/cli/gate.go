@@ -53,6 +53,11 @@ type gateReport struct {
 	Attribution             map[string]gateAttribution `json:"attribution"`
 	Next                    string                     `json:"next,omitempty"`
 	integration.Report
+	// title and details let watch reuse the renderer with its own words.
+	title, details string
+	// snapshot marks inputs that include private snapshot commits (watch
+	// --include-dirty), which do not exist in the user's repository.
+	snapshot bool
 }
 
 func gateCommand() command {
@@ -125,7 +130,7 @@ func (a *app) gate(o options) int {
 	r, err := integration.Preview(a.ctx, a.root, options)
 	progress.done()
 	if err != nil {
-		return a.fail(err)
+		return a.fail(a.explainGateError(err, baseSHA))
 	}
 	configuration.applyIntegration(&r)
 	g := gateReport{Configuration: configuration.Inputs, BaseRef: baseRef, Skipped: skipped, Attribution: map[string]gateAttribution{}, Report: r}
@@ -154,7 +159,7 @@ func (a *app) gate(o options) int {
 	case r.Gate.Verdict == gate.Fail:
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate "+rerun)
 	case r.Gate.Verdict == gate.Blocked && o.verify:
-		g.Next = "resolve the missing evidence above, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
+		g.Next = blockedNext(r, gateGaps(r), rerunWith(o, baseRef, refs), o)
 	case configurationUnstable(configuration.Inputs):
 		g.Next = "restore stable configuration, then rerun: " + strings.TrimSpace("radar gate "+rerun)
 	case r.Gate.Verdict == gate.Error && missingRunner(r.Executions) != "":
@@ -177,6 +182,26 @@ func (a *app) gate(o options) int {
 		return 2
 	}
 	return 0
+}
+
+// explainGateError adds the next step to candidate errors a person can act
+// on. The original message is kept so scripts matching it still work.
+func (a *app) explainGateError(err error, baseSHA string) error {
+	var entry *integration.UnsupportedEntryError
+	if !errors.As(err, &entry) || entry.Unsafe != nil {
+		return err
+	}
+	message := err.Error() + " (unsupported layout: Radar does not reproduce symlinks or submodules in its private copy, so nothing was checked)"
+	entries, _ := gitrepo.Entries(a.ctx, a.root, baseSHA)
+	// The same path as a regular file on the base means a branch made it a
+	// symlink or submodule; only the same unsupported entry blames the base.
+	if slices.ContainsFunc(entries, func(e gitrepo.TreeEntry) bool {
+		return e.Path == entry.Path && (e.Mode == "120000" || e.Mode == "160000")
+	}) {
+		// On the base it is in every combination; no branch choice helps.
+		return &workspace.Error{Message: message, Next: shellArg(entry.Path) + " is on the base, so Radar cannot check this repository until it is replaced there with a regular file"}
+	}
+	return &workspace.Error{Message: message, Next: "remove or replace " + shellArg(entry.Path) + " on the branch that adds it, or name only the branches that do not add it"}
 }
 
 // baseFlag records every --base value for workspace runs; the
@@ -213,6 +238,18 @@ func (a *app) gateBranches(args []string, baseRef, baseSHA string) ([]string, []
 		}
 	}
 	if len(refs) > 0 {
+		for _, ref := range refs {
+			if _, err := gitrepo.Resolve(a.ctx, a.root, ref); err != nil {
+				if a.ctx.Err() != nil {
+					return nil, nil, a.ctx.Err()
+				}
+				next := "list branches with git branch --list, or run radar gate without names to combine every worktree branch"
+				if strings.Contains(ref, ":") {
+					next = "REPO:BRANCH names need a workspace (radar workspace add PATH); in one repository, name the branch alone"
+				}
+				return nil, nil, &workspace.Error{Message: fmt.Sprintf("branch %q not found: no branch, tag or commit by that name in this repository", ref), Next: next}
+			}
+		}
 		return refs, nil, nil
 	}
 	worktrees, err := gitrepo.WorktreeBranches(a.ctx, a.root)
@@ -232,7 +269,7 @@ func (a *app) gateBranches(args []string, baseRef, baseSHA string) ([]string, []
 		refs = append(refs, ref)
 	}
 	if len(refs) == 0 {
-		return nil, nil, fmt.Errorf("no branches to combine: no worktree branch has commits beyond %s; name them, e.g. radar gate feature/a feature/b", baseRef)
+		return nil, nil, &workspace.Error{Message: fmt.Sprintf("no branches to combine: no worktree branch has commits beyond %s", baseRef), Next: "commit work on an agent branch, or name branches: radar gate feature/a feature/b (radar doctor shows what Radar sees)"}
 	}
 	return refs, skipped, nil
 }
@@ -377,6 +414,12 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	if o.suite != "" {
 		args = append(args, "--suite "+shellArg(o.suite))
 	}
+	if o.maxCommands != 0 && o.maxCommands != testselection.DefaultMaxCommands {
+		args = append(args, fmt.Sprintf("--max-commands %d", o.maxCommands))
+	}
+	if o.timeout != 10*time.Minute {
+		args = append(args, "--timeout "+o.timeout.String())
+	}
 	if o.verify && o.attributionRuns != integration.DefaultAttributionRuns {
 		args = append(args, fmt.Sprintf("--attribution-runs %d", o.attributionRuns))
 	}
@@ -388,6 +431,16 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	return strings.Join(args, " ")
 }
 
+// rerunWith renders `radar gate --run` for this selection after adjusting a
+// copy of the invocation's options.
+func rerunWith(o options, baseRef string, refs []string) func(func(*options)) string {
+	return func(change func(*options)) string {
+		c := o
+		change(&c)
+		return strings.TrimSpace("radar gate --run " + gateArgs(c, baseRef, refs))
+	}
+}
+
 // Suggested commands are presentation only, but remain safe to copy into a
 // POSIX shell even when a valid Git ref contains shell metacharacters.
 func shellArg(s string) string { return workspace.ShellPath(s) }
@@ -397,7 +450,11 @@ var verdictMark = map[gate.Verdict]string{gate.Pass: "PASS", gate.Fail: "FAIL", 
 func renderGate(w io.Writer, g gateReport, ran bool) {
 	p := paletteOf(w)
 	r := g.Report
-	fmt.Fprintf(w, "%s%s — %s\n", brand(p, "Radar gate: "), p.verdict(r.Gate.Verdict, verdictText(r.Gate.Verdict, ran)), gateHeadline(g, ran))
+	title := g.title
+	if title == "" {
+		title = "Radar gate: "
+	}
+	fmt.Fprintf(w, "%s%s — %s\n", brand(p, title), p.verdict(r.Gate.Verdict, verdictText(r.Gate.Verdict, ran)), gateHeadline(g, ran))
 	fmt.Fprintln(w, p.dim(fmt.Sprintf("%s onto %s @ %s", plural(len(g.Branches), "branch", "branches"), g.BaseRef, short(r.Base))))
 	fmt.Fprintln(w)
 	width := 0
@@ -469,6 +526,9 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		if a, ok := g.Attribution[f.ID]; ok {
 			renderAttribution(w, g, a, f.Code, p)
 		}
+		if repro := g.reproduce(f); repro != "" {
+			fmt.Fprintf(w, "    reproduce: %s\n", p.cyan(repro))
+		}
 		if len(r.Conflicts) > 0 && f.Code == "integration_textual_conflict" {
 			fmt.Fprintf(w, "    paths: %s\n", strings.Join(r.Conflicts, ", "))
 		}
@@ -509,9 +569,7 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		for _, ev := range r.Executions {
 			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
 		}
-		for _, b := range r.Selection.Blocking {
-			fmt.Fprintf(w, "  %s not run: %s\n", p.mark("?"), b)
-		}
+		renderGaps(w, gateGaps(r), p)
 		fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("Test files: %d inventoried, %d selected (relationships are not behavioral coverage)", r.Selection.Inventory, r.Selection.TestFiles)))
 		if len(r.Selection.Uncovered) > 0 {
 			fmt.Fprintf(w, "  %s Uncovered changes (no established test relationship): %s\n", p.mark("?"), strings.Join(r.Selection.Uncovered, ", "))
@@ -524,7 +582,58 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	if g.Next != "" {
 		fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(g.Next))
 	}
-	fmt.Fprintln(w, p.dim("Details: add --json. Radar never touches your branches; the combination is built in private Git state."))
+	details := g.details
+	if details == "" {
+		details = "Details: add --json. Radar never touches your branches; the combination is built in private Git state."
+	}
+	fmt.Fprintln(w, p.dim(details))
+}
+
+// reproduce is a copyable command that rebuilds the combination in a
+// throwaway detached worktree, merging the branches in Radar's order, and
+// runs the failing command there. It leaves the user's checkout and branches
+// alone. Only failed commands get one: an environment problem would not
+// reproduce from source.
+func (g gateReport) reproduce(f model.Finding) string {
+	if f.Code != "integration_execution_failed" || g.snapshot || len(g.Branches) == 0 || len(g.Branches) != len(g.Inputs) || g.Base == "" {
+		return ""
+	}
+	for i, b := range g.Branches {
+		if b.Commit != g.Inputs[i] {
+			return ""
+		}
+	}
+	for _, ev := range g.Executions {
+		if ev.Status != model.StatusFailed || !strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
+			continue
+		}
+		// Plan-declared commands carry setup, env and report steps that one
+		// shell line would leave out, so it could reproduce a different run.
+		if g.Selection != nil && slices.ContainsFunc(g.Selection.Commands, func(c testselection.Command) bool {
+			return c.ID == ev.SelectionID && c.Framework == "plan-declared"
+		}) {
+			return ""
+		}
+		// A fresh directory outside the repository, so repeated use and runs
+		// from a subdirectory never collide with or dirty the checkout.
+		parts := []string{`d=$(mktemp -d)`, `git worktree add --detach "$d" ` + short(g.Base), `cd "$d"`}
+		for _, b := range g.Branches {
+			// Exact commits (a branch may have moved since this check), and
+			// no commit hooks, as in Radar's private merge. post-checkout and
+			// post-merge hooks and the user's Git configuration still apply.
+			parts = append(parts, "git merge --no-ff --no-edit --no-verify "+short(b.Commit))
+		}
+		if ev.CWD != "" && ev.CWD != "." {
+			parts = append(parts, "cd "+shellArg(ev.CWD))
+		}
+		// The full argv: displayCommand elides long commands, which would not run.
+		argv := make([]string, len(ev.Command))
+		for i, a := range ev.Command {
+			argv[i] = shellArg(a)
+		}
+		return strings.Join(append(parts, strings.Join(argv, " ")), " && ")
+	}
+	return ""
 }
 
 // brand prefixes the report's first line with Radar's mark on a terminal.
@@ -533,6 +642,36 @@ func brand(p palette, title string) string {
 		return title
 	}
 	return p.paint("1;32", "◉ ") + p.bold(title)
+}
+
+// documentationOnly reports a run in which only documentation changed, so
+// selection proposed no test and none ran. It explains a NOT VERIFIED result
+// to people; it is not evidence that no test reads the documents.
+// docsOnlyBlock reports a default-policy block whose only unmet requirement
+// is test execution on a documentation-only change, so the static gate is
+// a complete answer for what Radar can verify.
+func docsOnlyBlock(r integration.Report) bool {
+	if !documentationOnly(r) || r.Gate.Policy.Name != "supported-integration" {
+		return false
+	}
+	for _, c := range r.Gate.Required {
+		if c.Status != model.StatusPassed && c.ID != "integration_execution" && c.ID != "test_selection" {
+			return false
+		}
+	}
+	return true
+}
+
+func documentationOnly(r integration.Report) bool {
+	if r.Selection == nil || len(r.Selection.Commands) > 0 || len(r.Selection.Blocking) > 0 || len(r.Selection.Uncovered) > 0 || len(r.Changed) == 0 {
+		return false
+	}
+	for _, f := range r.Changed {
+		if !testselection.Documentation(f) {
+			return false
+		}
+	}
+	return true
 }
 
 func verdictText(v gate.Verdict, ran bool) string {
@@ -569,6 +708,9 @@ func gateHeadline(g gateReport, ran bool) string {
 			return strings.Join(reasons, "; ")
 		}
 	case gate.Blocked:
+		if ran && docsOnlyBlock(r) {
+			return "only documentation changed, so no test was selected and none ran"
+		}
 		if len(reasons) > 0 {
 			return "required evidence is missing: " + strings.Join(reasons, ", ")
 		}
@@ -768,6 +910,8 @@ func gateLabel(c gate.Check, r integration.Report) string {
 	}
 	l, ok := labels[c.ID]
 	switch {
+	case c.ID == "integration_execution" && c.Status == model.StatusUnknown && documentationOnly(r):
+		return "not verified — only documentation changed, so no test was selected and none ran"
 	case ok && c.Status == model.StatusPassed:
 		return l[0]
 	case ok && c.Status == model.StatusFailed:
@@ -789,8 +933,8 @@ func gateLabel(c gate.Check, r integration.Report) string {
 		if n := len(r.Selection.Uncovered); n > 0 {
 			gaps = append(gaps, plural(n, "changed file has", "changed files have")+" no related test")
 		}
-		if n := len(r.Selection.Blocking); n > 0 {
-			gaps = append(gaps, plural(n, "blocking gap", "blocking gaps")+" (see not run below)")
+		if n := len(gateGaps(r)); n > 0 && len(r.Selection.Blocking) > 0 {
+			gaps = append(gaps, plural(n, "blocking gap", "blocking gaps")+" (see Tests below)")
 		}
 		if len(gaps) > 0 {
 			return "incomplete — " + strings.Join(gaps, "; ")

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
@@ -283,9 +284,12 @@ func (a *app) watch(o options) int {
 				stop()
 			}
 		} else {
-			a.renderWatch(e, o)
 			if e.Type == watch.Heartbeat {
-				fmt.Fprintf(a.out, "  %s; latest completed %s; last change %s\n", display.VerificationState, watchTime(display.LastCompleted), watchTime(display.LastChange))
+				// One quiet line: the state is unchanged since the last event.
+				p := paletteOf(a.out)
+				fmt.Fprintln(a.out, p.dim(fmt.Sprintf("%s · still watching: %s; last check %s, last change %s", e.Time.Format("15:04:05"), display.VerificationState, watchTime(display.LastCompleted), watchTime(display.LastChange))))
+			} else {
+				a.renderWatch(e, o)
 			}
 		}
 	})
@@ -303,7 +307,7 @@ func (a *app) renderWatch(e watch.Event, o options) {
 		return
 	}
 	p := paletteOf(a.out)
-	fmt.Fprintf(a.out, "%s Radar watch %s @ %s\n", p.cyan(e.Time.Format("15:04:05")), e.Type, short(e.State.Key))
+	fmt.Fprintf(a.out, "%s %s %s\n", p.cyan(e.Time.Format("15:04:05")), p.bold(string(e.Type)), p.dim("@ "+short(e.State.Key)))
 	if e.Error != "" {
 		label := "ERROR (NOT VERIFIED): "
 		if e.Type == watch.Attributed {
@@ -313,25 +317,30 @@ func (a *app) renderWatch(e watch.Event, o options) {
 		return
 	}
 	if e.Type == "checking" {
-		fmt.Fprintln(a.out, "CHECKING — latest change; previous result superseded")
+		fmt.Fprintln(a.out, "  CHECKING — the latest change; the previous result is superseded")
 	}
 	if e.Type == "changed" {
-		fmt.Fprintln(a.out, p.yellow("NOT VERIFIED — inputs changed; previous result superseded"))
+		fmt.Fprintln(a.out, "  "+p.yellow("NOT VERIFIED")+" — inputs changed; the previous result is no longer current")
 		if in, ok := e.State.Value.(watchInput); ok {
 			for _, w := range in.Worktrees {
+				if len(w.Staged)+len(w.Unstaged)+len(w.Untracked) == 0 {
+					continue
+				}
 				fmt.Fprintf(a.out, "  %s @ %s %q: %d staged, %d unstaged, %d untracked (%s)\n", w.Branch, short(w.Commit), w.Path, len(w.Staged), len(w.Unstaged), len(w.Untracked), dirtyWatchLabel(o.includeDirty))
 			}
 		}
 	}
 	if e.Result != nil {
 		if r, ok := e.Result.Value.(integration.Report); ok {
-			fmt.Fprintln(a.out, p.verdict(r.Gate.Verdict, verdictText(r.Gate.Verdict, o.verify)))
-			fmt.Fprintf(a.out, "  snapshot %s: %d merge conflicts; %d findings; %d selected tests\n", short(r.CandidateTree), len(r.Conflicts), len(r.Findings), len(r.Selected))
-			g := gateReport{Report: r, Attribution: map[string]gateAttribution{}, Next: "Repair reported problems or missing evidence; watch rechecks after the next change."}
+			fmt.Fprintln(a.out, p.dim(fmt.Sprintf("  combined tree %s", short(r.CandidateTree))))
+			g := gateReport{Report: r, Attribution: map[string]gateAttribution{}, Next: watchNext(r.Gate.Verdict, o.verify), title: "Radar watch: ", details: "Details: add --jsonl for machine-readable events. Your branches are never touched.", snapshot: o.includeDirty}
 			if in, ok := e.State.Value.(watchInput); ok {
 				g.BaseRef = o.base
 				if g.BaseRef == "" {
-					g.BaseRef = "default base"
+					g.BaseRef = gitrepo.DefaultBranch(a.ctx, a.root)
+				}
+				if g.BaseRef == "" {
+					g.BaseRef = "base"
 				}
 				for i, ref := range in.Refs {
 					changed, _ := gitrepo.ChangedFiles(a.ctx, a.root, in.Base, in.SHAs[i])
@@ -345,10 +354,28 @@ func (a *app) renderWatch(e watch.Event, o options) {
 			for _, attr := range observed.Observed {
 				fmt.Fprintf(a.out, "  %s: %s (%d subset runs)\n", attr.SelectionID, attr.Outcome, len(attr.Runs))
 			}
+		} else if idle, ok := e.Result.Value.(map[string]string); ok {
+			fmt.Fprintf(a.out, "  %s — %s\n", p.yellow(idle["state"]), idle["reason"])
 		} else {
 			fmt.Fprintln(a.out, e.Result.Value)
 		}
 	}
+}
+
+// watchNext is the next step after a completed watch check. Watch reruns by
+// itself, so the step is what to change, not a command to repeat.
+func watchNext(v gate.Verdict, ran bool) string {
+	switch {
+	case v == gate.Fail:
+		return "repair on the branches above and commit; watch rechecks automatically."
+	case v == gate.Blocked:
+		return "resolve the items marked ? above; watch rechecks after the next change."
+	case v == gate.Error:
+		return "resolve the reported error; watch rechecks after the next change."
+	case !ran:
+		return "static checks only; restart with radar watch --run to also run the related tests."
+	}
+	return ""
 }
 
 func dirtyWatchLabel(included bool) string {

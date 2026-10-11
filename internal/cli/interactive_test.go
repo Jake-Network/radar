@@ -103,7 +103,7 @@ func TestInteractivePickerRejectsUnlistedNumbers(t *testing.T) {
 
 func TestInteractiveOutsideRepositoryShowsHelp(t *testing.T) {
 	out := interact(t, t.TempDir(), "")
-	if !strings.Contains(out, "not inside a Git repository") || !strings.Contains(out, "Usage: radar <command>") {
+	if !strings.Contains(out, "not inside a Git repository") || !strings.Contains(out, "Usage: radar") {
 		t.Fatal(out)
 	}
 }

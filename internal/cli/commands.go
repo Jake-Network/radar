@@ -209,11 +209,12 @@ var helpCopy = map[string]struct {
 		examples: [][2]string{{"radar discover", "list proposed producer/consumer relationships; accepted bindings are never changed"}}},
 	"setup": {brief: "Install project-local agent skills and MCP config",
 		examples: [][2]string{
-			{"radar setup --agent claude --dry-run", "show what would be written"},
-			{"radar setup --agent both", "configure Codex and Claude Code for this project"},
+			{"radar setup claude --dry-run", "show what would be written for Claude Code"},
+			{"radar setup both", "configure Codex and Claude Code for this project"},
 		}},
-	"doctor": {brief: "Check tools, languages and repository state"},
-	"mcp":    {brief: "Serve Radar tools to coding agents over MCP (stdio)"},
+	"doctor": {brief: "Show what Radar sees and the next step",
+		examples: [][2]string{{"radar doctor", "base, agent branches, uncommitted worktrees, test runners, next command"}}},
+	"mcp": {brief: "Serve Radar tools to coding agents over MCP (stdio)"},
 }
 
 func (c command) usageText(w io.Writer) {
@@ -286,7 +287,7 @@ var helpGroups = []struct {
 	title    string
 	commands []string
 }{
-	{"Everyday", []string{"gate", "watch", "workspace", "check", "discover", "doctor"}},
+	{"Commands", []string{"gate", "watch", "doctor", "workspace", "check", "discover"}},
 	{"Agent setup", []string{"setup", "mcp"}},
 }
 
@@ -299,17 +300,20 @@ func printHelp(w io.Writer, all bool) {
 	} else {
 		fmt.Fprintln(w, "Radar — "+strings.ToLower(tagline[:1])+tagline[1:])
 	}
-	fmt.Fprintln(w, "\n"+p.bold("Usage:")+" radar <command> [flags] [--root DIR] [--json] [--color auto|always|never]")
+	fmt.Fprintln(w, "\n"+p.bold("Usage:")+" radar [command] [flags]   "+p.dim("(--json for machine output · --color auto|always|never)"))
 
 	section := func(title string) { fmt.Fprintln(w, "\n"+p.bold(title)) }
 	example := func(cmd, what string) {
-		fmt.Fprintf(w, "  %s%s  %s\n", p.command(cmd), strings.Repeat(" ", max(0, 33-len(cmd))), p.dim(what))
+		fmt.Fprintf(w, "  %s%s  %s\n", p.command(cmd), strings.Repeat(" ", max(0, 26-len(cmd))), p.dim(what))
 	}
+	// The everyday surface is these lines; everything else is one help away.
 	section("Start here")
-	example("radar", "interactive menu (in a terminal)")
-	example("radar gate", "check every worktree branch together; runs no code")
+	example("radar", "menu: pick branches, check them, run tests (in a terminal)")
+	example("radar doctor", "what Radar sees: base, agent branches, test runners, next step")
+	example("radar gate", "combine every agent branch and check them; runs no code")
 	example("radar gate --run", "…and run the related tests on the combined tree")
-	example("radar workspace add ../other-repo", "check several repositories together")
+	example("radar watch", "recheck automatically while agents commit")
+	example("radar setup claude", "connect Claude Code (or codex, both) to this project")
 
 	width := 0
 	for _, c := range commands {
@@ -322,21 +326,15 @@ func printHelp(w io.Writer, all bool) {
 		}
 		fmt.Fprintf(w, "  %s%s  %s\n", p.cyan(c.name), strings.Repeat(" ", width-len(c.name)), text)
 	}
-	for _, g := range helpGroups {
-		section(g.title)
-		for _, name := range g.commands {
-			if c, ok := lookup(name); ok {
-				line(c)
+	if all {
+		for _, g := range helpGroups {
+			section(g.title)
+			for _, name := range g.commands {
+				if c, ok := lookup(name); ok {
+					line(c)
+				}
 			}
 		}
-	}
-	advanced := 0
-	for _, c := range commands {
-		if c.advanced {
-			advanced++
-		}
-	}
-	if all {
 		section("Advanced (merge-check flags, plans, evidence, contracts, graph)")
 		for _, c := range commands {
 			if c.advanced {
@@ -347,14 +345,69 @@ func printHelp(w io.Writer, all bool) {
 		for _, u := range advancedUsage {
 			fmt.Fprintf(w, "  %s  %s\n", p.cyan(fmt.Sprintf("%-28s", u[0])), u[1])
 		}
+		fmt.Fprintln(w)
 	} else {
+		section("Several repositories")
+		example("radar workspace add ../api", "then radar gate checks both repositories together")
 		section("More")
-		fmt.Fprintf(w, "  %d advanced commands (plans, evidence, contracts, graph queries): %s\n", advanced, p.command("radar help --all"))
 	}
-	fmt.Fprintf(w, "  Flags and examples for one command: %s\n", p.command("radar help COMMAND"))
+	example("radar help COMMAND", "flags and examples for one command")
+	example("radar help agents", "reference for coding agents: commands, outputs, rules")
+	if !all {
+		example("radar help --all", "every command: check, discover, mcp, plans, evidence, graph …")
+	}
 
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "%s  0 ok · 1 a check failed or required evidence is missing · 2 error\n", p.dim("Exit codes"))
 	fmt.Fprintf(w, "%s     local only: no telemetry, no LLM calls; never modifies your branches.\n", p.dim("Privacy"))
 	fmt.Fprintln(w, "            Repository code runs only with --run / --allow-execution.")
 }
+
+// agentHelp is `radar help agents`: what a coding agent needs to call Radar
+// correctly without reading the whole manual. docs/AGENT_GUIDE.md expands it.
+const agentHelp = `Radar for coding agents
+
+Radar combines committed branches in private Git state and reports whether
+they work together. It never writes branches, refs, the index or worktrees.
+
+Commands an agent may run (static; no repository code runs)
+  radar doctor --json             base, worktree branches, uncommitted
+                                  worktrees, test runners, project.next
+  radar gate --json               combine every worktree branch with commits
+                                  beyond the base
+  radar gate BRANCH... --json     combine only these branches
+  MCP tool radar_gate             the same gate; a bounded summary by default
+                                  (agent_brief), detail=true for the full report
+
+Needs the user's explicit authorization (runs repository code)
+  radar gate --run                run selected tests on the combined tree
+  radar watch --run               rerun tests on every change
+  Never add --run on your own; ask the user, or report what is unverified.
+
+Reading a gate result
+  gate.verdict                    pass | fail | blocked | error (exit 0 | 1 | 1 | 2)
+  gate.required_checks[].status   only passed satisfies a requirement;
+                                  every other status (failed, error, timeout,
+                                  unknown, incomplete, blocked, warning)
+                                  does not
+  next                            the one suggested next step
+  findings (severity error)       what to repair
+  attribution[FINDING_ID]         branches and files to inspect: a lead for
+                                  repair, not proof of blame
+  selection.blocking,
+  selection.uncovered_changes     why tests could not cover the change
+  worktrees[].staged/unstaged/untracked
+                                  uncommitted changes: NOT checked; commit first
+  error, next (exit 2)            Radar could not run; next says how to fix it
+
+The loop
+  1. Commit your work on your branch.
+  2. radar gate --json (or radar_gate).
+  3. fail: repair the findings on the branch attribution points at, commit,
+     rerun. Earlier evidence does not carry over to new commits.
+  4. blocked: report the missing evidence and next to the user; do not call
+     it a pass.
+  5. pass: "PASS (static)" means no test ran; say so when you hand off.
+
+Full guide: docs/AGENT_GUIDE.md in the Radar repository.
+`

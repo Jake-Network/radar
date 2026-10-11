@@ -737,6 +737,11 @@ func documentation(p string) bool {
 	return base == "LICENSE" || base == "CHANGES" || base == "AUTHORS"
 }
 
+// Documentation reports a documentation or image file, for which selection
+// proposes no test. It describes selection only: it does not establish that
+// no test reads the file.
+func Documentation(p string) bool { return documentation(p) }
+
 // referenced reports whether a test names a changed non-code file by its
 // base name. Short or generic names are ignored to bound false positives.
 func referenced(t Test, file string) bool {
@@ -776,5 +781,47 @@ func javaCompanions(inv Inventory, snapshot model.Snapshot, changedSet map[strin
 			}
 		}
 	}
+	return out
+}
+
+// Runner summarizes the discovered tests of one framework and the program
+// their selected commands would start. Program is empty when no command is
+// safely known for some of those tests.
+type Runner struct {
+	Framework   string `json:"framework"`
+	Program     string `json:"program"`
+	Tests       int    `json:"tests"`
+	Unsupported int    `json:"unsupported"`
+}
+
+// Runners groups an inventory by framework and program, in a stable order.
+// It describes discovered tests only; it does not check availability.
+func Runners(inv Inventory) []Runner {
+	index := map[[2]string]int{}
+	out := []Runner{}
+	for _, t := range inv.Tests {
+		argv, _ := commandFor(t)
+		program := ""
+		if len(argv) > 0 && t.unsupported == "" {
+			program = argv[0]
+		}
+		k := [2]string{t.Framework, program}
+		i, ok := index[k]
+		if !ok {
+			i = len(out)
+			index[k] = i
+			out = append(out, Runner{Framework: t.Framework, Program: program})
+		}
+		out[i].Tests++
+		if program == "" {
+			out[i].Unsupported++
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Framework != out[j].Framework {
+			return out[i].Framework < out[j].Framework
+		}
+		return out[i].Program < out[j].Program
+	})
 	return out
 }
