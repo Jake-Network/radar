@@ -1,6 +1,6 @@
 # Codex integration
 
-Run `radar setup --agent codex` inside the project to install its skill and project MCP configuration. Use `--dry-run` to inspect changes. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration and restart Codex. No global configuration is written.
+Run `radar setup codex` (or `radar setup --agent codex`) inside the project to install its skill and project MCP configuration. Use `--dry-run` to inspect changes. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration and restart Codex. No global configuration is written.
 
 For manual skill installation:
 

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "FastAPI full-stack template",
+    "url": "https://github.com/fastapi/full-stack-fastapi-template",
+    "revision": "7257e606cb94eada1dca40173e2b7f99dd549bc6"
+  },
+  "runtime": {
+    "image": "sha256:c8839a91e139636435c93c3237e36a1e2bc867f549e6afe116e2932fda7a2e4b",
+    "toolchain": [
+      "Python >=3.14",
+      "uv (uv.lock)",
+      "Bun (bun.lock)",
+      "Playwright 1.63.0 browsers",
+      "PostgreSQL and backend/frontend services"
+    ],
+    "dependency_requirements": [
+      "backend pyproject.toml + uv.lock",
+      "frontend package.json + bun.lock",
+      "isolated multi-service network; database test configuration"
+    ],
+    "preparation": "Not provisioned in this evaluation. The Python3.12/Go image is only a protected unavailable-ground-truth probe; it does not meet project toolchain requirements."
+  },
+  "full_suite": [
+    {
+      "cwd": "backend",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests"
+      ],
+      "recognizer": "pytest"
+    },
+    {
+      "cwd": "frontend",
+      "argv": [
+        "bun",
+        "run",
+        "test"
+      ],
+      "recognizer": "playwright"
+    }
+  ],
+  "cases": [
+    {
+      "id": "fullstack-docs-control",
+      "category": "documentation-control",
+      "defect_expected": false,
+      "ground_truth": "No defect expected, but unavailable ground truth must never enter false-positive denominators.",
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "# Full Stack FastAPI Template",
+            "replace": "# Full Stack FastAPI Template\n\n<!-- External evaluation documentation control -->"
+          }
+        ]
+      ]
+    }
+  ]
+}

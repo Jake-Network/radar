@@ -37,6 +37,14 @@ Check the listed paths, or try `--suite full`.
 Without `--run` or a policy, missing test evidence alone does not fail the
 gate. The report says the tests were not run.
 
+A documentation-only change selects no test, so `--run` has no execution
+evidence and the gate stays `NOT VERIFIED`. The report says that only
+documentation changed and points at the static result. Radar does not treat
+documentation as safe to skip: a test can read or execute a document in ways a
+static scan cannot rule out. To accept documentation changes without test
+evidence, choose that deliberately with a policy that leaves out
+`integration_execution` for those runs.
+
 When no contract is declared and the base has no contract obligations,
 `no_breaking_contracts` passes trivially. The terminal shows it as
 `· Contracts none declared` rather than a check mark. JSON is unchanged.
@@ -122,6 +130,20 @@ The combined candidate is built from commits. Staged, unstaged and untracked
 files are left out and listed under `worktrees` in the report, along with
 detached worktrees. Commit what you want checked and rerun. A detached worktree
 commit has to be named by SHA.
+
+`radar watch` follows this committed-input behavior by default. Its separate
+`--include-dirty` opt-in constructs private previews with staged, unstaged and
+untracked provenance. Snapshot identity is distinct from committed evidence.
+Incomplete, unsupported or inconsistent snapshots cannot produce a pass for
+the live working state. A detected input change invalidates the displayed
+verdict, and superseded results are discarded. Polling and before-and-after
+checks can miss edits reverted between observations; unsaved buffers are outside
+scope. See [Watch](WATCH.md).
+
+Fast Gate evaluates the combined candidate. Observed Attribution runs bounded
+diagnostic subset executions separately under explicit execution authorization.
+It cannot change the gate verdict, checks, test selection or candidate execution
+evidence. A subset result is a repair lead, and flaky tests can affect it.
 
 `--plan` and `--policy` files are read once. Radar records their SHA-256 in
 `configuration_inputs`, reads them again after the run, and marks

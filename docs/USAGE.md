@@ -8,6 +8,14 @@ This page covers the rest. `radar help --all` lists every command and
 
 Commands print a short human report. Add `--json` for machine output.
 
+`radar doctor` reports what Radar sees in the repository: the base branch, the
+worktree branches `radar gate` would combine, worktrees with uncommitted
+changes, the languages and test frameworks it found, and whether each runner
+program is on PATH (`node_modules` is never copied into Radar's private copy,
+and frameworks such as pytest are only checked when tests run). It ends
+with the next command. `--json` adds these facts under `project`; the other
+fields are unchanged. Doctor reads Git metadata and committed files only.
+
 Color is used only on a terminal. `--color auto|always|never` overrides
 detection, `NO_COLOR` turns it off, and `FORCE_COLOR` or `CLICOLOR_FORCE` turns
 it on for pipes. Every mark (✓ ✗ ? ! ·) and word is the same with or without
@@ -52,14 +60,20 @@ Verdicts, policies and exit codes are in
 ## Agent setup
 
 ```sh
-radar setup --agent claude          # or codex, both
-radar setup --agent both --dry-run  # show the changes first
-radar setup --agent claude --hook   # also install the Claude Code Stop hook (needs Bash)
+radar setup claude           # or codex, both (same as --agent claude)
+radar setup both --dry-run   # show the changes first
+radar setup claude --hook    # also install the Claude Code Stop hook (needs Bash)
 ```
+
+Without a name, `radar setup` configures Codex, as before.
 
 Setup writes project-local skills and MCP configuration. It keeps unrelated
 settings and refuses to overwrite a conflicting Radar entry. You may still need
 to trust the project in your agent, restart it, or put `radar` on `PATH`.
+
+`radar help agents` prints the short contract an agent needs: which commands
+are static, which need the user's authorization, and how to read a result.
+[AGENT_GUIDE](AGENT_GUIDE.md) is the long form.
 
 `radar mcp` serves tools over stdio. Agents can call `radar_gate`,
 `radar_check`, `radar_merge_check` and the read-side toolkit commands. `test`,

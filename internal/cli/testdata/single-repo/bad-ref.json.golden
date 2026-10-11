@@ -1,5 +1,6 @@
 exit 2
 {
-  "error": "git rev-parse: exit status 128: fatal: Needed a single revision",
+  "error": "branch \"orders:agent/api\" not found: no branch, tag or commit by that name in this repository",
+  "next": "REPO:BRANCH names need a workspace (radar workspace add PATH); in one repository, name the branch alone",
   "status": "error"
 }

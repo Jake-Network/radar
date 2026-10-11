@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+* Simpler first run. Default help shows six commands. `radar doctor` reports
+  the base, the worktree branches `radar gate` would combine, uncommitted
+  worktrees, detected languages and test frameworks with whether each runner
+  program is on PATH or missing from the private copy, declared contracts,
+  installed agent skills
+  and the next command (`project` in `--json`; existing fields unchanged).
+  `radar setup claude|codex|both` is the same as `--agent`. `radar help
+  agents` prints the agent contract; see `docs/AGENT_GUIDE.md`. The
+  interactive menu lists worktrees with uncommitted changes.
+* Clearer gate reports. Each blocked requirement is grouped by cause (runner
+  unavailable, command budget, time budget, incomplete inventory, unsupported
+  tests, no related test) with one `fix:` line, and `Next:` names the specific
+  remedy when one cause explains the block (`--max-commands N`, install a
+  runner, `--suite full`). Duplicate "not run" lines for one command are gone.
+  A failed combined test gets a `reproduce:` command that rebuilds the same
+  commits in a throwaway worktree. Suggested reruns keep `--max-commands` and
+  `--timeout`.
+* Errors say what to do next: no branches to combine, an unknown branch, and a
+  symlink or submodule in the combined tree print a `Next:` line, and `--json`
+  and MCP add `next` beside `error`. MCP compact error output now keeps
+  `error` and drops the empty `agent_brief`.
+  A runner missing from the private copy is reported as absent, not "outside
+  the candidate".
+* `radar watch` uses the gate's report and verdict words without printing the
+  verdict twice, prints the idle state as text, lists only worktrees with
+  uncommitted changes, and prints a one-line heartbeat. The JSONL envelope is
+  unchanged.
+* A documentation-only change under `radar gate --run` still has no test
+  evidence and stays `NOT VERIFIED` (exit 1, JSON unchanged), but the report
+  now says that only documentation changed, so no test was selected or run,
+  and points at the static `radar gate` result.
 * `radar gate --run` reruns a failed test command on the base, each branch
   alone and larger combinations, and names the smallest combination that fails
   the same way while every smaller one passes (`observed_attributions` in

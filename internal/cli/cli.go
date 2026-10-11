@@ -106,6 +106,10 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		all := false
 		if len(rest) > 1 {
+			if rest[1] == "agents" || rest[1] == "agent" {
+				fmt.Fprint(out, agentHelp)
+				return 0
+			}
 			if c, ok := lookup(rest[1]); ok {
 				c.usageText(out)
 				return 0
@@ -133,7 +137,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 		c.flags(fs, &o)
 	}
 	parseArgs := rest[1:]
-	if c.name == "gate" || c.name == "workspace" {
+	if c.name == "watch" || c.name == "gate" || c.name == "workspace" || c.name == "setup" {
 		var e error
 		parseArgs, e = interspersedFlagArgs(c.name, fs, parseArgs)
 		if e != nil {

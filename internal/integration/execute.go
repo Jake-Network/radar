@@ -3,7 +3,9 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -44,7 +46,6 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	// skipped records a selected command that did not run. A required one
 	// blocks the gate; it is a coverage gap, never a test failure or pass.
 	requiredSkipped := 0
-	targets := []attributionTarget{}
 	skipped := func(selection testselection.Command, reason, explanation string) {
 		if r.Selection != nil {
 			r.Selection.Omitted = append(r.Selection.Omitted, testselection.Omission{ID: selection.ID, Command: selection.Command, CWD: selection.CWD, TestFiles: selection.TestFiles, Tier: selection.Tier, Reason: reason, Explanation: explanation})
@@ -105,6 +106,9 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		data, _ := json.Marshal(ev)
 		ev.ID = model.StableID("integration-evidence-v1", string(data))
 		r.Executions = append(r.Executions, ev)
+		if ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged" {
+			confirmExecutedRunner(r.Selection, selection)
+		}
 		if o.Suite == "" {
 			r.Execution = &r.Executions[len(r.Executions)-1]
 		}
@@ -118,7 +122,9 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
 				f.Severity = model.SeverityWarning
 			}
-			f.Locations = ev.Observation.Locations
+			// Finding revisions must not mutate locations already hashed into
+			// immutable execution evidence.
+			f.Locations = append([]model.Provenance(nil), ev.Observation.Locations...)
 			for i := range f.Locations {
 				f.Locations[i].Revision = r.CandidateCommit
 			}
@@ -132,20 +138,13 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			f.Remediation = executionRemediation(ev)
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
-			// Only a failure of the combined source can be attributed; an
-			// environment problem would fail every subset the same way.
-			if ev.Status == model.StatusFailed && ev.SourceAfterExecution == "unchanged" {
-				targets = append(targets, attributionTarget{findingID: f.ID, selection: selection.ID, options: executionOptions, failure: ev})
-			}
+
 		}
 		if ev.SourceAfterExecution != "unchanged" {
 			break
 		}
 	}
-	if o.AttributionRuns > 0 && len(targets) > 0 {
-		o.step(Step{Stage: StageAttribute, Total: len(targets)})
-		attribute(executionCtx, temp, r, targets, o.AttributionRuns)
-	}
+
 	if len(r.Executions) < len(selections) && executionStatus == model.StatusPassed {
 		executionStatus = model.StatusIncomplete
 	}
@@ -175,6 +174,38 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		r.Checks = append(r.Checks, Check{ID: "test_selection", Status: status, Evidence: model.Inferred, Explanation: fmt.Sprintf("Mode %s selected %d of %d candidate commands (%d omitted, %d uncovered changed files). %s", r.Selection.Mode, len(r.Selection.Commands), r.Selection.Candidates, len(r.Selection.Omitted), len(r.Selection.Uncovered), message)})
 	}
 	return nil
+}
+
+// A planning-time PATH probe cannot establish candidate-local runner
+// availability. Only recognized passing execution against unchanged source
+// resolves this uncertainty; omitted commands and other coverage gaps remain.
+func confirmExecutedRunner(s *testselection.Selection, c testselection.Command) {
+	if s == nil {
+		return
+	}
+	blocker := "required command runner unavailable or unverified: " + strings.Join(c.Command, " ")
+	remaining := s.Blocking[:0]
+	resolved := false
+	for _, reason := range s.Blocking {
+		if !resolved && !c.ToolAvailable && c.Tier == testselection.TierRequired && reason == blocker {
+			resolved = true
+			continue
+		}
+		remaining = append(remaining, reason)
+	}
+	s.Blocking = remaining
+	for i := range s.Commands {
+		if s.Commands[i].ID == c.ID {
+			s.Commands[i].ToolAvailable = true
+		}
+	}
+	if resolved && len(s.Blocking) == 0 {
+		if len(s.Uncovered) > 0 {
+			s.Explanation = "Selected commands have a direct relationship to the change, but some changed files have no established test relationship; they are listed as uncovered."
+		} else {
+			s.Explanation = "Every changed source file has a selected direct or fallback test relationship; this is static evidence, not complete behavioral coverage."
+		}
+	}
 }
 
 func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvidence {
@@ -312,6 +343,12 @@ func unavailable(root string, c testselection.Command) string {
 	tool := c.Command[0]
 	if strings.Contains(tool, "/") {
 		path, e := pathutil.ResolveInside(dir, tool)
+		if errors.Is(e, fs.ErrNotExist) {
+			if strings.Contains(tool, "node_modules/") {
+				return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
+			}
+			return "runner " + tool + " is absent from the private candidate (not committed, or removed by a branch)"
+		}
 		if e != nil {
 			return "runner " + tool + " is outside the candidate"
 		}

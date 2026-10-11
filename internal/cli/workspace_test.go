@@ -580,7 +580,7 @@ func TestHelpShowsOnlyImplementedWorkspaceSurface(t *testing.T) {
 	_, gateHelp, _ := run(t, root, "gate", "--help")
 	_, wsHelp, _ := run(t, root, "help", "workspace")
 	_, all, _ := run(t, root, "help", "--all")
-	if !strings.Contains(help, "  workspace ") || !strings.Contains(help, "radar workspace add") {
+	if !strings.Contains(help, "radar workspace add") || !strings.Contains(all, "  workspace ") {
 		t.Fatal("help lists workspace", help)
 	}
 	for _, want := range []string{"[REPO:]BRANCH", "-with PATH", "-again", "-run"} {

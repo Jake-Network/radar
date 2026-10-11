@@ -59,9 +59,64 @@ const NullPath = "/dev/null"
 // Caller Git overrides could otherwise redirect reads, inject config, or
 // replace objects.
 func command(ctx context.Context, root string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager", "-c", "core.fsmonitor=false", "-c", "protocol.allow=never"}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root, "--no-pager", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + NullPath, "-c", "protocol.allow=never"}, args...)...)
 	cmd.Env = sanitizedEnv("GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+NullPath, "GIT_NO_LAZY_FETCH=1")
+	// Worktree status/diff can invoke clean or process filters just by reading
+	// modified files. Disable all configured drivers before either operation.
+	// Object-only operations and config reads cannot invoke worktree filters.
+	for _, arg := range args {
+		if arg != "status" && arg != "diff" {
+			continue
+		}
+		overrides, err := disabledFilters(ctx, root, cmd.Env)
+		if err != nil {
+			// Keep command's existing error propagation fail closed without launching
+			// the unsafe operation when configuration could not be enumerated.
+			cmd.Err = fmt.Errorf("filter inspection unavailable: %w", err)
+			return cmd
+		}
+		cmd.Args = append(cmd.Args[:len(cmd.Args)-len(args)], append(overrides, args...)...)
+		break
+	}
 	return cmd
+}
+
+// disabledFilters reads names only, never filter commands or secret values.
+// Local includes and per-worktree configuration retain Git precedence.
+func disabledFilters(ctx context.Context, root string, env []string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, shortTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "-c", "core.fsmonitor=false", "config", "--includes", "--name-only", "-z", "--get-regexp", `^filter\..*\.(clean|smudge|process|required)$`)
+	cmd.Env = env
+	out := &boundedBuffer{limit: MaxFileBytes}
+	cmd.Stdout = out
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, err
+	}
+	drivers := map[string]bool{}
+	for _, key := range strings.Split(out.String(), "\x00") {
+		if i := strings.LastIndex(key, "."); i > len("filter.") {
+			drivers[key[:i]] = true
+		}
+	}
+	keys := make([]string, 0, len(drivers))
+	for key := range drivers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var args []string
+	for _, key := range keys {
+		for _, kind := range []string{"clean", "smudge", "process"} {
+			args = append(args, "-c", key+"."+kind+"=")
+		}
+		args = append(args, "-c", key+".required=false")
+	}
+	return args, nil
 }
 
 func runLimit(ctx context.Context, root string, limit int, timeout time.Duration, args ...string) ([]byte, error) {

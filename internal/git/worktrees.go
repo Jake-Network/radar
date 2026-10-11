@@ -25,6 +25,33 @@ type WorktreeStatus struct {
 	UncommittedIncluded bool     `json:"uncommitted_included"`
 }
 
+// InspectWorktree observes one worktree directly, without enumerating siblings.
+// Detached heads are supported and all inspection remains data-only.
+func InspectWorktree(ctx context.Context, root string) (WorktreeStatus, error) {
+	w := WorktreeStatus{Path: root, Staged: []string{}, Unstaged: []string{}, Untracked: []string{}}
+	head, err := Resolve(ctx, root, "HEAD")
+	if err != nil {
+		return w, err
+	}
+	w.Commit = head
+	branch, err := run(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			w.Detached = true
+		} else {
+			return w, err
+		}
+	} else {
+		w.Branch = strings.TrimSpace(string(branch))
+	}
+	inspectWorktree(ctx, &w)
+	if w.InspectionError != "" {
+		return w, errors.New(w.InspectionError)
+	}
+	return w, nil
+}
+
 func InspectWorktrees(ctx context.Context, root string) ([]WorktreeStatus, error) {
 	b, err := runListing(ctx, root, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
@@ -117,7 +144,9 @@ func inspectWorktree(ctx context.Context, w *WorktreeStatus) {
 			args = append(args, "-c", "core.excludesFile="+globalExcludes)
 		}
 	}
-	args = append(args, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
+	// Submodule contents are unsupported preview inputs. Do not recurse into
+	// their repositories: nested configuration can contain executable filters.
+	args = append(args, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all")
 	b, err := runListing(ctx, w.Path, args...)
 	if err != nil {
 		w.InspectionError = err.Error()

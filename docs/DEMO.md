@@ -27,6 +27,14 @@ combined tree fails the test. Radar reports the failing case, the source
 location and the branch to look at, then verifies the repaired combination.
 `smoke.sh` is the short, portable version.
 
+```sh
+bash examples/quickstart/demo.sh /tmp/radar
+```
+
+The README's first-run scenario: `doctor`, a static pass, the combined failure,
+its `reproduce` command failing the same way in a separate worktree, a repair,
+and a documentation-only change reported as `NOT VERIFIED` with the reason.
+
 ## Selection across languages
 
 ```sh

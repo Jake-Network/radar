@@ -75,6 +75,8 @@ func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.W
 			if !s.nothingToCheck() && s.confirmRun(s.selected) {
 				ok = run(append([]string{"gate", "--run"}, s.selected...)...)
 			}
+		case "w":
+			ok = run(append([]string{"watch"}, s.selected...)...)
 		case "4":
 			ok = run("doctor")
 		case "c":
@@ -105,6 +107,7 @@ type session struct {
 	base        string
 	worktree    []string // worktree branches with commits beyond base (gate's default)
 	others      []string // other local branches with commits beyond base
+	dirty       []string // worktrees (by branch or path) with uncommitted changes
 	selected    []string // branches chosen in the picker; empty means gate's default
 	workspace   string   // workspace name when gate checks several repositories
 	scope       []target // what `radar gate` with the current selection checks
@@ -196,8 +199,19 @@ func (s *session) printTargets(targets []target, run bool) {
 
 // refresh rereads branches so commits made while the menu is open are seen.
 func (s *session) refresh() {
-	s.base, s.worktree, s.others = gitrepo.DefaultBranch(s.ctx, s.root), nil, nil
+	s.base, s.worktree, s.others, s.dirty = gitrepo.DefaultBranch(s.ctx, s.root), nil, nil, nil
 	s.workspace, s.scope, _ = s.targets(s.selected)
+	if worktrees, err := gitrepo.InspectWorktrees(s.ctx, s.root); err == nil {
+		for _, w := range worktrees {
+			if len(w.Staged)+len(w.Unstaged)+len(w.Untracked) > 0 {
+				name := w.Branch
+				if name == "" {
+					name = w.Path
+				}
+				s.dirty = append(s.dirty, name)
+			}
+		}
+	}
 	if s.base == "" {
 		return
 	}
@@ -247,6 +261,9 @@ func (s *session) menu() {
 	if len(s.others) > 0 && len(s.selected) == 0 {
 		row("Other branches:", s.branchList(s.others), "(not checked out · pick them with 2)")
 	}
+	if len(s.dirty) > 0 {
+		row("Uncommitted:", p.yellow(listOrNone(s.dirty)), "(not checked until committed)")
+	}
 	if s.workspace != "" {
 		fmt.Fprintf(w, "\n  Workspace %q — radar gate checks every repository in it:\n", s.workspace)
 		s.printTargets(s.scope, false)
@@ -279,6 +296,7 @@ func (s *session) menu() {
 	item("2", "Choose which branches to combine", "", pickDetail)
 	item("3", "Check, then run the related tests", p.yellow("runs your test commands")+p.dim(" · asks first"),
 		"Same as 1, then runs the tests that cover the change on the combined code.")
+	item("w", "Watch branches continuously", "safe · runs no code", "Rechecks committed changes until Ctrl+C; use radar watch --include-dirty for saved edits.")
 	item("4", "Check my setup", "",
 		"Shows the languages, test runners and tools Radar found (radar doctor).")
 	fmt.Fprintf(w, "\n  %s  All commands   %s  Quit", p.command("h"), p.command("q"))
@@ -350,7 +368,7 @@ func (s *session) outcome(args []string, code int) {
 	var line string
 	switch {
 	case code == 0 && gate && run:
-		line = p.mark("✓") + " The required checks passed, including the tests that ran on the combined code."
+		line = p.mark("✓") + " The required checks passed on the combined code; the report lists which tests ran."
 	case code == 0 && gate:
 		line = p.mark("✓") + " No problems found by the static checks. No tests ran — choose 3 to run them."
 	case code == 0:

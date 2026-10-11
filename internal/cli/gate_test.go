@@ -165,7 +165,7 @@ func TestGateInvocationErrors(t *testing.T) {
 func TestHelpShowsEverydayCommandsFirst(t *testing.T) {
 	root := t.TempDir()
 	code, out, _ := run(t, root, "help")
-	if code != 0 || !strings.Contains(out, "  gate ") || strings.Contains(out, "  approve ") || !strings.Contains(out, "radar help --all") {
+	if code != 0 || !strings.Contains(out, "radar gate ") || strings.Contains(out, "approve") || !strings.Contains(out, "radar help --all") {
 		t.Fatal("default help", out)
 	}
 	if code, out, _ = run(t, root, "help", "--all"); code != 0 || !strings.Contains(out, "  approve ") || !strings.Contains(out, "  merge-check ") {

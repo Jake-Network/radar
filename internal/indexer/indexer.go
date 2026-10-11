@@ -23,7 +23,7 @@ const MaxTotalSourceBytes = 64 << 20
 // maxManifestBytes bounds auxiliary build manifests read for import resolution.
 const maxManifestBytes = 1 << 20
 
-var excluded = map[string]bool{".git": true, ".omx": true, ".agents": true, ".codex": true, ".aws": true, ".radar": true, "node_modules": true, ".gradle": true, "vendor": true, "target": true, "dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true, ".next": true, "coverage": true}
+var excluded = map[string]bool{".git": true, ".omx": true, ".agents": true, ".codex": true, ".aws": true, ".radar": true, "node_modules": true, ".gradle": true, "vendor": true, "target": true, "dist": true, "build": true, ".venv": true, "venv": true, "__pycache__": true, ".pytest_cache": true, ".next": true, "coverage": true}
 
 // ExcludedPath applies one generated and private directory policy to every source.
 func ExcludedPath(p string) bool {

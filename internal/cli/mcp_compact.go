@@ -17,7 +17,7 @@ func compactVerification(raw string) string {
 		return compactWorkspace(full)
 	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error"} {
+	for _, key := range []string{"error", "gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
@@ -89,7 +89,10 @@ func compactVerification(raw string) string {
 		}
 		out["verification_proposal"] = proposal
 	}
-	out["agent_brief"] = agentBrief(full)
+	// An error report has no gate; an empty brief would read like a clean result.
+	if _, failed := full["error"]; !failed {
+		out["agent_brief"] = agentBrief(full)
+	}
 	for key, limit := range map[string]int{"checks": 20, "coverage": 12, "limitations": 10} {
 		if values, ok := out[key].([]any); ok && len(values) > limit {
 			out[key+"_count"] = len(values)

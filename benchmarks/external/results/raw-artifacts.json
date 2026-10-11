@@ -1,0 +1,100 @@
+[
+  {
+    "artifact": "baseline/chi.json.gz",
+    "json_sha256": "716084ddb08b92d288a41441851f5f1a145b5fa31e248cff8e86edf17b9f27b9",
+    "gzip_sha256": "657ebf8f6c34e2e3e00874c1889de4ababbe0ce58ac0768bfbb8861525179f6e",
+    "json_bytes": 5110671,
+    "gzip_bytes": 407653
+  },
+  {
+    "artifact": "baseline/click-native.json.gz",
+    "json_sha256": "fd5585339109898b79313f0328fe56be0462ed687e5ab445304238c917534ab4",
+    "gzip_sha256": "da7835dde494762c55fa14d13f52174c025387c3eb1cb33b4ab560ed16c0546c",
+    "json_bytes": 38324959,
+    "gzip_bytes": 1875429
+  },
+  {
+    "artifact": "baseline/click.json.gz",
+    "json_sha256": "24c2e6ce3e036ac36697e08c815599fafc0aee11639545032e79eed4754753c7",
+    "gzip_sha256": "1e71623dd0c8698018c67d5a1278a7d406ad38fccaddc80d00c0d920db5fe10f",
+    "json_bytes": 38230465,
+    "gzip_bytes": 1868924
+  },
+  {
+    "artifact": "baseline/fullstack.json.gz",
+    "json_sha256": "5a4fcfd33931ddf7d574317a37650dca42d817e245a2204b6f8ce9bde3b7d0c9",
+    "gzip_sha256": "2ad4d8a9f9d693f7b4d12a533e513339aa9d0269431da788748a147ef9cd0e8e",
+    "json_bytes": 703321,
+    "gzip_bytes": 43585
+  },
+  {
+    "artifact": "fixed/click-native.json.gz",
+    "json_sha256": "b50e4292b846b24b71f989ed838b6d125e8ec1c3cdd9190e51afc2b6f8b70115",
+    "gzip_sha256": "bd8cbfcc1b9c12f6a5cabff9de600b7808c56ffbbcb30564b8c3933e71aff4f3",
+    "json_bytes": 38474466,
+    "gzip_bytes": 1897912
+  },
+  {
+    "artifact": "fixed/click.json.gz",
+    "json_sha256": "00541b78a794d7fa3dab81584736b2130af05548dd197ddc6714b7b1c05a9e80",
+    "gzip_sha256": "8171248996137900987f1722af68460ae30914e64c06d2f0127f47f19e2ec764",
+    "json_bytes": 38379226,
+    "gzip_bytes": 1891160
+  },
+  {
+    "artifact": "hono-baseline.json.gz",
+    "json_sha256": "7c89d3af581b8e3ba306b5ec1318122e1e3ce079b4b85e91f7e1432e6ebd77e9",
+    "gzip_sha256": "e5e330ea3e7c2cf31d1018d6f5ae1e05f61af050237957b19e0c973065027a44",
+    "json_bytes": 14465529,
+    "gzip_bytes": 715498
+  },
+  {
+    "artifact": "hono-oracle.json.gz",
+    "json_sha256": "c4194002d03dcc8c08b4d843652da12121b24a227c9e4b987bb68af49461bf08",
+    "gzip_sha256": "eeef35c56a952580ec9cab1c953dc403aedaf9098eba8bea7509774a8f1b751b",
+    "json_bytes": 10788,
+    "gzip_bytes": 3501
+  },
+  {
+    "artifact": "oracles/chi.json.gz",
+    "json_sha256": "6ca184a5a8e686476a6ceae1cf543ad36b21e9e8f88e1cd2c2f38670747d16cf",
+    "gzip_sha256": "a5d4c962a2c3529f59b92b41dde894342b9c32617d9a212d33a91715b0f63f27",
+    "json_bytes": 1502608,
+    "gzip_bytes": 109295
+  },
+  {
+    "artifact": "oracles/click.json.gz",
+    "json_sha256": "5286136980f6249866b0a784aa0ab2614264fd1666c434351bc48498a4706e79",
+    "gzip_sha256": "3894708fe76d891379b1ee17f44336655a336afee621e670da091a89c887d285",
+    "json_bytes": 2777670,
+    "gzip_bytes": 61928
+  },
+  {
+    "artifact": "paired/chi.json.gz",
+    "json_sha256": "bba797a40efdc74452a1fb3cf90ce5307ba358710b473a6d20abddfc7749af6d",
+    "gzip_sha256": "9127ccb38bf14d02ad450760241e59ad565307bf9861a95490d11a6da4d598ee",
+    "json_bytes": 4730055,
+    "gzip_bytes": 382599
+  },
+  {
+    "artifact": "paired/click-baseline.json.gz",
+    "json_sha256": "9f5ae3667c4249c47dbaa5cafb37e197c55012d94553954095ecb591b9d74f2d",
+    "gzip_sha256": "a267000d8a2503a38b6b085809cc04c132009e10084018f70677a05020170a0e",
+    "json_bytes": 37773530,
+    "gzip_bytes": 1863595
+  },
+  {
+    "artifact": "paired/click-fixed.json.gz",
+    "json_sha256": "0a81dfe5c4e592624359965472cd4699a637d164d02ba7e9daa706841e24595e",
+    "gzip_sha256": "dba48aebca0116256e2b42736cf0427ad30bc137607fad5590fc40975cc0a15a",
+    "json_bytes": 37923023,
+    "gzip_bytes": 1886088
+  },
+  {
+    "artifact": "hono-fixed.json.gz",
+    "json_sha256": "1fb505cdc06e5735d31ec6af2b2d043ad3345dd6d4d5d786783be9774eac90eb",
+    "gzip_sha256": "8ae81c8d83c29a26b0691ef16d6d9787add59daf18759551ed3edf5d99c7152c",
+    "json_bytes": 14781985,
+    "gzip_bytes": 750591
+  }
+]

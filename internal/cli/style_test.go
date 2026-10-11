@@ -86,7 +86,7 @@ func TestHelpShowsLogoOnlyWhenStyled(t *testing.T) {
 	if strings.Contains(plain, "◉") || !strings.Contains(styled, "◉") {
 		t.Fatalf("plain:\n%s\nstyled:\n%s", plain, styled)
 	}
-	for _, want := range []string{"Start here", "Everyday", "Agent setup", "radar help --all", "Exit codes", "--run / --allow-execution"} {
+	for _, want := range []string{"Start here", "radar doctor", "radar setup claude", "radar help agents", "radar help --all", "Exit codes", "--run / --allow-execution"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("help lacks %q:\n%s", want, plain)
 		}

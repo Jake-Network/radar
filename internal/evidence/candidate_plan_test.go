@@ -229,6 +229,54 @@ func TestCandidateSourceGuardModesSymlinksAndLongInventories(t *testing.T) {
 	}
 }
 
+func TestCandidateSourceGuardPytestCache(t *testing.T) {
+	for _, cache := range []string{".pytest_cache", "backend/.pytest_cache"} {
+		t.Run(cache, func(t *testing.T) {
+			root := fixture(t, map[string]string{"source.py": "VALUE = 1\n", cache + "/tracked.txt": "original"})
+			c := candidateCheckpoint(t, root)
+			before, err := InspectCandidateSource(context.Background(), root, c, nil)
+			if err != nil || !before.Matches {
+				t.Fatalf("baseline: %+v %v", before, err)
+			}
+			metadata := filepath.Join(root, cache, "v", "cache", "nodeids")
+			if err := os.MkdirAll(filepath.Dir(metadata), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(metadata, []byte(`["tests/test_source.py::test_value"]`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			after, err := InspectCandidateSource(context.Background(), root, c, nil)
+			if err != nil || !after.Matches || after.Digest != before.Digest {
+				t.Fatalf("generated pytest metadata invalidated source: %+v %v", after, err)
+			}
+			if err := os.WriteFile(filepath.Join(root, cache, "tracked.txt"), []byte("modified"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			after, err = InspectCandidateSource(context.Background(), root, c, nil)
+			if err != nil || after.Matches {
+				t.Fatalf("tracked cache modification escaped source guard: %+v %v", after, err)
+			}
+		})
+	}
+	for _, path := range []string{"new_source.py", ".pytest_cache_sibling/input.py"} {
+		t.Run(path, func(t *testing.T) {
+			root := fixture(t, map[string]string{"source.py": "VALUE = 1\n"})
+			c := candidateCheckpoint(t, root)
+			name := filepath.Join(root, path)
+			if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(name, []byte("VALUE = 2\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state, err := InspectCandidateSource(context.Background(), root, c, nil)
+			if err != nil || state.Matches {
+				t.Fatalf("new source escaped guard: %+v %v", state, err)
+			}
+		})
+	}
+}
+
 func TestCandidateDeclarationUsesCWDAndRejectsConflicts(t *testing.T) {
 	needPython(t)
 	root := fixture(t, map[string]string{"backend/test_example.py": pythonTest, "frontend/test_example.py": pythonTest})

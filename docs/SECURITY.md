@@ -5,11 +5,11 @@ Radar runs locally. It does not upload source, call an LLM or send telemetry.
 ## What runs and what does not
 
 Indexing, discovery, `check`, `merge-check` without `--verify`, and
-`radar gate` without `--run` read repository files and Git objects as data.
+`radar gate` and `radar watch` without `--run` read repository files and Git objects as data.
 They do not run application code, package scripts, Git hooks or agent
 instructions.
 
-Repository code runs only with `gate --run`, `merge-check --verify
+Repository code runs only with `gate --run`, `watch --run`, `merge-check --verify
 --allow-execution` or `test --allow-execution`. Those commands run in a private
 copy of the committed source, with a timeout, an output limit and a reduced
 environment: `PATH`, a private `HOME` and temp directory, offline settings for
@@ -24,6 +24,24 @@ those the same way you review the test command.
 **The private copy is not a sandbox.** Test code runs as your user and can
 read your files, your credentials and the network. Review code before you run
 it, and use a disposable runner without secrets in CI.
+
+`watch --run` is session authorization for repeated executions, including newly
+discovered worktrees when branch selection is automatic. The command prints
+that scope on stderr. Optional Observed Attribution reruns failed commands on
+branch subsets under the same authorization; it is separate from the full
+candidate Fast Gate and cannot strengthen its verdict. Watch is not exposed
+through MCP.
+
+Watch limits sessions to 32 worktrees and selected branches, and dirty previews
+to eight selected snapshots of at most 32MiB changed contents each. Fast Gate and
+optional attribution have separate timeout budgets and share one worker slot.
+
+`watch --include-dirty` separately opts into temporary snapshots of selected
+worktrees' staged, unstaged and nonignored untracked edits. Source indexes, refs
+and working files stay untouched. Ignored directories are excluded; unsupported
+entries and detected snapshot races block verification. Only relevant changed
+files are copied, but nonignored files can still contain secrets. See
+[watch limitations](WATCH.md).
 
 ## Git and paths
 

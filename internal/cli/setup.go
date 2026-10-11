@@ -9,13 +9,23 @@ import (
 )
 
 func setupCommand() command {
-	return command{name: "setup", usage: "radar setup --agent codex|claude|both [--dry-run] [--hook]", summary: "Initialize Radar and install safe project-local agent skills and MCP configuration.", flags: func(fs *flag.FlagSet, o *options) {
-		fs.StringVar(&o.agent, "agent", "codex", "coding agent: codex, claude or both")
+	return command{name: "setup", usage: "radar setup [claude|codex|both] [--dry-run] [--hook]", summary: "Initialize Radar and install safe project-local agent skills and MCP configuration.", flags: func(fs *flag.FlagSet, o *options) {
+		fs.StringVar(&o.agent, "agent", "", "coding agent: codex (default), claude or both; same as the positional name")
 		fs.BoolVar(&o.dryRun, "dry-run", false, "show proposed changes without writing files")
 		fs.BoolVar(&o.hook, "hook", false, "install optional Claude Stop verification hook (requires bash)")
 	}, run: func(a *app, o options) int {
-		if len(o.args) > 0 {
-			return a.fail(fmt.Errorf("setup does not accept positional arguments"))
+		// `radar setup claude` and `radar setup --agent claude` are the same.
+		switch {
+		case len(o.args) > 1:
+			return a.fail(fmt.Errorf("setup takes one agent name (claude, codex or both), got %d", len(o.args)))
+		case len(o.args) == 1 && o.agent != "" && o.agent != o.args[0]:
+			return a.fail(fmt.Errorf("setup got two agents: %q and --agent %q; give one", o.args[0], o.agent))
+		case len(o.args) == 1 && o.args[0] != "claude" && o.args[0] != "codex" && o.args[0] != "both":
+			return a.fail(fmt.Errorf("unknown agent %q: use radar setup claude, codex or both", o.args[0]))
+		case len(o.args) == 1:
+			o.agent = o.args[0]
+		case o.agent == "":
+			o.agent = "codex"
 		}
 		r, e := onboarding.Setup(a.ctx, a.root, onboarding.Options{Agent: o.agent, DryRun: o.dryRun, Hook: o.hook})
 		if e != nil {

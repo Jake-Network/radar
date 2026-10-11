@@ -1,0 +1,44 @@
+{
+  "head": "e340bbfc57e00c3e641225683c11a36b57107363",
+  "tree": "44302bb9ad3beddd8ce28598d59057213b441632",
+  "archive_sha256": "327feaf8a8c8320cba7b96e61c72f47655558cb9626356bcf282766d9a27994e",
+  "workspace_status": " M docs/BENCHMARKS.md\n?? benchmarks/external/results/\n?? docs/EXTERNAL_VALIDATION_REPORT.md\n",
+  "verification_cwd": "/tmp/radar-validation-source-final",
+  "reason": "Mounted Windows checkout Go parents temporarily waited in p9_client_rpc. Identical committed source also passed on Linux filesystem; final mounted-path checks later completed successfully.",
+  "checks": [
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "cli_seconds": 132.143,
+      "integration_seconds": 43.814
+    },
+    {
+      "command": "go test -race ./...",
+      "exit_code": 0,
+      "cli_seconds": 150.512,
+      "integration_seconds": 46.156
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0
+    },
+    {
+      "command": "go build -o /tmp/radar-linux-validated ./cmd/radar",
+      "exit_code": 0
+    }
+  ],
+  "mounted_checkout_checks": [
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "cli_seconds": 288.83,
+      "composition_seconds": 47.218
+    },
+    {
+      "command": "go test -race ./...",
+      "exit_code": 0,
+      "cli_seconds": 303.057,
+      "composition_seconds": 48.52
+    }
+  ]
+}
