@@ -107,7 +107,8 @@ Jest, Vitest, `node --test`, `cargo test`, Maven Surefire totals, CTest and
 GoogleTest summaries, the JUnit reports Maven, Gradle and CTest write for
 selected commands, and any JUnit XML report
 declared with `junit`: one file, or a directory of `TEST-*.xml` files.
-Inventory and selection are described in [TEST_SELECTION](TEST_SELECTION.md).
+Inventory, selection and result interpretation are described in
+[verification](VERIFICATION.md#test-selection).
 
 ## Plans
 
@@ -125,3 +126,14 @@ property is there and nothing more.
 - release signing or notarization
 - an OS sandbox for executed tests
 - automatic dependency installation or `git fetch`
+
+## Future work
+
+Unscheduled priorities: Windows Git defaults and native binaries;
+cross-repository candidate test scenarios and pinned CI workspace inputs;
+TypeScript project references and package-based `extends`; symbol-level Python
+imports; Java endpoint discovery; configuration-aware C/C++ includes and
+per-test CTest selection; compiler-backed semantics and incremental indexing;
+signed releases and OS-level test isolation. Each needs reproducible positive
+and negative fixtures before it becomes a capability. Agent orchestration,
+dependency installation and automatic remote fetching remain out of scope.

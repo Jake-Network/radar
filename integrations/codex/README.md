@@ -1,6 +1,6 @@
 # Codex integration
 
-Run `radar setup codex` (or `radar setup --agent codex`) inside the project to install a native Stop hook, its skill and project MCP configuration. The hook in `.codex/hooks.json` invokes `radar hook stop --agent codex`, previews saved changes on the current branch and returns supported static failures for one repair continuation. Select parallel branches with `--base main --branches agent-api,agent-client`. It runs no tests and requires no active plan. Use `--dry-run` to inspect changes or `--hook=false` to install only the skill and MCP. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration, restart Codex, then use `/hooks` to review and trust the exact installed hook definition. No global configuration is written. See [native hooks and plugin installation](../../docs/AGENT_HOOKS.md).
+Run `radar setup codex` (or `radar setup --agent codex`) inside the project to install a native Stop hook, its skill and project MCP configuration. The hook in `.codex/hooks.json` invokes `radar hook stop --agent codex`, previews saved changes on the current branch and returns supported static failures for one repair continuation. Select parallel branches with `--base main --branches agent-api,agent-client`. It runs no tests and requires no active plan. Use `--dry-run` to inspect changes or `--hook=false` to install only the skill and MCP. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration, restart Codex, then use `/hooks` to review and trust the exact installed hook definition. No global configuration is written. See [native hooks and plugin installation](../../docs/AGENT_GUIDE.md).
 
 For manual skill installation:
 
@@ -23,7 +23,7 @@ the skill and MCP tools support additional investigation and verification.
 Use a committed baseline for design, then keep that baseline while selecting a
 later implementation SHA for verification. The skill documents explicit approval
 and test evidence commands; repository instructions alone do not approve a plan
-or authorize arbitrary scripts. See [verification demo](../../docs/DEMO.md) for
+or authorize arbitrary scripts. See [verification demo](../../docs/USAGE.md#demos) for
 an executable workflow and [security](../../docs/SECURITY.md) for execution limits.
 
 For concurrent work, start with `radar check --base main --json`, inspect `radar discover --json`, and use `radar merge-check --base main --branches backend,frontend --json` before integration. MCP exposes these read-only tools; it cannot enable execution or record human approval. If the user authorizes tests, run the CLI with `--verify --allow-execution -- COMMAND ARGS`. Treat failed finding IDs as repair inputs and revalidate the combined source after repair; avoid repeating identical feedback indefinitely.
@@ -34,8 +34,8 @@ For change-aware proposals, add `--suggest-tests` to `radar check` and
 CLI with `--verify --suite recommended --allow-execution`. A versioned
 `--policy PATH` selects required checks; inspect `gate.verdict` and `coverage`
 separately. Recommendations neither execute code nor install dependencies, and
-MCP remains read-only. See [test selection](../../docs/TEST_SELECTION.md) and
-[verdicts and policies](../../docs/VERIFICATION_POLICY.md).
+MCP cannot execute tests, but can write Radar state and plan files. See [test selection](../../docs/VERIFICATION.md) and
+[verdicts and policies](../../docs/VERIFICATION.md).
 
 MCP `radar_check` and `radar_merge_check` accept `policy`, `suggest_tests` and
 `detail`. Default responses summarize at most ten findings and eight proposed

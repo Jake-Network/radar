@@ -124,6 +124,6 @@ Go 동작 변경의 기본: 수정한 Go 파일만 `gofmt`, `go test ./...`, `go
 
 ## 참고 문서
 
-- 기능·정책: `README.md`, `CONTRIBUTING.md`, `docs/CAPABILITIES.md`, `docs/VERIFICATION_POLICY.md`, `docs/SECURITY.md`
-- 설계·사용: `docs/ARCHITECTURE.md`, `docs/USAGE.md`, `docs/TEST_SELECTION.md`, `docs/MULTI_REPO.md`
+- 기능·정책: `README.md`, `CONTRIBUTING.md`, `docs/CAPABILITIES.md`, `docs/VERIFICATION.md`, `docs/SECURITY.md`
+- 설계·사용: `docs/ARCHITECTURE.md`, `docs/USAGE.md`, `docs/AGENT_GUIDE.md`, `docs/MULTI_REPO.md`
 - 배포: `docs/RELEASING.md`, `.github/workflows/`

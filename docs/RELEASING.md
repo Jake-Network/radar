@@ -1,156 +1,103 @@
 # Releasing
 
-Radar embeds Tree-sitter through CGO, so every target is built and tested on a
-native runner. A cross-compiled binary is not treated as qualified.
+Each CGO binary must pass vet, full tests, race tests and an installed-archive
+smoke test on its native runner. A cross-build is not qualification; one failed
+target prevents collection and publication.
 
 ## Targets
 
-| Target | Runner | Archive |
+| Target | Native runner | Archive |
 | --- | --- | --- |
 | Linux amd64 | Ubuntu 22.04 | `radar-linux_amd64.tar.gz` |
 | Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` |
-| macOS arm64 | macOS 15, Apple Silicon | `radar-darwin_arm64.tar.gz` |
-| macOS amd64 | macOS 15, Intel | `radar-darwin_amd64.tar.gz` |
+| macOS arm64 | macOS 15 Apple Silicon | `radar-darwin_arm64.tar.gz` |
+| macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` |
 
-Every release is qualified by its own tag run. The `v0.1.0` tag failed on
-macOS and was never published; 0.1.1 is the first published release. Windows amd64 can be packaged locally but is not
-in the matrix: tests fail on the runner's Git defaults (`core.autocrlf`, long
-paths), so no Windows binary is published.
+Windows packaging exists, but Git defaults (`core.autocrlf`, long paths) still
+prevent native qualification. No Windows binary is published.
 
-Each target must pass vet, the full test suite, the race suite and a smoke test
-of the installed archive. If any target fails, nothing is collected or
-published.
+## Release procedure
 
-## First public release (0.1.0)
-
-Development used milestone numbers 0.1 to 0.4 and pushed a `v0.4.0` tag. It was
-never published as a GitHub release, but the Go module proxy cached it, and
-proxy versions are permanent. Without a retraction, `go install ...@latest`
-would keep resolving to v0.4.0. So `go.mod` retracts `[v0.4.0, v0.4.1]`, and
-because `go` reads retractions from the highest version, the retraction itself
-has to be published as v0.4.1. Never move or delete the `v0.4.0` tag; the
-checksum database already has it.
-
-Once the release commit with the `retract` directive is on `main` and CI has
-passed:
+After the release commit is on main and its CI passes:
 
 ```sh
-git tag -a v0.4.1 -m "Retract pre-release v0.4.0" <release-commit>
-git push origin v0.4.1
-GOPROXY=https://proxy.golang.org go list -m github.com/Jake-Network/radar@v0.4.1
-git tag -a v0.1.0 -m "Radar 0.1.0" <release-commit>
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "Radar X.Y.Z" <release-commit>
+git push origin vX.Y.Z
 ```
 
-The `v0.4.1` tag also starts an asset run. Cancel it if you like, and never
-dispatch it with `publish=true`. When the `v0.1.0` run has passed on every
-host, dispatch the release workflow on `v0.1.0` with `publish=true`. Then check
-that `GOPROXY=https://proxy.golang.org go list -m github.com/Jake-Network/radar@latest`
-reports v0.1.0 (the proxy can take a few minutes) and that the README install
-command works.
-
-When the version line reaches 0.4, skip v0.4.0 and v0.4.1 and use v0.4.2.
-
-## Subsequent releases
-
-The 0.2.0 tag was initially created before the native agent hooks and was moved
-with explicit owner authorization before GitHub publication. The Go module
-proxy had already cached the original source commit `127305d`, so the published
-GitHub binaries and tag checkout are the installation sources for 0.2.0.
-`go install ...@v0.2.0` may resolve the earlier source and does not establish
-that the hook release is installed. Future version tags must remain immutable.
-
-After the release commit's main CI passes, create an annotated version tag and
-push that tag. For 0.2.0:
+The tag prepares assets without publishing. After all four targets qualify:
 
 ```sh
-git tag -a v0.2.0 -m "Radar 0.2.0" <release-commit>
-git push origin v0.2.0
+gh workflow run release.yml --ref vX.Y.Z -f publish=true
 ```
 
-Wait for the tag's native qualification workflow to pass on all four targets,
-then publish through the same workflow:
+For a workflow-only repair, preserve the tag and source commit and run the
+repaired workflow from main with an explicit tag:
 
 ```sh
-gh workflow run release.yml --ref v0.2.0 -f publish=true
-```
-
-If an existing tag needs a workflow-only repair, keep the tag and its source
-commit unchanged. Run the repaired workflow from main, selecting the existing
-tag explicitly; every archive and collection script still checks out the
-resolved tag commit. For example:
-
-```sh
-gh workflow run release.yml --ref main -f tag=v0.2.0
+gh workflow run release.yml --ref main -f tag=vX.Y.Z
 # After all four targets qualify:
-gh workflow run release.yml --ref main -f tag=v0.2.0 -f publish=true
+gh workflow run release.yml --ref main -f tag=vX.Y.Z -f publish=true
 ```
 
-The resolver rejects missing or malformed tags and branch publication requests.
-Publishing rechecks that the tag still points to the qualified commit. On macOS,
-the workflow resolves `TMPDIR` to its physical path before testing, matching
-Git's path reporting without changing the tagged source.
+The resolver rejects missing/malformed tags and branch publication requests.
+Build and collection scripts check out the resolved tag SHA; publication
+rechecks that the tag still identifies it. macOS resolves `TMPDIR` to its
+physical path to match Git's canonical paths.
 
-After that run passes, verify the public release assets, checksums and an
-installation using the release's installer. Historical tags and Go module
-retractions stay in place.
+Publication uses the protected `release` environment. Configure reviewers in
+GitHub; repository files do not configure environment or branch protection.
+After publication, verify the public assets and checksums, then install with
+the release's installer and exercise the installed binary.
 
-## Building assets locally
+## Local packaging
 
-On the matching host, with Go, a C compiler, Git and Python:
+On the matching native host, with Go, a C compiler, Git and Python:
 
 ```sh
-CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets 0.1.0-rc.1
+CGO_ENABLED=1 bash scripts/release.sh /tmp/radar-assets X.Y.Z
 python3 scripts/release-test.py
 python3 scripts/workflow-test.py
-python3 scripts/validate-release.py /tmp/radar-assets 0.1.0-rc.1
+python3 scripts/validate-release.py /tmp/radar-assets X.Y.Z
 bash scripts/install-release-test.sh
 ```
 
-On Windows, with Go and UCRT64 GCC on `PATH`, use `scripts/release.py`,
-`scripts/validate-release.py` and `scripts/install-release-test.ps1`. The
-installed-binary smoke test removes MinGW from `PATH` first, so an accidental
-GCC DLL dependency fails qualification.
+`release.py` validates the host/target/CGO setting, builds with `-trimpath`,
+checks the version, indexes real Python/TypeScript/Go/Rust symbols and exercises
+installed native agent hooks. Archives include the binary, license, version,
+dependency notices, docs, plugin packages, schemas, examples and install
+scripts, with normalized metadata and SHA-256 checksums.
 
-`release.py` checks the host, target and CGO setting, builds with `-trimpath`,
-verifies the reported version and parses real Python, TypeScript, Go and Rust
-symbols before archiving. Archives contain the binary, `LICENSE`,
-`VERSION.txt`, dependency notices, docs, schemas, examples and install
-scripts, with normalized metadata and a SHA-256 file for each archive.
+Windows uses `scripts/release.py`, `validate-release.py` and
+`install-release-test.ps1` with Go and UCRT64 GCC. Installed-binary smoke removes
+MinGW from PATH to catch accidental compiler DLL dependencies.
 
-## Workflows
+## CI and runtime limits
 
-`ci.yml` runs on every push and pull request: gofmt, vet, unit and race tests,
-smoke and all demos, PR workflow regressions, benchmark harness tests, archive
-and installer tests, actionlint and a Windows installer job.
-
-`release.yml` builds each archive on its native runner and collects them only
-after every host passes. A tag only prepares assets. Publishing needs a manual
-dispatch with `publish=true` selecting an existing tag (the dispatch ref or
-explicit `tag` input), through the protected
-`release` environment. Configure required reviewers on that environment before
-the first publication. Checksums are verified again before
-`gh release create --verify-tag`.
-
-The Homebrew formula is generated as a release asset for review. Nothing pushes
-to a tap. Signing, notarization and provenance attestations are not set up.
-
-Branch protection and environment reviewers are GitHub settings; the files in
-this repository do not configure them.
-
-## Installing and runtime limits
+`ci.yml` requires formatting, vet, full/race tests, hook and plugin regressions,
+all demos, PR-driver and benchmark regressions, archive/installer checks,
+actionlint and the Windows installer job. `release.yml` repeats native
+qualification, verifies every checksum and generates a Homebrew formula for
+review; it never pushes to a tap. Signing, notarization and attestations are
+not implemented.
 
 ```sh
 bash scripts/install-release.sh --version vX.Y.Z --dir "$HOME/.local/bin"
 ```
 
-`--force` replaces an existing binary, and only after the new one validates.
-Installers check the OS and CPU, the checksum and the archive layout, extract
-only the binary and never edit `PATH`.
+Installers validate the checksum, archive layout and executable version.
+`--force` replaces an existing binary only after validation; PATH is unchanged.
+Linux requires glibc 2.35+, macOS targets 11.0+. Build from source on other
+runtimes with Go 1.23+ and a native C compiler; setting GOOS/GOARCH alone does
+not provide one.
 
-- Linux binaries need glibc 2.35 or newer. On musl or older glibc, build from
-  source.
-- The macOS deployment target is 11.0.
-- If a CGO build fails, check `go env CGO_ENABLED` and that a native C compiler
-  is installed. Setting `GOOS`/`GOARCH` does not install one.
-- Source build: `go build -trimpath -o radar ./cmd/radar`.
+## Version history constraints
+
+- 0.1.1 was the first published release; 0.1.0 failed macOS qualification.
+- Development tags v0.4.0/v0.4.1 are permanently cached. Keep both tags and
+  `go.mod`'s retraction. When public versions reach 0.4, start at v0.4.2.
+- The unpublished v0.2.0 tag was moved for the hook release with explicit owner
+  authorization. Its original source commit `127305d` was already cached by
+  the Go module proxy. Install 0.2.0 from GitHub binaries or a Git tag checkout;
+  `go install ...@v0.2.0` can resolve the earlier source.
+- Future release tags remain immutable.

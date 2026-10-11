@@ -51,6 +51,11 @@ analysis path.
 Analysis packages never import `cli`. Git subprocesses live in `git`, process
 execution in `evidence`, and analysis rules in the package that owns them.
 
+Native agent Stop adapters (`cli/agent_hook.go`) reuse the watch input observer
+and private dirty-candidate analysis for one static preview. Onboarding writes
+project-local hook configuration; portable plugin packages supply the same
+command. They do not execute tests or control agent permissions.
+
 ## Evidence model
 
 Every node and edge records how it was found: `verified_static`,

@@ -18,6 +18,10 @@
   packages require the Radar binary on PATH. Native installation and installed
   hook behavior have executable regressions; no authenticated model session is
   claimed by these checks.
+* Consolidated the documentation into nine guides for usage, agents,
+  verification, capabilities, workspaces, security, architecture, benchmarks
+  and releases. Reproducible measurement artifacts and verification limits
+  remain linked from their canonical guides.
 
 * Continuous single-repository verification with `radar watch`, including
   opt-in private snapshots of saved changes with `--include-dirty`. JSONL

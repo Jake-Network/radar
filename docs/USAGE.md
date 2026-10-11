@@ -1,97 +1,167 @@
 # Usage
 
-The [README](../README.md) covers `radar gate`, which is what most people need.
-This page covers the rest. `radar help --all` lists every command and
-`radar help COMMAND` shows its flags.
+Start with [`radar gate` in the README](../README.md). This reference covers
+explicit inputs, continuous checking, contracts, plans and reproducible demos.
+Run `radar help COMMAND` for flags or `radar help --all` for every command.
 
-## Output
+## Output and diagnosis
 
-Commands print a short human report. Add `--json` for machine output.
+Add `--json` for machine output. Human reports retain the same symbols and words
+with or without color; JSON and MCP output are never styled.
+`--color auto|always|never`, `NO_COLOR`, `FORCE_COLOR` and `CLICOLOR_FORCE`
+control color.
+Terminal gate progress goes to stderr and is erased before the report.
 
-`radar doctor` reports what Radar sees in the repository: the base branch, the
-worktree branches `radar gate` would combine, worktrees with uncommitted
-changes, the languages and test frameworks it found, and whether each runner
-program is on PATH (`node_modules` is never copied into Radar's private copy,
-and frameworks such as pytest are only checked when tests run). It ends
-with the next command. `--json` adds these facts under `project`; the other
-fields are unchanged. Doctor reads Git metadata and committed files only.
+`radar doctor` reads Git metadata and committed files to report the base,
+participating worktree branches, excluded dirty changes, discovered languages
+and test frameworks, available runner programs, and a next command. Its JSON
+adds these facts under `project`. Runner availability does not establish that
+framework dependencies are installed: `node_modules` is not copied into private
+candidates, and frameworks such as pytest are checked when tests run.
 
-Color is used only on a terminal. `--color auto|always|never` overrides
-detection, `NO_COLOR` turns it off, and `FORCE_COLOR` or `CLICOLOR_FORCE` turns
-it on for pipes. Every mark (✓ ✗ ? ! ·) and word is the same with or without
-color. `--json` and MCP output are never styled. On a terminal, `radar gate`
-also shows a progress line on stderr and erases it before the report.
+## Explicit inputs
 
-## Gate and merge-check
-
-`radar gate` is a front end to `merge-check`. It picks the base and branches,
-always proposes tests, adds branch attribution and a `next` command, and maps
-`--run` to `merge-check --verify --allow-execution --suite balanced` with a
-10-minute budget. Gate and watch default to zero diagnostic reruns. Opt in
-with `radar gate --run --attribution-runs 8` to rerun failed commands on smaller
-branch combinations (see [test selection](TEST_SELECTION.md)). These diagnostic
-runs do not change the verdict. `merge-check` does not run them.
-
-Gate checks committed inputs only. `radar watch --include-dirty` also previews
-saved staged, unstaged and nonignored untracked changes in selected worktrees.
-Unsaved editor buffers and ignored files are excluded; `--run` still requires
-explicit execution authorization. A dirty preview pass does not qualify the
-committed branches. See [watch](WATCH.md) for snapshot and JSONL semantics.
-
-Use `merge-check` when you want exact control:
+`gate` selects the base and worktree branches, recommends tests and supplies a
+next action. It checks committed inputs; staged, unstaged and untracked changes
+are excluded. Use `merge-check` for exact branch order or execution commands:
 
 ```sh
 radar merge-check --base main --branches feature/api,feature/web --suggest-tests
 radar merge-check --base main --branches feature/api,feature/web \
-  --verify --allow-execution --suite targeted        # or balanced, full
+  --verify --allow-execution --suite balanced
 radar merge-check --base main --branches feature/api,feature/web \
   --verify --allow-execution --cwd services/api -- python3 -m unittest test_api
+radar check --base main --head feature/api --suite targeted
 ```
 
-Branches are merged in the order given, and order can change the result.
-`--evidence-output .radar/evidence/candidate.json` saves execution metadata to
-a new file. Nothing else is written to the repository.
+Branch order can change the combined result. `check` analyzes one head (the
+working tree by default), including reverse import impact and contract changes;
+it does not combine branches. Its `--suite` previews selection without execution.
+`--evidence-output .radar/evidence/candidate.json` saves merge-check execution
+metadata to a new file; candidate construction leaves source refs and files alone.
 
-`radar check --base main` analyzes one head (the working tree by default, or
-`--head REF`) without combining anything: changed files, reverse import
-dependencies, declared and discovered contracts, and optional plan checks.
-`--suite MODE` previews test selection without running anything.
-
-`radar discover --json` lists contract candidates and a proposed manifest. It
-never edits `.radar/contracts.json`.
-
-Selection modes and budgets are in [TEST_SELECTION](TEST_SELECTION.md).
-Verdicts, policies and exit codes are in
-[VERIFICATION_POLICY](VERIFICATION_POLICY.md).
+`gate --run` authorizes selected test execution with a default balanced suite,
+10-minute budget and 16-command limit. Gate and watch default to zero diagnostic
+reruns; `--run --attribution-runs 8` opts into smaller branch-subset executions.
+These observations are repair leads, do not change the verdict, and are not
+available in `merge-check`. Selection modes, omitted-command handling, policies,
+contract obligations and exit codes are in [VERIFICATION](VERIFICATION.md).
 
 ## Agent setup
 
 ```sh
-radar setup claude           # or codex, both (same as --agent claude)
-radar setup both --dry-run   # show the changes first
-radar setup claude --hook    # also install the Claude Code Stop hook (needs Bash)
+radar setup claude                 # or codex, both; no name defaults to codex
+radar setup both --dry-run
+radar setup claude --base main --branches feature/api,feature/web
 ```
 
-Without a name, `radar setup` configures Codex, as before.
+Setup installs project-local hooks, skills and MCP configuration while preserving
+unrelated settings and rejecting conflicting Radar entries. Agent trust, restart
+and PATH requirements, hook behavior and installation options are documented in
+[AGENT_GUIDE](AGENT_GUIDE.md). `radar help agents` prints the shorter agent contract.
 
-Setup writes project-local skills and MCP configuration. It keeps unrelated
-settings and refuses to overwrite a conflicting Radar entry. You may still need
-to trust the project in your agent, restart it, or put `radar` on `PATH`.
+`radar mcp` serves stdio tools, including `radar_gate`, `radar_check` and
+`radar_merge_check`. Execution flags, `test` and `approve` are not exposed.
+Summaries are capped at 40,000 bytes; request `detail: true` for the full report
+or use CLI JSON. MCP writes Radar state and plans; it is not read-only.
 
-`radar help agents` prints the short contract an agent needs: which commands
-are static, which need the user's authorization, and how to read a result.
-[AGENT_GUIDE](AGENT_GUIDE.md) is the long form.
+## Watch
 
-`radar mcp` serves tools over stdio. Agents can call `radar_gate`,
-`radar_check`, `radar_merge_check` and the read-side toolkit commands. `test`,
-`approve` and every execution flag are not exposed. MCP summaries are capped at
-40,000 bytes; pass `detail: true` for the full report, or use the CLI with
-`--json`.
+Watch runs the gate analysis repeatedly in private Git state while agents work
+in linked worktrees. It never merges into your checkout.
+
+```sh
+radar watch --base main
+radar watch --base main agent-api agent-web
+radar watch --base main --include-dirty
+radar watch --base main --include-dirty --run --suite full --jsonl
+```
+
+Omit branches to discover worktree branches beyond the base; supply branches to
+pin participation. Default checks are static and committed-only. `PASS (static)`
+does not establish passing tests. With no selected changes, watch waits and
+reports `NOT VERIFIED`.
+
+| Option | Behavior |
+| --- | --- |
+| `--include-dirty` | Preview saved staged, unstaged and nonignored untracked changes. |
+| `--interval 1s` | Poll interval, allowed range 100ms–1m. |
+| `--debounce 500ms` | Wait for saves to settle, allowed range 0–1m. |
+| `--jsonl` | Emit structured events, one per line. |
+| `--run` | Authorize repeated repository-code execution for the session. |
+| `--suite full` | Select the full supported inventory, within the command budget. |
+| `--timeout 10m` | Execution budget; optional attribution has a separate budget. |
+| `--max-commands 16` | Omitted required commands block the gate. |
+| `--policy PATH` | Select required checks; does not authorize execution. |
+| `--attribution-runs N` | Optional diagnostic subset runs with `--run`; default zero. |
+
+Automatically selected `--run` sessions also authorize newly discovered
+worktrees; watch prints this scope on stderr. Code runs with your permissions.
+Private candidates are not an OS sandbox; Radar does not install dependencies
+or fetch history.
+
+### Saved snapshots
+
+`--include-dirty` records staged and unstaged provenance, deletions, renames,
+nonignored untracked files and executable-mode changes, including changes hidden
+by `core.fileMode=false`. Source refs, indexes and files remain untouched.
+Unsaved editor buffers and ignored files are excluded. Preview evidence has its
+own candidate identity and does not qualify the committed branches.
+
+Snapshot capture checks inputs before and after reading. Unsafe paths, symlinks,
+submodules, unsupported entries or inconsistent reads produce an explicit error
+or `NOT VERIFIED`; Radar does not fall back to commits and report the current
+saved state passed. Initial snapshot errors reject the invocation; errors during
+a session invalidate the previous result until observation succeeds again.
+
+Limits are 4,096 changed paths and 32MiB of changed contents per selected
+worktree, plus the per-file limit. Sparse and assume-unchanged entries are
+unsupported. Dirty previews reject active `core.autocrlf` and Git `text`, `eol`,
+`working-tree-encoding` or `ident` normalization, even in clean worktrees;
+explicit `-text` with raw bytes is supported. Only select worktrees you intend
+to inspect; use `.gitignore` for local secrets.
+
+### Events and current results
+
+Watch invalidates the previous verdict on input changes, reports `CHECKING`,
+then publishes the gate result. Unchanged inputs do not trigger another check;
+a heartbeat appears every 30 seconds. Saves are coalesced during debounce, with
+one analysis worker. Inputs are observed again before publishing; changes during
+analysis cancel or supersede the old check.
+
+JSONL follows [`watch-event.schema.json`](../schemas/watch-event.schema.json):
+
+- Events carry an increasing `sequence`, UTC `time`, `type` and `state.key`.
+  Types are `changed`, `checking`, `completed`, `error`, `heartbeat` and optional
+  `attributed`.
+- **Invalidate the current verdict on `changed` or `error` and correlate results
+  with `state.key`.** `completed` carries the gate report; a heartbeat does not
+  repeat a report. The key binds base and branch commits, worktree state, dirty
+  digests when enabled, and relevant configuration.
+- `verification_state` describes the current state: `NOT VERIFIED`, `CHECKING`,
+  `ERROR` or a verdict such as `PASS (static)` or `FAIL`.
+- `last_completed` and `last_change` are event timestamps, initially
+  `0001-01-01T00:00:00Z`. An old completion does not establish current validity.
+- `state.value.worktrees[].commit_included` identifies participating committed
+  inputs; `uncommitted_included` identifies selected saved snapshots.
+
+Optional attribution follows `completed` and publishes `attributed` separately.
+It shares the worker and cancellation scope, has a separate timeout budget,
+and cannot replace the full-candidate evidence; flaky tests can mislead it.
+
+Sessions support at most 32 monitored worktrees and 32 selected branches, with
+at most eight dirty snapshots. Exceeding a bound is an error. Dirty observation
+reads changed contents twice to detect races, so polling cost grows with changed
+bytes and repository size even when analysis is skipped. Polling can miss edits
+fully reverted between observations. Watch covers one repository, not runtime
+integration across repositories. Detached worktrees require explicit committed
+SHA selection; dirty inputs must map unambiguously to supported worktrees.
+Ctrl+C cancels analysis and waits for cleanup. Session exit codes describe
+shutdown or invocation errors; live verdicts belong to completion events.
 
 ## Explicit contracts
 
-Commit `.radar/contracts.json` next to a JSON or YAML OpenAPI document or a
-JSON Schema:
+Commit `.radar/contracts.json` beside an OpenAPI JSON/YAML or JSON Schema:
 
 ```json
 {
@@ -108,27 +178,24 @@ JSON Schema:
 }
 ```
 
-`radar contracts` lints the manifest and flags declared fields that no longer
-appear in the consumer file (a text search, not a usage proof). `radar impact`
-compares declared contracts between two revisions, and `radar scan` looks for
-contract conflicts across concurrent branches. What the comparison covers is
-listed in [CAPABILITIES](CAPABILITIES.md#contracts). Removing a binding does
-not remove its obligation; see
-[VERIFICATION_POLICY](VERIFICATION_POLICY.md#contract-obligations).
+`radar contracts` lints declarations and text-searches consumer fields; it does
+not prove runtime usage. `impact` compares revisions and `scan` checks concurrent
+branches. `discover --json` proposes candidates without editing the manifest.
+Removing a declaration does not remove its base obligation. See
+[CAPABILITIES](CAPABILITIES.md#contracts) for supported comparisons and
+[VERIFICATION](VERIFICATION.md#contract-obligations) for retirement rules.
 
 ## Plans and evidence
 
-These commands need `radar init` (or `setup`) first. Linked worktrees without
-their own `.radar` share the main worktree's state, and evidence names the
-repository by its root commit, so records made in one worktree verify in
-another.
+Initialize with `radar init` or `setup`. Linked worktrees without their own
+`.radar` share main-worktree state; repository identity uses the root commit.
 
 ```sh
 radar index --ref BASE_SHA
 radar plan "add async exports" --ref BASE_SHA --output .radar/plans/design.json
 radar preflight --plan .radar/plans/design.json --ref BASE_SHA
 radar tasks --plan .radar/plans/design.json
-# after an actual review:
+# Only after an actual review:
 radar approve --plan .radar/plans/design.json --reviewer NAME \
   --output .radar/plans/approved.json
 radar test --plan .radar/plans/approved.json --ref IMPL_SHA \
@@ -136,45 +203,52 @@ radar test --plan .radar/plans/approved.json --ref IMPL_SHA \
 radar verify --plan .radar/plans/approved.json --ref IMPL_SHA --evidence EVIDENCE_ID
 ```
 
-- `plan` writes a context bundle and an incomplete plan. It does not design
-  anything; your agent fills in the design.
-- `preflight` rejects a plan whose indexed baseline has changed and prints
-  next steps.
-- `tasks` prints the task DAG, parallel groups and per-task packets. Tasks that
-  share a component or contract are not scheduled in parallel.
-- `approve` records the reviewer name you give it, bound to the plan digest.
-  Editing the plan invalidates the review. It is a declaration, not
-  authentication.
-- `test` runs one `test_run` command from the plan on a private copy of the
-  commit. The rule may declare `cwd`, `env` (variable names to pass through),
-  `link` (untracked directories such as `node_modules`), `setup` commands and
-  a `junit` report path (a file, or a directory whose `TEST-*.xml` files are
-  all read, as Maven Surefire and Gradle write them). Radar stores the outcome
-  and an output digest, not the output itself.
-- `verify` checks the plan's rules against a commit and test records. Records
-  from another commit or plan digest are rejected.
+`plan` creates context and an incomplete plan for your agent to fill in.
+`preflight` rejects changed indexed baselines; `tasks` prints a DAG and packets,
+keeping tasks sharing components or contracts out of parallel groups.
+`approve` records the supplied reviewer declaration, bound to the plan digest;
+editing the plan invalidates it. This is not identity authentication.
 
-Plan assumptions are `open`, `accepted` or `resolved`. Open assumptions keep
-verification `unknown`; resolve or accept them instead of deleting them.
+`test` runs a plan-declared `test_run` command on a private committed copy with
+explicit execution authorization. Rules may declare `cwd`, environment variable
+names to pass through, linked untracked directories, setup commands and a JUnit
+file or directory of `TEST-*.xml` reports. Records store outcome and output
+digest, not raw output. `verify` rejects evidence from another commit or plan.
+Open assumptions keep verification `unknown`; accept or resolve them rather
+than deleting them.
 
-Graph commands: `radar resolve NAME` finds entity IDs, `radar graph` queries the
-index (`--plan approved.json --format mermaid` shows the plan's intent graph),
-`radar affected --base main --head REF` follows imports back from changed
-files, and `radar explain FINDING_ID` shows a stored finding.
+Use `resolve NAME` for entity IDs, `graph` for index queries (`--plan PATH
+--format mermaid` for plan intent), `affected --base main --head REF` for reverse
+import impact and `explain FINDING_ID` for stored findings. IDs such as
+`function:svc/server.go#Server.Handle` are relative to the repository.
 
-Entity IDs look like `file:backend/models.py`,
-`class:backend/models.py#ExportSummary` and
-`function:svc/server.go#Server.Handle`. They do not depend on where the
-repository is checked out.
+## Demos
 
-## Exit codes
+Scripts use checked-in fixtures and temporary repositories. Read them before
+running: execution steps run fixture code. Build needs Go 1.23+, CGO and a C
+compiler; scripts need Bash, Git and Python 3.
 
-| Command | 0 | 1 | 2 |
-| --- | --- | --- | --- |
-| `gate`, or any command with `--policy` | pass | fail or blocked | error |
-| `check`, `merge-check`, `scan`, `impact` without a policy | report produced, possibly with warnings or unknowns | supported failure (conflict, breaking declared contract) | invocation or analysis error |
+```sh
+go build -o /tmp/radar ./cmd/radar
+bash scripts/smoke.sh /tmp/radar
+make demo-all                      # builds bin/radar and runs examples/*/demo.sh
+```
 
-`--require-complete` makes `check` and `merge-check` exit 1 on any unknown or
-incomplete result. `--strict` makes `impact` and `scan` exit 1 when a binding
-could not be analyzed. Exit 0
-without a policy does not mean everything was verified; read the report.
+Run any script below with `/tmp/radar` as its argument.
+
+| Script | Demonstrates |
+| --- | --- |
+| [`scripts/smoke.sh`](../scripts/smoke.sh) | Two individually passing branches whose combination fails. |
+| [`examples/quickstart/demo.sh`](../examples/quickstart/demo.sh) | Doctor, failure reproduction, repair and unverified docs-only change. |
+| [`examples/integration/demo.sh`](../examples/integration/demo.sh) | Combined failure, repair and diagnostic attribution leads. |
+| [`examples/watch/demo.sh`](../examples/watch/demo.sh) | Live committed failure, distinct dirty repair, source integrity and SIGINT cleanup. |
+| [`examples/intelligent-verification/demo.sh`](../examples/intelligent-verification/demo.sh) | Cross-language selection and HTTP integration; needs Node with fetch, GNU time and loopback sockets. |
+| [`examples/selection-eval/demo.sh`](../examples/selection-eval/demo.sh) | Contract obligations, explicit retirement and grouped targeted suites. |
+| [`examples/organization/demo.sh`](../examples/organization/demo.sh) | Indexing, plan preflight and producer/consumer conflict; retains its temporary repository. |
+| [`examples/verification/demo.sh`](../examples/verification/demo.sh) | Commit-bound evidence and invalidated review after plan edits. |
+| [`scripts/demo_workspace_links.sh`](../scripts/demo_workspace_links.sh) | Declared static cross-repository link, breaking change and repair. |
+
+The watch demo prints local measured latencies including polling, debounce and
+execution. These fixture observations do not establish large-repository or
+cross-machine performance. Multi-repository commands are in
+[MULTI_REPO](MULTI_REPO.md).

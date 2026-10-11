@@ -121,4 +121,4 @@ execution, and MCP cannot run arbitrary tests or fabricate review approval.
 Local helper tests and YAML checks are reproducible. Hosted Actions execution and
 release availability must be validated separately; local checks are not hosted CI
 results. See [security](../../docs/SECURITY.md) and
-[verification policy](../../docs/VERIFICATION_POLICY.md).
+[verification policy](../../docs/VERIFICATION.md).

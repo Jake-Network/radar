@@ -11,6 +11,6 @@ store are in memory, principal injection and worker execution are incomplete.
 declaration and schema change; it does not infer an arbitrary network call or
 prove that the running backend emits this schema.
 
-See [the demo](../../docs/DEMO.md) for executable indexing, preflight, and
+See [the demo](../../docs/USAGE.md#demos) for executable indexing, preflight, and
 cross-branch analysis commands. Dependencies are not needed for indexing;
 running the Python service would require FastAPI and Pydantic.

@@ -147,7 +147,7 @@ snapshots; those results do not verify the committed branches.
 
 In a terminal, bare `radar` opens a menu that shows the same information and
 runs the same commands (tests only after you confirm). `radar watch` rechecks
-while agents commit; see [WATCH](docs/WATCH.md).
+while agents commit; see [watch](docs/USAGE.md#watch).
 
 ## Reading the result
 
@@ -197,7 +197,7 @@ Restart the agent after setup. In Codex, review and trust the installed
 definition with `/hooks`; installation alone does not activate untrusted hooks.
 Use `--hook=false` to install only the skill and MCP configuration. Portable
 native plugin packages and their installation commands are documented in
-[AGENT_HOOKS](docs/AGENT_HOOKS.md).
+[agent installation](docs/AGENT_GUIDE.md).
 
 Agents can also call `radar_gate` (or `radar gate --json`) before they
 propose a merge, read `gate.verdict` and `next`, repair, commit and recheck.
@@ -220,28 +220,22 @@ Radar reports evidence. It doesn't certify correctness.
   private copy of the combined source. That copy is not an operating-system
   sandbox.
 
-Full guarantees and limits: [CAPABILITIES](docs/CAPABILITIES.md),
-[VERIFICATION_POLICY](docs/VERIFICATION_POLICY.md), [SECURITY](docs/SECURITY.md).
+## Documentation
 
-## More
+| Need | Guide |
+| --- | --- |
+| Commands, watch, plans and demos | [Usage](docs/USAGE.md) |
+| Claude Code / Codex hooks and plugins | [Agents](docs/AGENT_GUIDE.md) |
+| Verdicts, policies, test selection and evidence | [Verification](docs/VERIFICATION.md) |
+| Supported analysis and future work | [Capabilities](docs/CAPABILITIES.md) |
+| Multiple repositories and declared links | [Workspaces](docs/MULTI_REPO.md) |
+| Execution, data and trust boundaries | [Security](docs/SECURITY.md) |
+| Packages and design decisions | [Architecture](docs/ARCHITECTURE.md) |
+| Measured results and their limits | [Benchmarks](docs/BENCHMARKS.md) |
+| Native packaging and publication | [Releasing](docs/RELEASING.md) |
 
-- **Several repositories:** `radar workspace add ../payments`, then `radar
-  gate` checks every workspace repository, and declared cross-repository
-  links. See [MULTI_REPO](docs/MULTI_REPO.md).
-- **CI:** `radar gate --run --policy .radar/integration-policy.json feature/api
-  feature/web` with an explicit list of required checks, or the
-  [GitHub Actions integration](integrations/github-actions/README.md). See
-  [VERIFICATION_POLICY](docs/VERIFICATION_POLICY.md#policies).
-- **What it checks:** merge in private Git state; OpenAPI and JSON Schema
-  contracts declared in `.radar/contracts.json` (discovered candidates are
-  warnings); import graphs for TypeScript/JavaScript, Python, Go, Rust, Java
-  and C/C++; test selection and execution within a time and command budget.
-  See [CAPABILITIES](docs/CAPABILITIES.md) and [TEST_SELECTION](docs/TEST_SELECTION.md).
-- **Plans and evidence:** grounded plans, digest-bound reviews, commit-bound
-  test evidence and graph queries, under `radar help --all`. See
-  [USAGE](docs/USAGE.md).
-- **Demos:** [DEMO](docs/DEMO.md), including `examples/quickstart/demo.sh` for
-  the scenario above.
+For CI, use the [GitHub Actions integration](integrations/github-actions/README.md)
+with explicit branches and required checks.
 
 ## Development
 
@@ -255,5 +249,4 @@ make demo-all
 Native release jobs target Linux and macOS (amd64 and arm64).
 Tags prepare assets; publishing requires a separate manual request. See
 [RELEASING](docs/RELEASING.md) and the [changelog](CHANGELOG.md).
-Also see [contributing](CONTRIBUTING.md), [architecture](docs/ARCHITECTURE.md),
-[benchmarks](docs/BENCHMARKS.md) and the [roadmap](docs/ROADMAP.md). MIT licensed.
+See [contributing](CONTRIBUTING.md) for development conventions. MIT licensed.

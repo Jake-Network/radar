@@ -11,8 +11,9 @@ instructions.
 
 Repository code runs only with `gate --run`, `watch --run`, `merge-check --verify
 --allow-execution` or `test --allow-execution`. Those commands run in a private
-copy of the committed source, with a timeout, an output limit and a reduced
-environment: `PATH`, a private `HOME` and temp directory, offline settings for
+copy of the selected commits or explicitly selected saved previews, with a
+timeout, an output limit and a reduced environment: `PATH`, a private `HOME`
+and temp directory, offline settings for
 package managers, and read access to existing dependency caches. Inherited
 secrets and language startup variables are removed. Build tools still read
 their own user configuration: Gradle reads `gradle.properties` in the shared
@@ -41,7 +42,7 @@ worktrees' staged, unstaged and nonignored untracked edits. Source indexes, refs
 and working files stay untouched. Ignored directories are excluded; unsupported
 entries and detected snapshot races block verification. Only relevant changed
 files are copied, but nonignored files can still contain secrets. See
-[watch limitations](WATCH.md).
+[watch limitations](USAGE.md#watch).
 
 ## Git and paths
 
@@ -73,8 +74,11 @@ whatever name you pass, not an authenticated identity.
 `radar mcp` serves one repository over stdio. It does not expose `test`,
 `approve` or any execution flag, so an agent cannot run repository code or
 record a review through it. It can write Radar state and new plan files, so it
-is not read-only. The Claude Code Stop hook only runs `radar verify`. Agent
-skills are instructions, not a security boundary.
+is not read-only. Native Claude/Codex Stop hooks run static saved-change
+previews; the legacy Claude script verifies an active plan. Neither executes
+repository tests. Hook trust and configuration belong to the agent runtime;
+skills are instructions, not a security boundary. See
+[agent installation](AGENT_GUIDE.md).
 
 ## CI and installation
 

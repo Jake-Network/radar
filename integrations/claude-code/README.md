@@ -1,6 +1,6 @@
 # Claude Code integration
 
-Run `radar setup claude` (or `radar setup --agent claude`) to install a native Stop hook, project-local skill and MCP configuration. The hook previews saved changes on the current branch against the base and returns supported static failures for one repair continuation; no active plan is required and no tests run. Select parallel branches with `--base main --branches agent-api,agent-client`. `--hook=false` opts out of hook installation; `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar. See [native hooks and plugin installation](../../docs/AGENT_HOOKS.md).
+Run `radar setup claude` (or `radar setup --agent claude`) to install a native Stop hook, project-local skill and MCP configuration. The hook previews saved changes on the current branch against the base and returns supported static failures for one repair continuation; no active plan is required and no tests run. Select parallel branches with `--base main --branches agent-api,agent-client`. `--hook=false` opts out of hook installation; `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar. See [native hooks and plugin installation](../../docs/AGENT_GUIDE.md).
 
 The three pieces can also be installed manually below.
 
@@ -61,8 +61,8 @@ For change-aware proposals, add `--suggest-tests` to `radar check` and
 CLI with `--verify --suite recommended --allow-execution`. A versioned
 `--policy PATH` selects required checks; inspect `gate.verdict` and `coverage`
 separately. Recommendations neither execute code nor install dependencies, and
-MCP remains read-only. See [test selection](../../docs/TEST_SELECTION.md) and
-[verdicts and policies](../../docs/VERIFICATION_POLICY.md).
+MCP cannot execute tests, but can write Radar state and plan files. See [test selection](../../docs/VERIFICATION.md) and
+[verdicts and policies](../../docs/VERIFICATION.md).
 
 MCP `radar_check` and `radar_merge_check` accept `policy`, `suggest_tests` and
 `detail`. Default responses summarize at most ten findings and eight proposed

@@ -1,191 +1,116 @@
 # Several repositories
 
-A workspace groups local repositories so that one `radar gate` checks all of
-them. Typical case: one agent changes the backend, another changes the
-frontend, and you want to know whether the two changes still fit.
-
-Each repository is still combined and checked on its own, in its own private
-Git state. On top of that, Radar checks the cross-repository links you declare.
-It does not clone, fetch, deploy or call anything over the network.
+A workspace groups local repositories for one `radar gate`. Each repository's
+branches combine privately; declared producer/consumer links are checked across
+repositories. Radar does not clone, fetch, deploy or call services.
 
 ## Quick start
 
 ```sh
-radar workspace add ../payments     # this repository + payments
-radar workspace show                # what radar gate would check
-radar gate                          # every worktree branch in every repository
+radar workspace add ../payments
+radar workspace show
+radar gate                                  # automatic branches in every repo
 radar gate orders:agent/api payments:agent/client
-radar gate --again --run            # same selection, latest commits, with tests
+radar gate --again --run                     # latest commits, explicitly run tests
 ```
 
-`radar gate` finds the same workspace from any member repository or any of its
-worktrees.
+The workspace is found from any member repository or linked worktree.
+`--run` executes repository code; authorize it separately from static checks.
 
-## Naming
+## Naming and selection
 
-| Form | Meaning | Example |
-| --- | --- | --- |
-| `repo:ref` | a branch, tag or full SHA in that repository | `orders:agent/api` |
-| `repo:path` | a path from that repository's root | `payments:src/order.ts` |
-| `repo:path#pointer` | a JSON pointer inside a file | `orders:openapi.json#/components/schemas/Order` |
-| `ref` | a ref in the current repository | `agent/api` |
+| Input | Meaning |
+| --- | --- |
+| `orders:agent/api` | ref in a named repository |
+| `payments:src/order.ts` | repository-relative path |
+| `orders:openapi.json#/components/schemas/Order` | schema JSON pointer |
+| `agent/api` | ref in the current repository |
 
-Repo IDs start with a letter and contain letters, digits, `-` and `_`. Git
-refs cannot contain `:`, so `repo:ref` is unambiguous. Arguments that take a
-filesystem path (`--with`, `workspace add`) do not use the `repo:` prefix.
+Repo IDs start with a letter and contain letters, digits, `-` and `_`.
+Filesystem arguments (`--with`, `workspace add`) remain ordinary paths.
 
-Outside a workspace, and without `--with`, arguments are parsed exactly as in
-single-repository mode.
+Scope precedence is replay → committed team file → local registry →
+single-repository mode. Repeat `--with PATH` to add repositories for one run;
+`--only REPO` narrows scope and labels the report as a partial workspace.
 
-## Scope, branches and bases
+Without positional refs, each repository selects worktree branches with
+commits beyond its base, sorted by name. With any positional ref, only named
+refs are combined; other repositories participate at their base. Argument
+order is merge order within each repository. Detached worktrees need an
+explicit `repo:SHA`.
 
-Scope comes from the first match of:
+Base precedence is `--base repo:REF` → team-file base → `origin/HEAD`'s branch,
+main/master/trunk. Missing bases are errors with an example remedy.
+`--policy` applies to every repository; `--plan` requires `--only` one repo.
 
-1. `--replay RUN`: the repositories and commits recorded for that run
-2. the team file, if the workspace has one (see below)
-3. the local registry entry for the current repository
-4. otherwise, single-repository mode
-
-`--with PATH` adds a repository for one run (repeatable). `--only REPO` limits
-the run to some repositories, and the headline then says
-`partial workspace (k/N repos)`.
-
-Without positional arguments, each repository contributes its worktree
-branches that have commits beyond its base, sorted by name. With any
-positional argument, only the named refs are used and every other repository
-takes part at its base. Order of arguments is merge order within a repository.
-Detached worktrees are never picked automatically; name them as `repo:SHA`.
-
-Each repository's base is, in order: `--base repo:REF`, the `base` in the team
-file, then the usual default (`origin/HEAD`'s branch, `main`, `master`,
-`trunk`). If no base can be found, that repository gets an error with an
-example `--base` value.
-
-`--again` repeats the previous run's selection method on the latest commits. If
-the last run was automatic, it selects automatically again and shows which
-branches joined or left. It cannot be combined with options that change the
-selection. `--replay RUN` (a run ID or `last`) rebuilds a recorded run's exact
-commits and checks that the candidate trees still match.
-
-`--policy` applies to every repository. `--plan` is only allowed when `--only`
-narrows the run to one repository.
+`--again` repeats the previous selection method on latest commits, reporting
+branches that joined/left an automatic selection. It rejects selection-changing
+options. `--replay RUN` (or `last`) pins recorded commits and verifies candidate
+trees, rather than using latest branches.
 
 ## Registry and team file
 
-| | Registry | Team file |
+| | Local registry | Committed team file |
 | --- | --- | --- |
-| Location | `<user config dir>/radar/workspaces.json` (`RADAR_CONFIG_DIR`) | `.radar/workspace.json` in the home repository |
-| Committed | no, it holds absolute paths | yes |
-| Holds | workspace name, home repository, repo ID → path | repo IDs and identities, bases, links, retirements |
+| Location | user config `radar/workspaces.json` (`RADAR_CONFIG_DIR`) | home repo `.radar/workspace.json` |
+| Contents | workspace/home names, repo IDs → absolute local paths | IDs/identities, bases, links, retirements |
 
-A repository belongs to one workspace at most. `gate` only reads the registry;
-`workspace add`, `workspace remove` and the first `connect` write it.
+A repository belongs to at most one workspace. `gate` reads the registry;
+`workspace add`, `workspace remove` and the first `connect` update it.
+The first `connect` repository becomes home.
 
-The home repository is the one where you first ran `connect`. The team file is
-read from the home repository's base commit, never from its working tree;
-uncommitted edits to it produce a warning. When a team file exists, it decides
-the scope. A repository that is registered but missing from the team file is
-left out with a note. A repository listed there but not registered on this
-machine fails with the `radar workspace add` command to fix it.
-
-Repositories are matched by root commits (`git:<sha>+...`), not by remote URL
-or path. A mismatch is an error.
+The team file is read from home's base commit, never its working tree.
+Uncommitted edits warn. With a team file, registered-but-omitted repos are
+excluded with a note; unregistered declared repos error with an add command.
+Identity is the root-commit set (`git:<sha>+...`), not remote URL or path;
+mismatches fail.
 
 ## Cross-repository links
 
-`.radar/contracts.json` describes contracts inside one repository. Workspace
-links describe contracts between repositories.
+`.radar/contracts.json` binds contracts within one repository. Declare a
+workspace link and consumer expectations with:
 
 ```sh
 radar workspace connect orders:openapi.json#/components/schemas/Order payments \
   --fields total,status --direction response --source src/order.ts
 ```
 
-This writes the link into the team file:
+Commit home's `.radar/workspace.json` and consumer `.radar/consumes.json`.
+Use `--direction request` for request contracts; `--into repo:PATH` chooses
+the worktree to write. The link identifies producer, consumer and direction;
+the consumer file versions its consumed fields and optional source.
 
-```json
-{"id": "order-response", "direction": "response",
- "producer": "orders:openapi.json#/components/schemas/Order", "consumer": "payments"}
-```
+| Producer / consumer | Interpretation |
+| --- | --- |
+| base / base | existing declaration |
+| candidate / base | producer ships first |
+| base / candidate | consumer ships first |
+| candidate / candidate | combined changes; decides verdict |
 
-and the consumer's expectations into `payments/.radar/consumes.json`, so they
-are versioned with the consumer's code:
+Intermediate failures are notes, not the deciding result. Unsupported links
+or removed/narrowed obligations remain NOT VERIFIED. Retiring a link requires
+a reasoned `retired` declaration. See [obligations](VERIFICATION.md#contract-obligations).
 
-```json
-{"version": 1, "consumes": [{"contract": "order-response", "fields": ["total", "status"], "source": "src/order.ts"}]}
-```
+`cross_repo.status: passed` proves only declared, supported static links.
+It does not prove HTTP behavior, deployment order or runtime interoperability.
+Without a team file, the report states per-repo checks only / zero cross-repo
+links checked. Discovered links are proposals: up to three appear in text with
+`connect` suggestions; JSON includes all. They never affect the verdict.
 
-Commit both files, as the command tells you. `--into repo:PATH` picks which
-worktree to write into.
+## Reports, records and limits
 
-The gate checks each link in four combinations:
+Repository rows identify automatic, named or base-only inputs. Selected dirty
+worktrees are listed, but committed gate inputs exclude them; JSON also includes
+other dirty worktrees. Repair attribution is a lead, not proof of blame.
+Exit codes are pass 0, fail/blocked 1, error 2. Missing repository paths error,
+while available repositories still report. A failed run-record write is shown
+as `run not recorded` and does not change the computed verdict or exit code.
 
-| Producer | Consumer | Question |
-| --- | --- | --- |
-| base | base | is the existing declaration valid? |
-| candidate | base | producer ships first |
-| base | candidate | consumer ships first |
-| candidate | candidate | everything ships |
+Records live under user cache `radar/runs/<workspace>/` (`RADAR_STATE_DIR`),
+outside repositories. One-off scopes use `_with-<repo id>-<hash>`; retain the
+latest 50 runs per workspace. `--timeout` applies separately to each repo.
 
-The candidate + candidate cell decides the verdict. Failures in the middle
-cells are shown as notes. A link Radar cannot analyze, or one whose obligation
-was removed or narrowed, leaves the gate `NOT VERIFIED`. Removing a link
-needs a `retired` entry in the team file, as with single-repository contracts.
-
-`cross_repo.status: passed` means the declared, supported static links passed.
-It says nothing about rollout order or runtime HTTP behavior.
-
-Without a team file, the headline says
-`per-repo checks only · 0 cross-repo links checked`. If discovery finds
-candidate links between changed repositories (same literal path and HTTP
-method), up to three are shown with the `connect` command to accept them. The
-JSON report has all of them. Suggestions never affect the verdict.
-
-## Output and exit codes
-
-From `bash scripts/demo_workspace_links.sh /tmp/radar`, after the producer
-branch drops `total` (long lines shortened):
-
-```text
-Radar gate: FAIL — workspace "shop" · 2 repos · 1 branch · 1/1 cross-repo links checked
-
-  orders    main@c33d6cb41643 + agent/api@db646baef75b   (named)
-  payments  main@25f1381c7788                            (base only)
-
-  ✓ orders    1 branch combined · no breaking contract change
-  ✓ payments  base only · no breaking contract change
-  ✗ link order-response  orders → payments: declared consumer field total is missing; … (candidate+candidate)
-  ! link order-response  orders → payments: producer first fails — … (candidate producer + base consumer; excluded from verdict)
-
-Repair leads (where to look, not proof of cause)
-  orders:agent/api  openapi.json  declared consumer field total is missing; …
-  payments:main  .radar/consumes.json  declares consumed fields
-
-Next: repair and commit on the branches above, then: radar gate --again
-```
-
-Each repository line shows where its branches came from: `auto: worktree`,
-`named` or `base only`. Uncommitted changes in a selected branch's worktree are
-listed; the rest are in JSON only.
-
-Exit codes are the same as for a single repository. A repository whose path is
-missing makes the run exit 2, but the other repositories are still reported.
-If saving the run record fails, the verdict and exit code do not change; the
-report says `run not recorded`.
-
-## Run records
-
-Records live in `<user cache dir>/radar/runs/<workspace>/` (`RADAR_STATE_DIR`),
-never inside a repository. A one-off `--with` scope uses
-`_with-<repo id>-<hash>`. The newest 50 runs per workspace are kept.
-`--timeout` applies to each repository separately.
-
-## Limits
-
-- A repository with symlinks or submodules cannot be combined. Register
-  submodule repositories separately.
-- Links compare schemas statically. Runtime compatibility, deployment order
-  and database migrations are out of scope.
-- Not built yet: cross-repository test scenarios that run against all
-  candidates at once, and a `--workspace FILE` mode for CI that pins every
-  repository by SHA.
+Symlinks/submodules cannot be combined; register submodule repos separately.
+Cross-repository runtime scenarios, database/rollout safety and a pinned
+`--workspace FILE` CI interface are not implemented.
+The reproducible static-link demo is `bash scripts/demo_workspace_links.sh /tmp/radar`.
