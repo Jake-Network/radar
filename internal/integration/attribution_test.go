@@ -23,28 +23,35 @@ func TestCombinationsBySize(t *testing.T) {
 }
 
 func TestCompareFailure(t *testing.T) {
-	failed := func(cases []string, d *evidence.Diagnosis) ExecutionEvidence {
-		return ExecutionEvidence{Status: model.StatusFailed, SourceAfterExecution: "unchanged", Observation: evidence.CandidateObservation{Status: model.StatusFailed, FailedCases: cases, Diagnosis: d}}
+	at := func(path string, line int) model.Provenance { return model.Provenance{Path: path, Line: line} }
+	failed := func(cases []string, d *evidence.Diagnosis, locations ...model.Provenance) ExecutionEvidence {
+		return ExecutionEvidence{Status: model.StatusFailed, SourceAfterExecution: "unchanged", Observation: evidence.CandidateObservation{Status: model.StatusFailed, FailedCases: cases, Diagnosis: d, Locations: locations}}
 	}
 	build := func(name string) *evidence.Diagnosis { return &evidence.Diagnosis{Kind: "build_failed", Name: name} }
 	original := failed([]string{"test_x", "test_z"}, nil)
+	modified := failed([]string{"test_x", "test_z"}, nil)
+	modified.SourceAfterExecution = "modified"
 	for name, c := range map[string]struct {
 		original, subset ExecutionEvidence
 		want             string
 	}{
-		"same case":              {original, failed([]string{"test_z"}, nil), SubsetReproduced},
-		"other case":             {original, failed([]string{"test_y"}, nil), SubsetDifferentFailure},
-		"no cases recognized":    {failed(nil, nil), failed([]string{"test_y"}, nil), SubsetReproduced},
-		"same build error":       {failed(nil, build("Price")), failed(nil, build("Price")), SubsetReproduced},
-		"other build error":      {failed(nil, build("Price")), failed(nil, build("Tax")), SubsetDifferentFailure},
-		"build versus test":      {original, failed([]string{"test_x"}, build("Price")), SubsetDifferentFailure},
-		"pass":                   {original, ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "unchanged"}, SubsetPassed},
-		"pass that wrote source": {original, ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "modified"}, SubsetNotComparable},
-		"timeout":                {original, ExecutionEvidence{Status: model.StatusTimeout}, SubsetNotComparable},
-		"runner missing":         {original, ExecutionEvidence{Status: model.StatusError, Observation: evidence.CandidateObservation{Diagnosis: &evidence.Diagnosis{Kind: "runner_missing", Name: "pytest"}}}, SubsetNotComparable},
-		"no recognized result":   {original, ExecutionEvidence{Status: model.StatusUnknown}, SubsetNotComparable},
+		"every case":                   {original, failed([]string{"test_z", "test_x", "test_y"}, nil), SubsetReproduced},
+		"only some cases":              {original, failed([]string{"test_x"}, nil), SubsetDifferentFailure},
+		"other case":                   {original, failed([]string{"test_y"}, nil), SubsetDifferentFailure},
+		"failure that wrote source":    {original, modified, SubsetNotComparable},
+		"original names no case":       {failed(nil, nil), failed(nil, nil), SubsetNotComparable},
+		"same build error":             {failed(nil, build("main.go"), at("main.go", 7)), failed(nil, build("main.go"), at("main.go", 7)), SubsetReproduced},
+		"same file, other line":        {failed(nil, build("main.go"), at("main.go", 7)), failed(nil, build("main.go"), at("main.go", 3)), SubsetDifferentFailure},
+		"other symbol":                 {failed(nil, build("Price"), at("a.go", 1)), failed(nil, build("Tax"), at("a.go", 1)), SubsetDifferentFailure},
+		"build error without location": {failed(nil, build("Price")), failed(nil, build("Price")), SubsetNotComparable},
+		"build versus test":            {original, failed([]string{"test_x", "test_z"}, build("Price"), at("a.go", 1)), SubsetDifferentFailure},
+		"pass":                         {original, ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "unchanged"}, SubsetPassed},
+		"pass that wrote source":       {original, ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "modified"}, SubsetNotComparable},
+		"pass of unidentified failure": {failed(nil, nil), ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "unchanged"}, SubsetPassed},
+		"timeout":                      {original, ExecutionEvidence{Status: model.StatusTimeout, SourceAfterExecution: "unchanged"}, SubsetNotComparable},
+		"no recognized result":         {original, ExecutionEvidence{Status: model.StatusUnknown, SourceAfterExecution: "unchanged"}, SubsetNotComparable},
 	} {
-		if got := compareFailure(c.original, c.subset); got != c.want {
+		if got, _ := compareFailure(c.original, c.subset); got != c.want {
 			t.Errorf("%s: got %s, want %s", name, got, c.want)
 		}
 	}

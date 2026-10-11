@@ -175,8 +175,12 @@ output and none failed. The rest are classified like this:
 When a test command fails on the combined tree for a source reason (a failed
 test or a compile error), `radar gate --run` reruns that command on fresh
 private candidates: the base alone, each branch alone, then pairs and larger
-combinations. It stops at the first size where a run fails the same way (a
-shared failed case, or the same build diagnosis):
+combinations. It stops at the first size where a run fails the same way: every
+failed case of the original, or the same build diagnosis at every original
+source line. A run that shows only part of the original failure is a different
+failure, so a failure already on the base cannot hide one a branch added. Runs
+that change the candidate source are not compared, and when the original
+failure names no failed case or source line, only passing runs count:
 
 | Outcome | Meaning |
 | --- | --- |

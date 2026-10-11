@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/evidence"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/pathutil"
 )
@@ -178,36 +179,63 @@ func runSubset(ctx context.Context, temp string, r Report, t attributionTarget, 
 	run.Status, run.ExitCode, run.OutputDigest = ev.Status, ev.ExitCode, ev.OutputDigest
 	run.FailedCases = ev.Observation.FailedCases
 	run.Error = ev.ExecutionError
-	run.Result = compareFailure(t.failure, ev)
+	var why string
+	run.Result, why = compareFailure(t.failure, ev)
+	if run.Error == "" {
+		run.Error = why
+	}
 	return run
 }
 
-// compareFailure says whether ev is the same failure as the original: the
-// same failed case, or the same build diagnosis. A different failure is not
-// a reproduction, and anything but a recognized pass is not comparable.
-func compareFailure(original, ev ExecutionEvidence) string {
-	switch {
-	case ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged":
-		return SubsetPassed
-	case ev.Status != model.StatusFailed:
-		return SubsetNotComparable
+// compareFailure says whether ev is the same failure as the original, and
+// why not when it cannot tell. Only runs that left the candidate source
+// unchanged count. A reproduction must show every failure the original showed:
+// all of its failed cases, or a build diagnosis of the same kind and name at
+// every original location. A subset that shows only part of it is a different
+// failure, so a failure already on the base cannot hide one a branch added.
+// When the original failure has no identifiable case or location, a failing
+// subset cannot be compared at all; only passes remain informative.
+func compareFailure(original, ev ExecutionEvidence) (string, string) {
+	if ev.SourceAfterExecution != "unchanged" {
+		return SubsetNotComparable, "the command changed the candidate source or it could not be checked"
+	}
+	switch ev.Status {
+	case model.StatusPassed:
+		return SubsetPassed, ""
+	case model.StatusFailed:
+	default:
+		return SubsetNotComparable, ""
 	}
 	want, got := original.Observation, ev.Observation
+	if !identifiable(want) {
+		return SubsetNotComparable, "the original failure names no failed case or source location to compare"
+	}
 	if want.Diagnosis != nil || got.Diagnosis != nil {
-		if want.Diagnosis != nil && got.Diagnosis != nil && want.Diagnosis.Kind == got.Diagnosis.Kind && want.Diagnosis.Name == got.Diagnosis.Name {
-			return SubsetReproduced
+		if want.Diagnosis == nil || got.Diagnosis == nil || want.Diagnosis.Kind != got.Diagnosis.Kind || want.Diagnosis.Name != got.Diagnosis.Name {
+			return SubsetDifferentFailure, ""
 		}
-		return SubsetDifferentFailure
+		for _, l := range want.Locations {
+			if !slices.ContainsFunc(got.Locations, func(g model.Provenance) bool { return g.Path == l.Path && g.Line == l.Line }) {
+				return SubsetDifferentFailure, ""
+			}
+		}
+		return SubsetReproduced, ""
 	}
-	if len(want.FailedCases) == 0 {
-		return SubsetReproduced
-	}
-	for _, c := range got.FailedCases {
-		if slices.Contains(want.FailedCases, c) {
-			return SubsetReproduced
+	for _, c := range want.FailedCases {
+		if !slices.Contains(got.FailedCases, c) {
+			return SubsetDifferentFailure, ""
 		}
 	}
-	return SubsetDifferentFailure
+	return SubsetReproduced, ""
+}
+
+// identifiable reports whether a failure can be recognized again: by failed
+// case names, or by a diagnosis with at least one located line.
+func identifiable(o evidence.CandidateObservation) bool {
+	if o.Diagnosis != nil {
+		return slices.ContainsFunc(o.Locations, func(l model.Provenance) bool { return l.Path != "" && l.Line > 0 })
+	}
+	return len(o.FailedCases) > 0
 }
 
 // unavailableDir reports a working directory that a subset does not have,

@@ -172,3 +172,39 @@ func TestGateRejectsAttributionRunsOutOfRange(t *testing.T) {
 		t.Fatal(code, errs)
 	}
 }
+
+func TestGateBaseRunThatWritesSourceIsNotABaseFailure(t *testing.T) {
+	requirePython(t)
+	// On the base the test rewrites backend.py before failing; that run is
+	// not trustworthy, so the failure must not be called pre-existing.
+	root, agent := agentRepo(t, map[string]string{
+		"backend.py":    "def price():\n    return 1\n",
+		"test_price.py": "import unittest\nfrom pathlib import Path\nfrom backend import price\nclass Price(unittest.TestCase):\n    def test_price(self):\n        if price() == 1:\n            Path('backend.py').write_text('def price():\\n    return 9\\n')\n        self.assertEqual(price(), 5)\n",
+	})
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("agent-docs", map[string]string{"NOTES.md": "notes\n"})
+	a := executionFailure(t, invoke(t, root, 1, "gate", "--run"))
+	o := a["observed"].(map[string]any)
+	if o["outcome"] == "base" || results(o)[0] != "not_comparable" {
+		t.Fatal("a source-modifying base run is not comparable", o)
+	}
+}
+
+func TestGateBaseFailureDoesNotHideABranchFailure(t *testing.T) {
+	requirePython(t)
+	// The base already fails test_old; agent-backend adds a test_new failure.
+	root, agent := agentRepo(t, map[string]string{
+		"backend.py":    "def price():\n    return 1\n",
+		"test_price.py": "import unittest\nfrom backend import price\nclass Price(unittest.TestCase):\n    def test_old(self):\n        self.fail('known')\n    def test_new(self):\n        self.assertEqual(price(), 1)\n",
+	})
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("agent-docs", map[string]string{"NOTES.md": "notes\n"})
+	a := executionFailure(t, invoke(t, root, 1, "gate", "--run"))
+	o := a["observed"].(map[string]any)
+	if o["outcome"] == "base" || results(o)[0] != "different_failure" {
+		t.Fatal("the base shows only part of the failure", o)
+	}
+	if !strings.Contains(strings.Join(leadBranches(a), ","), "agent-backend") {
+		t.Fatal("agent-backend stays a lead", a)
+	}
+}
