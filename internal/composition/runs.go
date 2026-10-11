@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -122,27 +123,98 @@ func OpenStore(key string) (Store, error) {
 
 var runPattern = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}\.[0-9]{3}Z-[0-9a-f]{6}$`)
 
+const runTimeLayout = "20060102T150405.000Z"
+
 func newRunID(now time.Time) string {
 	b := make([]byte, 3)
 	rand.Read(b)
-	return now.UTC().Format("20060102T150405.000Z") + "-" + hex.EncodeToString(b)
+	return now.UTC().Format(runTimeLayout) + "-" + hex.EncodeToString(b)
+}
+
+// reserveRunTime gives every writer an ordered logical timestamp, even when
+// wall time repeats or moves backwards. Exclusive directory creation also
+// serializes allocation across processes, without exposing partial records.
+// A crashed writer's reservation is harmless: later saves advance beyond it.
+func (s Store) reserveRunTime(now time.Time) (time.Time, func(), error) {
+	for {
+		next := now.UTC().Truncate(time.Millisecond)
+		entries, err := os.ReadDir(s.Dir)
+		if err != nil {
+			return time.Time{}, nil, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			stamp := ""
+			if runPattern.MatchString(name) {
+				stamp, _, _ = strings.Cut(name, "-")
+			} else if strings.HasPrefix(name, ".reserve-") {
+				stamp = strings.TrimPrefix(name, ".reserve-")
+			}
+			previous, err := time.Parse(runTimeLayout, stamp)
+			if err == nil && !previous.Before(next) {
+				next = previous.Add(time.Millisecond)
+			}
+		}
+		release, err := s.tryReserveRunTime(next)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		} else if err != nil {
+			return time.Time{}, nil, err
+		}
+		return next, release, nil
+	}
+}
+
+func (s Store) tryReserveRunTime(next time.Time) (func(), error) {
+	reservation := filepath.Join(s.Dir, ".reserve-"+next.Format(runTimeLayout))
+	if err := os.Mkdir(reservation, 0o700); err != nil {
+		return nil, err
+	}
+	release := func() { _ = os.Remove(reservation) }
+	// A writer can complete and release this timestamp between the initial
+	// scan and our mkdir. Recheck publication while holding the reservation.
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && runPattern.MatchString(entry.Name()) {
+			stamp, _, _ := strings.Cut(entry.Name(), "-")
+			previous, err := time.Parse(runTimeLayout, stamp)
+			if err == nil && !previous.Before(next) {
+				release()
+				return nil, os.ErrExist
+			}
+		}
+	}
+	return release, nil
 }
 
 // Save writes the record and report under a new run ID and keeps the newest
 // KeepRuns runs. Each run is written to a private
 // directory and renamed into place, so concurrent runs never overwrite each
 // other and readers never see a partial run. report is called once the run
-// ID is assigned, so the stored report can carry it.
+// ID is assigned, so the stored report can carry it. Run IDs use ordered logical
+// timestamps; CreatedAt retains wall time when the clock moves backwards.
 func (s Store) Save(rec *Record, report func() any) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
 	now := time.Now()
+	orderedTime, release, err := s.reserveRunTime(now)
+	if err != nil {
+		return fmt.Errorf("run records: reserve ordering: %w", err)
+	}
+	defer release()
 	rec.Version = RecordVersion
 	rec.CreatedAt = now.UTC().Format(time.RFC3339)
 	var final string
 	for {
-		rec.RunID = newRunID(now)
+		rec.RunID = newRunID(orderedTime)
 		final = filepath.Join(s.Dir, rec.RunID)
 		_, err := os.Stat(final)
 		if errors.Is(err, os.ErrNotExist) {
