@@ -1,0 +1,25 @@
+?   	github.com/Jake-Network/radar/cmd/radar	[no test files]
+ok  	github.com/Jake-Network/radar/internal/checkpoint	0.833s
+ok  	github.com/Jake-Network/radar/internal/cli	132.143s
+ok  	github.com/Jake-Network/radar/internal/composition	17.737s
+ok  	github.com/Jake-Network/radar/internal/contractgraph	0.038s
+ok  	github.com/Jake-Network/radar/internal/contracts	2.771s
+ok  	github.com/Jake-Network/radar/internal/discovery	1.699s
+ok  	github.com/Jake-Network/radar/internal/evidence	8.190s
+ok  	github.com/Jake-Network/radar/internal/gate	0.008s
+ok  	github.com/Jake-Network/radar/internal/git	1.349s
+ok  	github.com/Jake-Network/radar/internal/graph	0.010s
+ok  	github.com/Jake-Network/radar/internal/indexer	0.237s
+ok  	github.com/Jake-Network/radar/internal/integration	43.814s
+ok  	github.com/Jake-Network/radar/internal/jsonptr	0.007s
+ok  	github.com/Jake-Network/radar/internal/languages	0.070s
+ok  	github.com/Jake-Network/radar/internal/model	0.016s
+ok  	github.com/Jake-Network/radar/internal/onboarding	7.782s
+ok  	github.com/Jake-Network/radar/internal/pathutil	0.030s
+ok  	github.com/Jake-Network/radar/internal/planning	0.036s
+ok  	github.com/Jake-Network/radar/internal/project	0.030s
+ok  	github.com/Jake-Network/radar/internal/storage	1.156s
+ok  	github.com/Jake-Network/radar/internal/termui	0.011s
+ok  	github.com/Jake-Network/radar/internal/testselection	1.226s
+ok  	github.com/Jake-Network/radar/internal/verification	2.502s
+ok  	github.com/Jake-Network/radar/internal/workspace	0.515s

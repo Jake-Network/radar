@@ -78,3 +78,24 @@ analysis.
 Full index plus SQLite write on Linux, warm cache: about 0.37 s for Radar's own
 source (109 files), 0.2 s for a generated 1,000-file TypeScript import chain.
 There is no incremental indexing yet, and no measurement on large monorepos.
+
+## Independent external validation
+
+The Docker-only runner in [benchmarks/external](../benchmarks/external/README.md)
+extends the existing manifest evaluator with independently executed upstream
+baseline, branch and merged-candidate suites, immutable images and frozen input
+provenance. It represents pinned Click, Hono, chi and a Python/TypeScript
+full-stack template. Development fixtures are excluded from external metrics.
+
+See [the baseline audit](EXTERNAL_VALIDATION_AUDIT.md) and
+[the measured report](EXTERNAL_VALIDATION_REPORT.md) for actual observations,
+small-sample denominators, unavailable environments, false blocks, cache
+conditions, inventory gaps and limitations. File-selection reduction is kept
+separate from measured runtime. Native full-suite ground truth and supplementary
+file-oracle measurements have separate validity; a split-process oracle failure
+cannot erase a successfully observed native suite.
+
+The manual run requires protected disposable Docker execution. CI runs the
+offline harness safety/measurement regressions, not external repository code.
+No general reliability or performance claim follows from two controlled
+integration-only challenges.
