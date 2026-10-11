@@ -105,6 +105,9 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		data, _ := json.Marshal(ev)
 		ev.ID = model.StableID("integration-evidence-v1", string(data))
 		r.Executions = append(r.Executions, ev)
+		if ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged" {
+			confirmExecutedRunner(r.Selection, selection)
+		}
 		if o.Suite == "" {
 			r.Execution = &r.Executions[len(r.Executions)-1]
 		}
@@ -175,6 +178,38 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		r.Checks = append(r.Checks, Check{ID: "test_selection", Status: status, Evidence: model.Inferred, Explanation: fmt.Sprintf("Mode %s selected %d of %d candidate commands (%d omitted, %d uncovered changed files). %s", r.Selection.Mode, len(r.Selection.Commands), r.Selection.Candidates, len(r.Selection.Omitted), len(r.Selection.Uncovered), message)})
 	}
 	return nil
+}
+
+// A planning-time PATH probe cannot establish candidate-local runner
+// availability. Only recognized passing execution against unchanged source
+// resolves this uncertainty; omitted commands and other coverage gaps remain.
+func confirmExecutedRunner(s *testselection.Selection, c testselection.Command) {
+	if s == nil {
+		return
+	}
+	blocker := "required command runner unavailable or unverified: " + strings.Join(c.Command, " ")
+	remaining := s.Blocking[:0]
+	resolved := false
+	for _, reason := range s.Blocking {
+		if !resolved && !c.ToolAvailable && c.Tier == testselection.TierRequired && reason == blocker {
+			resolved = true
+			continue
+		}
+		remaining = append(remaining, reason)
+	}
+	s.Blocking = remaining
+	for i := range s.Commands {
+		if s.Commands[i].ID == c.ID {
+			s.Commands[i].ToolAvailable = true
+		}
+	}
+	if resolved && len(s.Blocking) == 0 {
+		if len(s.Uncovered) > 0 {
+			s.Explanation = "Selected commands have a direct relationship to the change, but some changed files have no established test relationship; they are listed as uncovered."
+		} else {
+			s.Explanation = "Every changed source file has a selected direct or fallback test relationship; this is static evidence, not complete behavioral coverage."
+		}
+	}
 }
 
 func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvidence {
