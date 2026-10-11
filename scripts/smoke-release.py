@@ -51,4 +51,5 @@ with tempfile.TemporaryDirectory(prefix="radar-native-smoke-") as tmp:
     candidate = json.loads(radar("gate", "smoke/feature", "--base", base, "--policy", str(policy)))
     assert candidate["gate"]["verdict"] == "pass", candidate
     assert next(c for c in candidate["checks"] if c["id"] == "integration_execution")["status"] == "unknown"
-print("Native release smoke passed: version, doctor, agent dry-run, four actual embedded parsers, index counts, static gate positional flags")
+subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("agent-hooks-test.py")), binary], check=True)
+print("Native release smoke passed: version, doctor, agent dry-run, four actual embedded parsers, index counts, static gate positional flags, installed native agent hooks")

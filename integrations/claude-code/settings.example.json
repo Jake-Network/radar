@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/radar-verify-stop.sh",
-            "timeout": 120
+            "command": "radar hook stop --agent claude",
+            "timeout": 30
           }
         ]
       }

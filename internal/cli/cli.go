@@ -40,11 +40,12 @@ func init() {
 }
 
 type app struct {
-	ctx         context.Context
-	root        string // analyzed repository
-	stateRoot   string // directory holding .radar state (shared by linked worktrees)
-	out, errout io.Writer
-	machine     bool
+	ctx          context.Context
+	root         string // analyzed repository
+	rootExplicit bool   // global --root overrides agent event cwd
+	stateRoot    string // directory holding .radar state (shared by linked worktrees)
+	out, errout  io.Writer
+	machine      bool
 	// live is where transient --run progress goes: stderr on a terminal.
 	live  io.Writer
 	store *storage.Store
@@ -54,6 +55,7 @@ type app struct {
 // 1 a supported check failed, 2 invocation or analysis error.
 func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	rootArg := "."
+	rootExplicit := false
 	machine := false
 	colorArg := string(termui.Auto)
 	rest := []string{}
@@ -66,6 +68,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 		case args[i] == "--json":
 			machine = true
 		case args[i] == "--root":
+			rootExplicit = true
 			i++
 			if i >= len(args) {
 				fmt.Fprintln(errout, "--root requires a path")
@@ -73,6 +76,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 			}
 			rootArg = args[i]
 		case strings.HasPrefix(args[i], "--root="):
+			rootExplicit = true
 			rootArg = strings.TrimPrefix(args[i], "--root=")
 		case args[i] == "--color":
 			i++
@@ -102,7 +106,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 	if liveOK {
 		live = errout
 	}
-	a := &app{ctx: ctx, out: out, errout: errout, machine: machine, live: live}
+	a := &app{ctx: ctx, out: out, errout: errout, machine: machine, live: live, rootExplicit: rootExplicit}
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		all := false
 		if len(rest) > 1 {

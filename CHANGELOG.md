@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.2.0
+
+* Native Claude Code and Codex Stop hooks installed by default with
+  `radar setup claude|codex|both`. No active plan or prompt invocation is
+  required. Hooks preview saved changes in private Git state, return supported
+  static failures for one bounded repair continuation, and report missing
+  evidence without claiming a test pass. They never run repository code.
+* Current-branch scope by default, with explicit participating branches and base
+  persisted using setup `--branches` and `--base`. Installation preserves
+  unrelated hooks, rejects conflicting or duplicate definitions and supports
+  `--dry-run` and `--hook=false` (skip new hook installation).
+* Portable hook-only native plugin packages and local marketplace catalogs for
+  both agents. Codex requires explicit trust of the installed hook definition;
+  packages require the Radar binary on PATH. Native installation and installed
+  hook behavior have executable regressions; no authenticated model session is
+  claimed by these checks.
+
 * Continuous single-repository verification with `radar watch`, including
   opt-in private snapshots of saved changes with `--include-dirty`. JSONL
   events invalidate stale results; unsaved editor buffers and ignored

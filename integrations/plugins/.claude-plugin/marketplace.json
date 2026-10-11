@@ -1,0 +1,10 @@
+{
+  "name": "radar-hooks",
+  "description": "Portable Radar agent hooks; requires the Radar CLI on PATH.",
+  "owner": {"name": "Radar contributors"},
+  "plugins": [{
+    "name": "radar",
+    "source": "./claude",
+    "description": "Static Radar Stop verification; requires radar on PATH."
+  }]
+}

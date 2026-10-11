@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "radar hook stop --agent codex --timeout 20s",
+        "timeout": 25
+      }]
+    }]
+  }
+}

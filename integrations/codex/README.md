@@ -1,6 +1,6 @@
 # Codex integration
 
-Run `radar setup codex` (or `radar setup --agent codex`) inside the project to install its skill and project MCP configuration. Use `--dry-run` to inspect changes. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration and restart Codex. No global configuration is written.
+Run `radar setup codex` (or `radar setup --agent codex`) inside the project to install a native Stop hook, its skill and project MCP configuration. The hook in `.codex/hooks.json` invokes `radar hook stop --agent codex`, previews saved changes on the current branch and returns supported static failures for one repair continuation. Select parallel branches with `--base main --branches agent-api,agent-client`. It runs no tests and requires no active plan. Use `--dry-run` to inspect changes or `--hook=false` to install only the skill and MCP. Radar preserves unrelated settings and refuses conflicting Radar entries. Put the binary on PATH, trust the project configuration, restart Codex, then use `/hooks` to review and trust the exact installed hook definition. No global configuration is written. See [native hooks and plugin installation](../../docs/AGENT_HOOKS.md).
 
 For manual skill installation:
 
@@ -17,8 +17,8 @@ Add this repository instruction when useful:
 > and security claims explicit. Honor the user's existing task authorization.
 
 The CLI requires no Codex account or API key. Other agents can consume the same
-JSON outputs and plan artifacts. This is an installable instruction integration,
-not an automatic agent process controller.
+JSON outputs and plan artifacts. The native hook runs at response boundaries;
+the skill and MCP tools support additional investigation and verification.
 
 Use a committed baseline for design, then keep that baseline while selecting a
 later implementation SHA for verification. The skill documents explicit approval

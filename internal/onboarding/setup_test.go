@@ -47,7 +47,7 @@ func TestSetupBothIdempotentAndPreservesSettings(t *testing.T) {
 	if e := os.Mkdir(filepath.Join(r, "sub"), 0700); e != nil {
 		t.Fatal(e)
 	}
-	op := Options{Agent: "both"}
+	op := Options{Agent: "both", Hook: true}
 	a, e := Setup(context.Background(), filepath.Join(r, "sub"), op)
 	if e != nil {
 		t.Fatal(e)
@@ -133,7 +133,7 @@ func TestMCPAndHookConflictMerging(t *testing.T) {
 	}
 }
 func TestInvalidInputs(t *testing.T) {
-	for _, o := range []Options{{Agent: "unknown"}, {Agent: "codex", Hook: true}} {
+	for _, o := range []Options{{Agent: "unknown"}, {Agent: "codex", Hook: true, Base: "main\n"}, {Agent: "codex", Base: "main"}} {
 		if _, e := Setup(context.Background(), realTempDir(t), o); e == nil {
 			t.Fatal(o)
 		}
@@ -182,5 +182,112 @@ func TestQuotedCodexMCPDeclarationsPreserved(t *testing.T) {
 				t.Fatal("wrote partial setup", e)
 			}
 		})
+	}
+}
+
+func TestNativeHooksPreserveLegacyAndUnrelatedConfiguration(t *testing.T) {
+	root := fixtureRoot(t)
+	legacy := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/radar-verify-stop.sh","timeout":120}]},{"hooks":[{"type":"command","command":"echo radar docs"}]}]},"permissions":{"allow":["Read"]}}`
+	put(t, root, ".claude/settings.json", legacy)
+	put(t, root, ".codex/hooks.json", `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo hello"}]}]}}`)
+	op := Options{Agent: "both", Hook: true, Base: "main", Branches: "agent/a,agent/b"}
+	if _, err := Setup(context.Background(), root, op); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{".claude/settings.json", ".codex/hooks.json"} {
+		data, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil || !strings.Contains(string(data), "radar hook stop --agent") || !strings.Contains(string(data), "--base 'main' --branches 'agent/a,agent/b'") {
+			t.Fatalf("%s: %s %v", path, data, err)
+		}
+		if path == ".claude/settings.json" && (!strings.Contains(string(data), "radar-verify-stop.sh") || !strings.Contains(string(data), "echo radar docs") || !strings.Contains(string(data), "permissions")) {
+			t.Fatalf("lost legacy/unrelated settings: %s", data)
+		}
+		if path == ".codex/hooks.json" && !strings.Contains(string(data), "SessionStart") {
+			t.Fatalf("lost unrelated hook: %s", data)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".claude/hooks/radar-verify-stop.sh")); !os.IsNotExist(err) {
+		t.Fatalf("new install unexpectedly creates bash wrapper: %v", err)
+	}
+	r, err := Setup(context.Background(), root, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range r.Changes {
+		if change.Action != "unchanged" {
+			t.Fatal(change)
+		}
+	}
+}
+
+func TestNativeHookConflictValidationBeforeWrites(t *testing.T) {
+	for _, config := range []string{
+		`{"hooks":{"Stop":{}}}`,
+		`{"hooks":{"Stop":[null]}}`,
+		`{"hooks":{"Stop":[{"hooks":{}}]}}`,
+		`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":7}]}]}}`,
+		`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"radar hook stop --agent codex --timeout 2s","timeout":30}]}]}}`,
+		`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"radar hook stop --agent codex","timeout":30}]},{"hooks":[{"type":"command","command":"radar hook stop --agent codex","timeout":30}]}]}}`,
+		`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"custom radar-verify-stop.sh","timeout":120}]}]}}`,
+		`{"hooks":null}`,
+		`{} {}`,
+		`{"hooks":{"Stop":[]},"hooks":{"Stop":[]}}`,
+		`{"hooks":{"Stop":[],"Stop":[]}}`,
+	} {
+		t.Run(config, func(t *testing.T) {
+			root := fixtureRoot(t)
+			put(t, root, ".codex/hooks.json", config)
+			if _, err := Setup(context.Background(), root, Options{Agent: "both", Hook: true}); err == nil {
+				t.Fatal("invalid or conflicting hook accepted")
+			}
+			if _, err := os.Stat(filepath.Join(root, ".radar")); !os.IsNotExist(err) {
+				t.Fatalf("partial writes: %v", err)
+			}
+			data, _ := os.ReadFile(filepath.Join(root, ".codex/hooks.json"))
+			if string(data) != config {
+				t.Fatal("conflict overwritten")
+			}
+		})
+	}
+}
+
+func TestHookPathsRejectSymlinks(t *testing.T) {
+	for _, agent := range []string{"claude", "codex"} {
+		root := fixtureRoot(t)
+		put(t, root, "."+agent+"/placeholder", "")
+		path := ".claude/settings.json"
+		if agent == "codex" {
+			path = ".codex/hooks.json"
+		}
+		target := filepath.Join(realTempDir(t), "target.json")
+		if err := os.WriteFile(target, []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(root, path)); err != nil {
+			t.Skip(err)
+		}
+		if _, err := Setup(context.Background(), root, Options{Agent: agent, Hook: true}); err == nil {
+			t.Fatal("symlink hook configuration accepted")
+		}
+		if _, err := os.Stat(filepath.Join(root, ".radar")); !os.IsNotExist(err) {
+			t.Fatal("partial writes", err)
+		}
+	}
+}
+
+func TestHookScopeShellQuoting(t *testing.T) {
+	value := "main'; printf unsafe; #"
+	command := hookCommand("claude", Options{Base: value})
+	// Exercise the actual shell parsing path with a stand-in radar executable.
+	root := realTempDir(t)
+	put(t, root, "radar", "#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+	if err := os.Chmod(filepath.Join(root, "radar"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = append(os.Environ(), "PATH="+root)
+	data, err := cmd.CombinedOutput()
+	if err != nil || string(data) != "hook\nstop\n--agent\nclaude\n--base\n"+value+"\n" {
+		t.Fatalf("unsafe shell parsing: %s %v", data, err)
 	}
 }

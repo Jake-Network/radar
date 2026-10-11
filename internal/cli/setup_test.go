@@ -31,3 +31,26 @@ func TestSetupCLI(t *testing.T) {
 	put(t, root, ".mcp.json", `{"mcpServers":{"radar":{"command":"custom"}}}`)
 	invoke(t, root, 2, "setup", "--agent", "claude")
 }
+
+func TestSetupDefaultNativeHooksAndOptOut(t *testing.T) {
+	for _, agent := range []string{"claude", "codex", "both"} {
+		root := realTempDir(t)
+		gitTest(t, root, "init", "-q")
+		invoke(t, root, 0, "setup", agent)
+		for _, path := range []string{".claude/settings.json", ".codex/hooks.json"} {
+			if (agent == "claude" && path == ".codex/hooks.json") || (agent == "codex" && path == ".claude/settings.json") {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
+				t.Fatalf("%s missing default hook %s: %v", agent, path, err)
+			}
+		}
+	}
+	root := realTempDir(t)
+	invoke(t, root, 0, "setup", "both", "--hook=false")
+	for _, path := range []string{".claude/settings.json", ".codex/hooks.json"} {
+		if _, err := os.Stat(filepath.Join(root, path)); !os.IsNotExist(err) {
+			t.Fatalf("opt-out wrote hook %s: %v", path, err)
+		}
+	}
+}

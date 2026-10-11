@@ -66,6 +66,7 @@ func init() {
 	commands = []command{
 		gateCommand(),
 		watchCommand(),
+		hookCommand(),
 		workspaceCommand(),
 		checkCommand(),
 		discoveryCommand(),

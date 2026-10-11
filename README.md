@@ -99,7 +99,7 @@ Radar's sanitized run.
 Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.1/scripts/install-release.sh | bash -s -- --version v0.1.1
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.2.0/scripts/install-release.sh | bash -s -- --version v0.2.0
 ```
 
 This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
@@ -114,14 +114,19 @@ Windows binaries are not published yet: Windows Git defaults such as
 `core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go install github.com/Jake-Network/radar/cmd/radar@v0.1.1
+git clone --branch v0.2.0 --depth 1 https://github.com/Jake-Network/radar.git
+cd radar
+go build -trimpath -o radar ./cmd/radar
 ```
+
+Use the GitHub binary installer or tag checkout for 0.2.0. The version's
+earlier source commit was cached by the Go module proxy before the hook release;
+`go install ...@v0.2.0` can therefore install that earlier implementation.
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
-This page describes the main branch. Watch and other unreleased changes are
-listed in the [changelog](CHANGELOG.md) and are not included in v0.1.1.
-With v0.1.1, use `radar setup --agent claude` instead of `radar setup claude`.
+The 0.2.0 release adds continuous saved-change previews and installable native
+coding-agent Stop hooks. See the [changelog](CHANGELOG.md) for the release scope.
 
 ## First run in your repository
 
@@ -177,8 +182,24 @@ needs `git fetch --unshallow`. Both errors say so.
 
 ## Agents
 
-`radar setup claude` (or `codex`, or `both`) installs a project skill and the
-MCP server. Agents then call `radar_gate` (or `radar gate --json`) before they
+`radar setup claude` (or `codex`, or `both`) installs a native Stop hook,
+a project skill and the MCP server. The hook checks saved changes before
+each response ends and returns supported static failures to the agent for
+one repair continuation. It needs no structured plan and runs no repository
+code. By default it previews only the current branch; select parallel work
+explicitly when installing:
+
+```sh
+radar setup both --base main --branches agent-api,agent-client
+```
+
+Restart the agent after setup. In Codex, review and trust the installed
+definition with `/hooks`; installation alone does not activate untrusted hooks.
+Use `--hook=false` to install only the skill and MCP configuration. Portable
+native plugin packages and their installation commands are documented in
+[AGENT_HOOKS](docs/AGENT_HOOKS.md).
+
+Agents can also call `radar_gate` (or `radar gate --json`) before they
 propose a merge, read `gate.verdict` and `next`, repair, commit and recheck.
 Agents never run `--run` on their own: it executes repository code, so a
 person authorizes it. `radar help agents` prints the agent contract, and

@@ -26,6 +26,10 @@ jobs:
       - run: go test ./...
       - run: go test -race ./...
       - run: go build -o /tmp/radar ./cmd/radar
+      - name: Installed coding-agent hooks regression
+        run: python3 scripts/agent-hooks-test.py /tmp/radar
+      - name: Native plugin package wiring
+        run: python3 -m unittest discover -s integrations/plugins -p 'test_*.py'
       - name: GitHub Actions PR driver regression
         env:
           RADAR_TEST_BIN: /tmp/radar

@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"unicode"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/project"
@@ -24,8 +25,9 @@ import (
 var assets embed.FS
 
 type Options struct {
-	Agent        string
-	DryRun, Hook bool
+	Agent          string
+	Base, Branches string
+	DryRun, Hook   bool
 }
 type Change struct {
 	Path   string `json:"path"`
@@ -51,8 +53,13 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 	if o.Agent != "codex" && o.Agent != "claude" && o.Agent != "both" {
 		return r, fmt.Errorf("--agent must be codex, claude or both")
 	}
-	if o.Hook && o.Agent == "codex" {
-		return r, fmt.Errorf("--hook requires --agent claude or both")
+	for _, value := range []string{o.Base, o.Branches} {
+		if strings.ContainsFunc(value, unicode.IsControl) {
+			return r, fmt.Errorf("hook base and branches must not contain control characters")
+		}
+	}
+	if !o.Hook && (o.Base != "" || o.Branches != "") {
+		return r, fmt.Errorf("--base and --branches require hooks; remove --hook=false")
 	}
 	root, err := project.Root(selected)
 	if err != nil {
@@ -77,7 +84,7 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 	if !r.Tools["radar"] {
 		r.Diagnostics = append(r.Diagnostics, "Put the radar binary on PATH before starting agent MCP servers or hooks.")
 	}
-	r.Diagnostics = append(r.Diagnostics, "Codex project MCP configuration requires a trusted project; Claude may prompt to approve the project MCP server. Restart the agent to load skills and MCP.")
+	r.Diagnostics = append(r.Diagnostics, "Codex project MCP configuration requires a trusted project; Claude may prompt to approve the project MCP server. Restart the agent to load skills, MCP, and hooks.")
 	edits := []edit{}
 	add := func(path string, transform func([]byte) ([]byte, error), mode os.FileMode) error {
 		full, e := project.SafePath(root, path)
@@ -132,6 +139,12 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 		if err = add(".codex/config.toml", codexMCP, 0600); err != nil {
 			return r, err
 		}
+		if o.Hook {
+			if err = add(".codex/hooks.json", func(old []byte) ([]byte, error) { return agentHookCommand(old, "codex", hookCommand("codex", o)) }, 0600); err != nil {
+				return r, err
+			}
+			r.Diagnostics = append(r.Diagnostics, "In Codex, open /hooks and trust the exact Radar hook definition before it can run; project trust alone does not approve hooks.")
+		}
 	}
 	if o.Agent == "claude" || o.Agent == "both" {
 		if err = install(".claude/skills/radar/SKILL.md", "claude.md", 0600); err != nil {
@@ -141,17 +154,13 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 			return r, err
 		}
 		if o.Hook {
-			if !r.Tools["bash"] {
-				return r, fmt.Errorf("--hook requires bash; MCP and skills work without it")
-			}
-			if err = install(".claude/hooks/radar-verify-stop.sh", "stop.sh", 0700); err != nil {
+			if err = add(".claude/settings.json", func(old []byte) ([]byte, error) { return agentHookCommand(old, "claude", hookCommand("claude", o)) }, 0600); err != nil {
 				return r, err
 			}
-			if err = add(".claude/settings.json", claudeHook, 0600); err != nil {
-				return r, err
-			}
-			r.Diagnostics = append(r.Diagnostics, "Stop hook is bounded to one repair response; select a plan via .radar/active-plan or RADAR_PLAN. No plan means no blocking verification.")
 		}
+	}
+	if o.Hook {
+		r.Diagnostics = append(r.Diagnostics, "Stop hooks run bounded static checks of the current branch and saved staged, unstaged, and untracked changes by default; --branches selects an explicit branch combination. They do not execute project tests. Unsaved editor buffers are excluded. Existing legacy plan hooks are preserved and run alongside the new hook; review them separately if you want to remove legacy plan verification.")
 	}
 	if o.DryRun {
 		return r, nil
@@ -257,9 +266,55 @@ func codexMCP(old []byte) ([]byte, error) {
 	}
 	return append(append(append([]byte{}, old...), '\n'), []byte(codexBlock)...), nil
 }
+
+// Reject duplicate object keys before decoding configuration into maps, where
+// a duplicate could otherwise hide a user-owned entry that setup overwrites.
+func uniqueJSONKeys(data []byte) error {
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.UseNumber()
+	var value func() error
+	value = func() error {
+		token, err := d.Token()
+		if err != nil {
+			return err
+		}
+		switch token {
+		case json.Delim('{'):
+			keys := map[string]bool{}
+			for d.More() {
+				key, err := d.Token()
+				if err != nil {
+					return err
+				}
+				name, ok := key.(string)
+				if !ok || keys[name] {
+					return fmt.Errorf("configuration contains duplicate object key %q", name)
+				}
+				keys[name] = true
+				if err := value(); err != nil {
+					return err
+				}
+			}
+			_, err = d.Token()
+		case json.Delim('['):
+			for d.More() {
+				if err := value(); err != nil {
+					return err
+				}
+			}
+			_, err = d.Token()
+		}
+		return err
+	}
+	return value()
+}
+
 func jsonObject(old []byte) (map[string]any, error) {
 	m := map[string]any{}
 	if old != nil {
+		if err := uniqueJSONKeys(old); err != nil {
+			return nil, err
+		}
 		d := json.NewDecoder(bytes.NewReader(old))
 		d.UseNumber()
 		if e := d.Decode(&m); e != nil {
@@ -310,7 +365,31 @@ func claudeMCP(old []byte) ([]byte, error) {
 	servers["radar"] = want
 	return encode(m)
 }
-func claudeHook(old []byte) ([]byte, error) {
+
+var radarHookCommand = regexp.MustCompile(`(?:^|[\s/\\"'])radar(?:\.exe)?["']?\s+hook(?:\s|$)`)
+
+func claudeHook(old []byte) ([]byte, error) { return agentHook(old, "claude") }
+func codexHook(old []byte) ([]byte, error)  { return agentHook(old, "codex") }
+
+func hookCommand(agent string, o Options) string {
+	command := "radar hook stop --agent " + agent
+	for _, arg := range []struct{ flag, value string }{{"--base", o.Base}, {"--branches", o.Branches}} {
+		if arg.value != "" {
+			// Native agent command hooks invoke a shell. Always quote user values,
+			// including single quotes, so refs cannot become shell instructions.
+			command += " " + arg.flag + " '" + strings.ReplaceAll(arg.value, "'", "'\"'\"'") + "'"
+		}
+	}
+	return command
+}
+
+func agentHook(old []byte, agent string) ([]byte, error) {
+	return agentHookCommand(old, agent, hookCommand(agent, Options{}))
+}
+
+// agentHookCommand preserves unrelated entries and exact legacy plan hooks.
+// Modified or duplicate Radar hooks require deliberate manual merging.
+func agentHookCommand(old []byte, agent, commandText string) ([]byte, error) {
 	m, e := jsonObject(old)
 	if e != nil {
 		return nil, e
@@ -327,15 +406,55 @@ func claudeHook(old []byte) ([]byte, error) {
 			return nil, fmt.Errorf("hooks.Stop must be an array")
 		}
 	}
-	want := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/radar-verify-stop.sh", "timeout": json.Number("120")}}}
+	want := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": commandText, "timeout": json.Number("30")}}}
+	found, legacy := 0, 0
 	for _, v := range stops {
-		if reflect.DeepEqual(v, want) {
-			return old, nil
+		entry, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("hooks.Stop entries must be objects")
 		}
-		b, _ := json.Marshal(v)
-		if strings.Contains(string(b), "radar-verify-stop") {
-			return nil, fmt.Errorf("existing Radar Stop hook differs; merge manually")
+		commands, ok := entry["hooks"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("hooks.Stop entry hooks must be an array")
 		}
+		for _, raw := range commands {
+			command, ok := raw.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("hooks.Stop hooks must be objects")
+			}
+			kind, ok := command["type"].(string)
+			if !ok || kind == "" {
+				return nil, fmt.Errorf("hooks.Stop hook type must be a nonempty string")
+			}
+			if kind != "command" {
+				continue
+			}
+			text, ok := command["command"].(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return nil, fmt.Errorf("hooks.Stop command must be a nonempty string")
+			}
+			if strings.Contains(text, "radar-verify-stop") {
+				legacy++
+				oldCommand := `bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/radar-verify-stop.sh`
+				oldDirect := `"$CLAUDE_PROJECT_DIR"/.claude/hooks/radar-verify-stop.sh`
+				if agent != "claude" || (text != oldCommand && text != oldDirect) || len(command) != 3 || command["timeout"] != json.Number("120") {
+					return nil, fmt.Errorf("existing legacy Radar Stop hook differs; merge manually")
+				}
+				continue
+			}
+			if radarHookCommand.MatchString(text) {
+				if !reflect.DeepEqual(v, want) {
+					return nil, fmt.Errorf("existing Radar Stop hook differs; merge manually")
+				}
+				found++
+			}
+		}
+	}
+	if found > 1 || legacy > 1 {
+		return nil, fmt.Errorf("duplicate Radar Stop hooks; merge manually")
+	}
+	if found == 1 {
+		return old, nil
 	}
 	hooks["Stop"] = append(stops, want)
 	return encode(m)

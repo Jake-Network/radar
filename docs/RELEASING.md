@@ -53,6 +53,13 @@ When the version line reaches 0.4, skip v0.4.0 and v0.4.1 and use v0.4.2.
 
 ## Subsequent releases
 
+The 0.2.0 tag was initially created before the native agent hooks and was moved
+with explicit owner authorization before GitHub publication. The Go module
+proxy had already cached the original source commit `127305d`, so the published
+GitHub binaries and tag checkout are the installation sources for 0.2.0.
+`go install ...@v0.2.0` may resolve the earlier source and does not establish
+that the hook release is installed. Future version tags must remain immutable.
+
 After the release commit's main CI passes, create an annotated version tag and
 push that tag. For 0.2.0:
 

@@ -9,10 +9,12 @@ import (
 )
 
 func setupCommand() command {
-	return command{name: "setup", usage: "radar setup [claude|codex|both] [--dry-run] [--hook]", summary: "Initialize Radar and install safe project-local agent skills and MCP configuration.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "setup", usage: "radar setup [claude|codex|both] [--dry-run] [--hook=false] [--base REF] [--branches A,B]", summary: "Initialize Radar and install project-local agent hooks, skills and MCP configuration.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.agent, "agent", "", "coding agent: codex (default), claude or both; same as the positional name")
 		fs.BoolVar(&o.dryRun, "dry-run", false, "show proposed changes without writing files")
-		fs.BoolVar(&o.hook, "hook", false, "install optional Claude Stop verification hook (requires bash)")
+		fs.StringVar(&o.base, "base", "", "persist an explicit base ref in installed Stop hooks")
+		fs.StringVar(&o.branches, "branches", "", "persist comma-separated participating branch refs in installed Stop hooks")
+		fs.BoolVar(&o.hook, "hook", true, "install native Stop verification hooks; --hook=false skips installation (does not remove existing hooks)")
 	}, run: func(a *app, o options) int {
 		// `radar setup claude` and `radar setup --agent claude` are the same.
 		switch {
@@ -27,7 +29,7 @@ func setupCommand() command {
 		case o.agent == "":
 			o.agent = "codex"
 		}
-		r, e := onboarding.Setup(a.ctx, a.root, onboarding.Options{Agent: o.agent, DryRun: o.dryRun, Hook: o.hook})
+		r, e := onboarding.Setup(a.ctx, a.root, onboarding.Options{Agent: o.agent, DryRun: o.dryRun, Hook: o.hook, Base: o.base, Branches: o.branches})
 		if e != nil {
 			return a.fail(e)
 		}

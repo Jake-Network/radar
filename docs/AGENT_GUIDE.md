@@ -11,8 +11,12 @@ agents themselves. `radar help agents` prints the short version.
    their programs are on PATH, and the next step.
 2. **Connect the agent:** `radar setup claude`, `radar setup codex` or
    `radar setup both` (add `--dry-run` first to see the files). This writes a
-   project skill and an MCP entry. Restart the agent and approve the project
-   MCP server if it asks.
+   native Stop hook, project skill and an MCP entry. Restart the agent and
+   approve the project MCP server if it asks. In Codex, review and trust the
+   hook with `/hooks`. The hook statically previews the current branch's saved
+   changes before responses end; select parallel scope with
+   `--base main --branches agent-api,agent-client`, or use `--hook=false` to
+   omit it. See [AGENT_HOOKS](AGENT_HOOKS.md) for portable plugin installation.
 3. **Start parallel work:** one branch and worktree per agent, for example
    `git worktree add -b agent-api ../agent-api main`. `radar gate` checks
    committed changes; `radar watch --include-dirty` also previews saved edits.

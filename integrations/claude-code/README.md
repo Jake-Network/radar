@@ -1,6 +1,6 @@
 # Claude Code integration
 
-Run `radar setup claude` (or `radar setup --agent claude`) for project-local skill and MCP configuration, or add `--hook` for the optional Stop hook. `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar.
+Run `radar setup claude` (or `radar setup --agent claude`) to install a native Stop hook, project-local skill and MCP configuration. The hook previews saved changes on the current branch against the base and returns supported static failures for one repair continuation; no active plan is required and no tests run. Select parallel branches with `--base main --branches agent-api,agent-client`. `--hook=false` opts out of hook installation; `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar. See [native hooks and plugin installation](../../docs/AGENT_HOOKS.md).
 
 The three pieces can also be installed manually below.
 
@@ -28,7 +28,12 @@ mkdir -p .claude/skills/radar
 cp /path/to/radar/integrations/claude-code/skills/radar/SKILL.md .claude/skills/radar/
 ```
 
-## 3. Stop hook: verify before the agent finishes
+## 3. Legacy plan Stop hook
+
+The native hook installed by setup invokes `radar hook stop --agent claude`.
+The script below remains available for explicit plan verification and is not
+the general integration hook. Existing installations are preserved, so both
+hooks may run if you retain the legacy entry.
 
 ```sh
 mkdir -p .claude/hooks
