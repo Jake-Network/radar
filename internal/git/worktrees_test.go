@@ -258,3 +258,50 @@ func TestInspectWorktreesHonorsGlobalIncludesPerWorktree(t *testing.T) {
 		t.Fatal("included fsmonitor executed")
 	}
 }
+
+func TestInspectWorktreesNeverExecutesConfiguredFilters(t *testing.T) {
+	root := t.TempDir()
+	runGitTest := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=test", "-c", "user.email=test@example.invalid"}, args...)...)
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatal(err, string(b))
+		}
+		return string(b)
+	}
+	runGitTest("init", "-q")
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest("add", ".")
+	runGitTest("commit", "-qm", "base")
+	marker := filepath.Join(root, "filter-ran")
+	// Config is data. This command must never run during inspection.
+	runGitTest("config", "filter.danger.clean", "touch '"+marker+"'; cat")
+	runGitTest("config", "filter.danger.smudge", "touch '"+marker+"'; cat")
+	runGitTest("config", "filter.danger.required", "true")
+	runGitTest("config", "filter.danger.process", "touch '"+marker+"'; cat")
+	if err := os.WriteFile(filepath.Join(root, ".gitattributes"), []byte("tracked.txt filter=danger\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("modified\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := InspectWorktrees(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ws) != 1 || ws[0].InspectionError != "" || len(ws[0].Unstaged) != 1 {
+		t.Fatalf("status=%+v", ws)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("source filter executed", err)
+	}
+	if _, err := run(context.Background(), root, "diff", "--name-only"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("source diff filter executed", err)
+	}
+}

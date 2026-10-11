@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,10 +17,11 @@ import (
 )
 
 func watchCommand() command {
-	return command{name: "watch", usage: "radar watch [BRANCH ...] [--base REF] [--interval 1s] [--debounce 500ms] [--jsonl] [--run] [--policy PATH]", summary: "Continuously check worktree branches in private Git state.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "watch", usage: "radar watch [BRANCH ...] [--base REF] [--interval 1s] [--debounce 500ms] [--include-dirty] [--jsonl] [--run] [--policy PATH]", summary: "Continuously check worktree branches in private Git state.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.StringVar(&o.base, "base", "", "integration REF (same defaults as gate)")
 		fs.DurationVar(&o.interval, "interval", time.Second, "poll interval, minimum 100ms")
 		fs.DurationVar(&o.debounce, "debounce", 500*time.Millisecond, "wait for changes to settle")
+		fs.BoolVar(&o.includeDirty, "include-dirty", false, "preview saved staged, unstaged and nonignored untracked changes")
 		fs.BoolVar(&o.jsonl, "jsonl", false, "emit one structured event per line")
 		fs.BoolVar(&o.verify, "run", false, "authorize repeated repository test execution for this session with host permissions")
 		fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "execution time budget per check")
@@ -30,11 +32,12 @@ func watchCommand() command {
 }
 
 type watchInput struct {
-	Base          string                   `json:"base"`
-	Refs          []string                 `json:"branches"`
-	SHAs          []string                 `json:"commits"`
-	Worktrees     []gitrepo.WorktreeStatus `json:"worktrees"`
-	Configuration []ConfigurationInput     `json:"configuration_inputs,omitempty"`
+	Base          string                      `json:"base"`
+	Refs          []string                    `json:"branches"`
+	SHAs          []string                    `json:"commits"`
+	Worktrees     []gitrepo.WorktreeStatus    `json:"worktrees"`
+	Configuration []ConfigurationInput        `json:"configuration_inputs,omitempty"`
+	Snapshots     []integration.DirtySnapshot `json:"dirty_snapshots,omitempty"`
 	config        selectedConfiguration
 }
 
@@ -71,9 +74,60 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 	if err != nil {
 		return watch.State{}, err
 	}
+	if len(input.Worktrees) > 32 || len(input.SHAs) > 32 {
+		return watch.State{}, errors.New("watch supports at most 32 worktrees and selected branches")
+	}
 	for _, w := range input.Worktrees {
 		if w.InspectionError != "" {
 			return watch.State{}, fmt.Errorf("worktree %q: %s", w.Path, w.InspectionError)
+		}
+	}
+	if o.includeDirty {
+		for _, w := range input.Worktrees {
+			idx := -1
+			for i, ref := range input.Refs {
+				named := strings.TrimPrefix(ref, "refs/heads/")
+				if named == w.Branch && !w.Detached || ref == "HEAD" && w.Path == a.root {
+					idx = i
+					break
+				}
+				if input.SHAs[i] != w.Commit {
+					continue
+				}
+				knownBranch := slices.ContainsFunc(input.Worktrees, func(t gitrepo.WorktreeStatus) bool { return t.Branch == named })
+				if knownBranch {
+					continue
+				}
+				matches := 0
+				for _, t := range input.Worktrees {
+					if t.Commit == w.Commit {
+						matches++
+					}
+				}
+				if matches > 1 {
+					return watch.State{}, fmt.Errorf("dirty selection %q matches multiple worktrees; select branch names explicitly", ref)
+				}
+				idx = i
+				break
+			}
+			if idx < 0 && len(o.args) == 0 && !w.Detached && w.Branch != base && w.Branch != strings.TrimPrefix(base, "origin/") && len(w.Staged)+len(w.Unstaged)+len(w.Untracked) > 0 {
+				idx = len(input.Refs)
+				input.Refs = append(input.Refs, w.Branch)
+				input.SHAs = append(input.SHAs, w.Commit)
+			}
+
+			if idx < 0 {
+				continue
+			}
+			if len(input.Snapshots) >= 8 {
+				return watch.State{}, errors.New("dirty watch supports at most 8 selected worktree snapshots")
+			}
+			snap, e := integration.ObserveDirty(ctx, w)
+			if e != nil {
+				return watch.State{}, e
+			}
+			snap.InputIndex = idx
+			input.Snapshots = append(input.Snapshots, snap)
 		}
 	}
 	input.config, err = b.captureConfiguration(o)
@@ -115,10 +169,22 @@ func (a *app) watch(o options) int {
 	}
 	err := watch.Run(a.ctx, watch.Options{Interval: o.interval, Debounce: o.debounce, Heartbeat: 30 * time.Second}, func(ctx context.Context) (watch.State, error) { return a.observeWatch(ctx, o) }, func(ctx context.Context, s watch.State) (watch.Result, error) {
 		in := s.Value.(watchInput)
+		in.config.Inputs = append([]ConfigurationInput(nil), in.config.Inputs...)
 		if len(in.SHAs) == 0 {
 			return watch.Result{Value: map[string]string{"state": "NOT VERIFIED", "reason": "No selected branches with commits beyond the base; waiting for changes."}}, nil
 		}
-		r, e := integration.Preview(ctx, a.root, integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands})
+		var c *integration.Candidate
+		var e error
+		if o.includeDirty {
+			c, e = integration.BuildDirtyCandidate(ctx, a.root, in.Base, in.SHAs, in.Snapshots)
+		} else {
+			c, e = integration.BuildCandidate(ctx, a.root, in.Base, in.SHAs)
+		}
+		defer c.Close()
+		if e != nil {
+			return watch.Result{}, e
+		}
+		r, e := integration.Analyze(ctx, c, integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands})
 		if e != nil {
 			return watch.Result{}, e
 		}
@@ -147,7 +213,7 @@ func (a *app) renderWatch(e watch.Event, o options) {
 	if e.Type == "changed" {
 		if in, ok := e.State.Value.(watchInput); ok {
 			for _, w := range in.Worktrees {
-				fmt.Fprintf(a.out, "  %s @ %s %q: %d staged, %d unstaged, %d untracked (excluded)\n", w.Branch, short(w.Commit), w.Path, len(w.Staged), len(w.Unstaged), len(w.Untracked))
+				fmt.Fprintf(a.out, "  %s @ %s %q: %d staged, %d unstaged, %d untracked (%s)\n", w.Branch, short(w.Commit), w.Path, len(w.Staged), len(w.Unstaged), len(w.Untracked), dirtyWatchLabel(o.includeDirty))
 			}
 		}
 	}
@@ -161,4 +227,11 @@ func (a *app) renderWatch(e watch.Event, o options) {
 			fmt.Fprintln(a.out, e.Result.Value)
 		}
 	}
+}
+
+func dirtyWatchLabel(included bool) string {
+	if included {
+		return "selected worktree snapshots included; others excluded"
+	}
+	return "excluded"
 }

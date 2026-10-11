@@ -235,3 +235,128 @@ func TestWatchRunReproducesCombinedFailureAndPreservesSources(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchDirtyBranchesAtBaseConflictThenRepair(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	a := agent("agent-a", nil)
+	b := agent("agent-b", nil)
+	put(t, a, "backend.py", "def price():\n    return 2\n")
+	gitTest(t, a, "add", "backend.py")
+	put(t, a, "backend.py", "def price():\n    return 3\n")
+	put(t, a, "new_module.py", "VALUE = 3\n")
+	put(t, b, "backend.py", "def price():\n    return 4\n")
+	expected := map[string]string{}
+	for _, path := range []string{root, a, b} {
+		expected[path] = watchSourceFingerprint(t, path)
+	}
+	var checks []watch.Event
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type != watch.Completed {
+			return
+		}
+		checks = append(checks, e)
+		for path, want := range expected {
+			if got := watchSourceFingerprint(t, path); got != want {
+				t.Fatalf("dirty preview changed %s", path)
+			}
+		}
+		if len(checks) == 1 {
+			if watchVerdict(t, e) != "fail" {
+				t.Fatal("dirty changes at branch base were omitted", watchReport(t, e))
+			}
+			if len(watchReport(t, e)["conflicts"].([]any)) != 1 {
+				t.Fatal("missing dirty merge conflict", watchReport(t, e))
+			}
+			put(t, b, "backend.py", "def price():\n    return 1\n")
+			expected[b] = watchSourceFingerprint(t, b)
+		} else {
+			if watchVerdict(t, e) != "pass" {
+				t.Fatal("repair not reflected", watchReport(t, e))
+			}
+			cancel()
+		}
+	}, "--include-dirty")
+	if len(checks) != 2 || checks[0].State.Key == checks[1].State.Key {
+		t.Fatal("dirty repair did not change cache key", checks)
+	}
+	state := events[0].State.Value.(map[string]any)
+	snapshots, ok := state["dirty_snapshots"].([]any)
+	if !ok || len(snapshots) != 2 {
+		t.Fatal("missing dirty snapshot identities", state)
+	}
+	var found bool
+	for _, v := range snapshots {
+		s := v.(map[string]any)
+		if s["branch"] != "agent-a" {
+			continue
+		}
+		found = true
+		if s["digest"] == "" || !watchPathsContain(s["staged"], "backend.py") || !watchPathsContain(s["unstaged"], "backend.py") || !watchPathsContain(s["untracked"], "new_module.py") {
+			t.Fatal("lost staged/unstaged/untracked provenance", s)
+		}
+	}
+	if !found {
+		t.Fatal("agent snapshot missing", snapshots)
+	}
+	r := watchReport(t, checks[1])
+	if r["executions"] != nil {
+		t.Fatal("dirty static verification executed tests", r)
+	}
+	inputs := r["inputs"].([]any)
+	base := gitTest(t, root, "rev-parse", "main")
+	if inputs[0] == base {
+		t.Fatal("dirty candidate reused committed identity", inputs)
+	}
+}
+
+func watchPathsContain(value any, path string) bool {
+	entries, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, v := range entries {
+		if v == path {
+			return true
+		}
+	}
+	return false
+}
+
+func TestWatchDirtyUnsupportedEntryInvalidatesCurrentResult(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("agent-a", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	// Creating a symlink may require additional privileges on Windows.
+	probe := filepath.Join(t.TempDir(), "probe")
+	if err := os.Symlink("backend.py", probe); err != nil {
+		t.Skip(err)
+	}
+	var completed int
+	var reportedError bool
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed++
+			if completed > 1 {
+				t.Fatal("unsupported dirty snapshot completed", e)
+			}
+			if watchVerdict(t, e) != "pass" {
+				t.Fatal("initial static check", e)
+			}
+			if err := os.Symlink("backend.py", filepath.Join(wt, "unsupported.py")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if e.Type == watch.Error {
+			reportedError = true
+			if e.Result != nil {
+				t.Fatal("error retains obsolete result", e)
+			}
+			cancel()
+		}
+	}, "--include-dirty")
+	if completed != 1 || !reportedError {
+		t.Fatalf("unsupported snapshot not invalidated: %+v", events)
+	}
+	if _, err := os.Lstat(filepath.Join(wt, "unsupported.py")); err != nil {
+		t.Fatal("watch removed user entry", err)
+	}
+}

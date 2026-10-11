@@ -25,6 +25,33 @@ type WorktreeStatus struct {
 	UncommittedIncluded bool     `json:"uncommitted_included"`
 }
 
+// InspectWorktree observes one worktree directly, without enumerating siblings.
+// Detached heads are supported and all inspection remains data-only.
+func InspectWorktree(ctx context.Context, root string) (WorktreeStatus, error) {
+	w := WorktreeStatus{Path: root, Staged: []string{}, Unstaged: []string{}, Untracked: []string{}}
+	head, err := Resolve(ctx, root, "HEAD")
+	if err != nil {
+		return w, err
+	}
+	w.Commit = head
+	branch, err := run(ctx, root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			w.Detached = true
+		} else {
+			return w, err
+		}
+	} else {
+		w.Branch = strings.TrimSpace(string(branch))
+	}
+	inspectWorktree(ctx, &w)
+	if w.InspectionError != "" {
+		return w, errors.New(w.InspectionError)
+	}
+	return w, nil
+}
+
 func InspectWorktrees(ctx context.Context, root string) ([]WorktreeStatus, error) {
 	b, err := runListing(ctx, root, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
