@@ -36,6 +36,10 @@ type Options struct {
 	PlanDigest             string
 	// MaxCommands bounds a selected suite after grouping (default 16).
 	MaxCommands int
+	// AttributionRuns, when positive, reruns each failed command on the base
+	// plus subsets of the branches, within the same time budget, spending at
+	// most this many executions. It requires Verify.
+	AttributionRuns int
 	// Progress, when set, hears what the gate is doing so a terminal can
 	// show it live. It is presentation only and never affects the report.
 	Progress func(Step)
@@ -56,6 +60,8 @@ const (
 	StageCombine = "combine"
 	StageAnalyze = "analyze"
 	StageTest    = "test"
+	// StageAttribute reruns a failed command on fewer branches.
+	StageAttribute = "attribute"
 )
 
 func (o Options) step(s Step) {
@@ -113,7 +119,9 @@ type Report struct {
 	Findings    []model.Finding     `json:"findings"`
 	Diagnostics []model.Diagnostic  `json:"diagnostics"`
 	Execution   *ExecutionEvidence  `json:"execution,omitempty"`
-	Limitations []string            `json:"limitations"`
+	// Attributions rerun failed commands on subsets of the branches.
+	Attributions []Attribution `json:"observed_attributions,omitempty"`
+	Limitations  []string      `json:"limitations"`
 	// ContractObligations lists base contract declarations the candidate
 	// removed, narrowed, moved or retired; see contracts.ObligationChange.
 	ContractObligations []contracts.ObligationChange `json:"contract_obligations,omitempty"`
@@ -140,6 +148,12 @@ func validate(o Options) (Options, error) {
 	}
 	if o.Suite != "" && len(o.Command) > 0 {
 		return o, errors.New("--suite cannot be combined with an explicit command")
+	}
+	if o.AttributionRuns < 0 || o.AttributionRuns > 64 {
+		return o, errors.New("attribution runs must be between 0 and 64")
+	}
+	if o.AttributionRuns > 0 && !o.Verify {
+		return o, errors.New("attribution reruns failed commands and requires --verify")
 	}
 	if o.Verify && (!o.AllowExecution || (len(o.Command) == 0 && o.Suite == "")) {
 		return o, errors.New("--verify requires --allow-execution and a command after --")

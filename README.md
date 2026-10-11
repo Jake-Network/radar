@@ -35,7 +35,8 @@ Problems
   ✗ integration_execution_failed
     Combined verification command python3 -m unittest discover -s . -p test_checkout.py (in .) returned failed (exit 1).
     failed cases: test_checkout.Checkout.test_budget
-    look at (import-based lead): agent-backend (backend.py)
+    observed: fails with agent-backend + agent-frontend; each smaller combination passes (3 reruns)
+    look at: agent-backend (backend.py)
     fix: Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant.
 
 Tests (balanced): ran 1 of 1 selected command
@@ -187,8 +188,12 @@ keeps the single-repository behavior above. Design and later stages:
   it runs them on the combined tree with a time and command budget. Tests it
   skips are listed, never silently dropped.
 - **Attribution:** for each finding, it names the branches whose changed files
-  the finding points at. For failing tests, it follows the tests' static
-  imports. Treat this as a lead for repair, not proof of blame.
+  the finding points at. With `--run`, a failed test command is rerun on the
+  base alone, each branch alone, then larger combinations, and the report names
+  the smallest combination that fails the same way while every smaller one
+  passes. Each rerun happens once, so a flaky test can mislead it. When the
+  reruns are not conclusive, Radar falls back to the tests' static imports.
+  Treat either as a lead for repair, not proof of blame.
 
 ## Agents and CI
 
