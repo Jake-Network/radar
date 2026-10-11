@@ -1,6 +1,6 @@
 # Claude Code integration
 
-Run `radar setup --agent claude` for project-local skill and MCP configuration, or add `--hook` for the optional Stop hook. `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar.
+Run `radar setup claude` (or `radar setup --agent claude`) for project-local skill and MCP configuration, or add `--hook` for the optional Stop hook. `--dry-run` shows changes. Existing unrelated settings are preserved; conflicting Radar entries require manual reconciliation. Put Radar on PATH, approve the project MCP configuration if prompted, and restart Claude Code. No API key is needed by Radar.
 
 The three pieces can also be installed manually below.
 
@@ -15,7 +15,7 @@ claude mcp add radar -- radar mcp --root .
 cp /path/to/radar/integrations/claude-code/mcp.example.json .mcp.json
 ```
 
-Tools: `radar_doctor`, `radar_init`, `radar_index`, `radar_resolve`,
+Tools: `radar_gate` (start here), `radar_doctor`, `radar_init`, `radar_index`, `radar_resolve`,
 `radar_graph`, `radar_plan`, `radar_preflight`, `radar_tasks`, `radar_verify`,
 `radar_impact`, `radar_scan`, `radar_affected`, `radar_contracts`,
 `radar_explain`, `radar_check`, `radar_contracts_discover`, `radar_merge_check`. `radar test` (runs repository code) and `radar approve`

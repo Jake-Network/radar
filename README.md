@@ -12,6 +12,39 @@ the combination, runs selected tests when authorized, and provides repair leads.
 It is a local CLI. It needs no API key, sends no telemetry, and never touches
 your branches.
 
+## Try it in one minute
+
+Two agents edit separate branches. Each branch passes its tests. Combined,
+they fail. Paste this into a shell after [installing](#install) Radar (it
+needs Git and Python 3 and works in a new temporary directory):
+
+```sh
+cd "$(mktemp -d)" && git init -q -b main shop && cd shop
+git config user.name demo && git config user.email demo@example.com
+printf 'def price():\n    return 1\n' > backend.py
+printf 'export const QUANTITY = 1;\n' > frontend.ts
+cat > test_checkout.py <<'PY'
+import re, unittest
+from pathlib import Path
+from backend import price
+
+class Checkout(unittest.TestCase):
+    def test_budget(self):
+        quantity = int(re.search(r"QUANTITY = (\d+)", Path("frontend.ts").read_text())[1])
+        self.assertLessEqual(price() * quantity, 2)
+PY
+git add . && git commit -qm baseline
+git worktree add -q -b agent-backend ../backend
+git worktree add -q -b agent-frontend ../frontend
+printf 'def price():\n    return 2\n' > ../backend/backend.py
+git -C ../backend commit -qam 'Raise price'
+printf 'export const QUANTITY = 2;\n' > ../frontend/frontend.ts
+git -C ../frontend commit -qam 'Raise quantity'
+
+radar gate          # PASS (static): the branches merge cleanly; no test ran
+radar gate --run    # FAIL: the combined tree breaks the budget test
+```
+
 <p align="center"><img src="docs/assets/gate-run.svg" alt="radar gate --run in a terminal: FAIL, 1 of 1 test command failed on the combined tree, with the failing case, the branch to look at and the next command" width="860"></p>
 
 <details>
@@ -26,7 +59,7 @@ Radar gate: FAIL — 1 of 1 test command failed on the combined tree
   agent-frontend  93f3399937e6  1 file changed
 
   ✓ Merge           branches merge without conflicts
-  ✓ Contracts       no breaking contract change found
+  · Contracts       none declared, so no contract was checked (radar discover proposes candidates)
   ✗ Tests           1 of 1 test command failed on the combined tree
   ? Test selection  incomplete — 1 changed file has no related test
   policy supported-integration requires textual_merge, no_breaking_contracts, integration_execution, test_selection
@@ -37,6 +70,7 @@ Problems
     failed cases: test_checkout.Checkout.test_budget
     observed: fails with agent-backend + agent-frontend; each smaller combination passes (3 reruns)
     look at: agent-backend (backend.py)
+    reproduce: d=$(mktemp -d) && git worktree add --detach "$d" e4d5f9ed44f0 && cd "$d" && git merge --no-ff --no-edit --no-verify 2b02738cceb2 && git merge --no-ff --no-edit --no-verify 93f3399937e6 && python3 -m unittest discover -s . -p test_checkout.py
     fix: Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant.
 
 Tests (balanced): ran 1 of 1 selected command
@@ -50,6 +84,14 @@ Details: add --json. Radar never touches your branches; the combination is built
 ```
 
 </details>
+
+`observed` comes from rerunning the failed test on each branch alone; `look
+at` is where to start. Both are repair leads, not proof of blame. The
+`reproduce` line rebuilds the same commits in a throwaway worktree under a
+new temporary directory (remove it later with `git worktree remove`). It
+skips commit hooks like Radar does, but checkout and merge hooks, your Git
+configuration and your environment still apply, so it can differ from
+Radar's sanitized run.
 
 ## Install
 
@@ -65,7 +107,6 @@ your repository's own test runners. Then:
 
 ```sh
 radar doctor
-radar setup --agent both --dry-run
 ```
 
 Windows binaries are not published yet: Windows Git defaults such as
@@ -77,184 +118,106 @@ go install github.com/Jake-Network/radar/cmd/radar@v0.1.1
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
-## Use
+This page describes the main branch. Unreleased items are listed in the
+[changelog](CHANGELOG.md); with v0.1.1, use `radar setup --agent claude`
+instead of `radar setup claude`.
 
-From the main checkout, after your agents have committed on their branches:
-
-```sh
-radar gate          # combine every worktree branch; conflicts, contract breaks, tests to run
-radar gate --run    # also run those tests on the combined tree
-```
-
-For continuous feedback while agents work, use `radar watch --base main`.
-Add `--include-dirty` to preview uncommitted worktree changes and `--run` to
-authorize repeated test execution. Static inspection is the default. See
-[watch usage, security scope and the live demo](docs/WATCH.md).
-
-Run bare `radar` in a terminal for a menu that lists the branches beyond the
-base, lets you pick which to combine, and dispatches the same commands (it
-prints each one). Tests run only after you confirm. When stdin or stdout is not
-a terminal, bare `radar` prints help as before.
-
-On a terminal the report is colored (green pass, red fail, yellow for anything
-unknown, incomplete or not run) and `radar gate` shows live progress on stderr;
-every mark (✓ ✗ ? !) and word stays in the text, so nothing depends on color.
-Pipes, files, CI logs, `--json` and the MCP server get plain output. Use
-`--color auto|always|never`; `NO_COLOR` turns color off and `FORCE_COLOR` turns
-it on for pipes. `--json` is never styled.
-
-The default execution gate blocks when changed files lack an established test
-relationship, inventory is incomplete, or required execution evidence is missing.
-It lists discovered/selected tests, actual commands and recognized results.
-Static relationships do not prove behavioral coverage. Review `--suite full`
-for changes involving runtime file reads or dynamic imports; it runs supported
-inventoried suites, with remaining inventory gaps still blocking.
-
-You don't need setup or configuration
-files. `radar gate` picks the base (`origin/HEAD`'s branch, `main`, `master` or
-`trunk`) and every worktree branch that has commits beyond it. To choose
-branches yourself, name them: `radar gate feature/api feature/web --base
-develop`.
-
-Only committed changes enter the candidate. Dirty worktrees are reported with
-excluded staged, unstaged and nonignored untracked paths. Commit intended changes
-and rerun. Detached worktree commits must be named explicitly.
-
-Try the core failure scenario in an isolated temporary repository:
+## First run in your repository
 
 ```sh
-# From a source checkout, with Go, a C compiler, Git and Python 3:
-go build -o /tmp/radar ./cmd/radar
-bash scripts/smoke.sh /tmp/radar
+radar doctor          # base, agent branches, uncommitted worktrees, test runners, next step
+radar setup claude    # optional: connect Claude Code (or codex, both); add --dry-run first
+radar gate            # combine every agent branch and check it; runs no code
+radar gate --run      # also run the related tests on the combined tree
 ```
 
-The demo executes only the checked-in fixture: each full-inventory branch run
-passes and the combined test fails. Nothing is merged into your checkout.
+Radar needs no configuration. `radar gate` picks the base (`origin/HEAD`'s
+branch, `main`, `master` or `trunk`) and every worktree branch with commits
+beyond it. Name branches to choose them: `radar gate agent-a agent-b --base
+develop`. Only committed changes are checked; uncommitted work in a worktree is
+listed and left out, so commit first.
 
-| Exit | Meaning |
-| --- | --- |
-| `0` | Named requirements passed; static mode has no runtime proof |
-| `1` | A check failed (conflict, breaking contract, failing tests) or required evidence is missing |
-| `2` | Radar could not run (bad ref, unreadable configuration, environment error) |
+In a terminal, bare `radar` opens a menu that shows the same information and
+runs the same commands (tests only after you confirm). `radar watch` rechecks
+while agents commit; see [WATCH](docs/WATCH.md).
 
-## Several repositories
+## Reading the result
 
-When agents change a frontend and a backend, or any group of repositories,
-register them once as a workspace. `radar gate` in any of them, or in any of
-their worktrees, then checks all of them:
+| Verdict | Exit | Meaning |
+| --- | --- | --- |
+| `PASS (static)` | 0 | Branches merge and declared contracts hold. No test ran |
+| `PASS (selected policy; bounded verification)` | 0 | The selected tests also ran and passed on the combined tree. Not full coverage |
+| `FAIL` | 1 | A conflict, a breaking declared contract, or a failing test on the combined tree |
+| `NOT VERIFIED` | 1 | Required evidence is missing. Each gap has a `fix:` line |
+| `ERROR` | 2 | A check errored or timed out. If Radar cannot start (bad ref, unsupported layout), it prints `radar: …` and `Next:` instead, also exit 2 |
 
-```sh
-radar workspace add ../payments   # this repository + payments; paths only, no network
-radar gate                         # every worktree branch of every workspace repository
-radar gate orders:agent/api payments:agent/client   # only these; other repos take part at their base
-radar gate --again --run           # same selection on the latest commits, with tests
-```
+Marks: `✓` passed, `✗` failed, `?` not verified, `!` needs attention, `·` not
+checked or skipped. Color only decorates them; `NO_COLOR` and pipes give plain text.
+`--json` output is never styled. Every report ends with one `Next:` step.
 
-Each repository is combined and checked on its own, in its own private Git
-state. Declare a link to check producer schema changes against fields expected
-by a consumer in another repository:
+Common `NOT VERIFIED` causes and fixes:
 
-```sh
-radar workspace connect orders:openapi.json#/components/schemas/Order payments \
-  --fields total,status --direction response --source src/order.ts
-```
+- **A test runner could not start.** Radar copies only committed files, so
+  `node_modules` and virtualenvs are missing from its private copy, and it
+  never installs dependencies. Install the runner, or run those tests yourself.
+- **The command budget ran out.** Raise it with `--max-commands N`.
+- **Only documentation changed.** No test applies to documentation by static
+  relationships, and Radar cannot show that no test reads it, so `--run` has
+  no evidence. The static `radar gate` result is what Radar verifies here.
+- **A changed file has no related test.** Static imports found none. Add a
+  test, try `--suite full`, or choose a limited `--policy` deliberately.
+- **Test discovery skipped a file** (oversized, symlink, unreadable), so the
+  inventory is incomplete.
 
-This writes `.radar/workspace.json` in the home repository and
-`.radar/consumes.json` in the consumer. Commit both files as the command directs.
-The gate reads the team declaration from the home repository's base commit and
-checks base/candidate combinations; the candidate+candidate cell determines
-the link verdict. `cross_repo.status: passed` is evidence for the declared,
-supported static links, not runtime interoperability. Missing or unsupported
-inputs remain unverified. Without a team file, the gate reports
-`per-repo checks only · 0 cross-repo links checked` and may suggest links for
-explicit review. `.radar/contracts.json` declares links within one repository;
-workspace links cross repositories.
+Radar refuses symlinks and submodules in the combined tree, and a shallow clone
+needs `git fetch --unshallow`. Both errors say so.
 
-`--with PATH` adds a
-repository for one run, and `radar workspace show` lists what `radar gate` would
-check. The registry lives in your user configuration directory and run records
-in your user cache, never in a repository. A repository outside any workspace
-keeps the single-repository behavior above. Design and later stages:
-[MULTI_REPO](docs/MULTI_REPO.md).
+## Agents
 
-## What it checks
-
-- **Merge:** Radar merges all branches in a private object database. Your
-  repository, refs and working tree are never written.
-- **Contracts:** it compares OpenAPI and JSON Schema producers with their
-  consumers. Without configuration, it reports candidates it discovers as
-  warnings. Bindings you declare in `.radar/contracts.json` turn
-  incompatibilities into failures.
-- **Dependency impact:** it builds an import graph for TypeScript/JavaScript
-  (relative imports, tsconfig `paths`/`baseUrl`, workspace package names),
-  Python, Go, Rust, Java and C/C++ (`#include`), then follows it from the
-  changed files to their dependents.
-- **Tests:** it selects the tests related to the combined change. With `--run`,
-  it runs them on the combined tree with a time and command budget. Tests it
-  skips are listed, never silently dropped.
-- **Attribution:** for each finding, it names the branches whose changed files
-  the finding points at. With `--run`, a failed test command is rerun on the
-  base alone, each branch alone, then larger combinations, and the report names
-  the smallest combination that fails the same way while every smaller one
-  passes. Each rerun happens once, so a flaky test can mislead it. When the
-  reruns are not conclusive, Radar falls back to the tests' static imports.
-  Treat either as a lead for repair, not proof of blame.
-
-## Agents and CI
-
-**Agents.** `radar setup --agent claude` (or `codex`, or `both`) installs a
-project skill and the MCP server. Agents then call `radar_gate` before they
-propose a merge. Agents can't run the tests themselves, because `--run`
-executes repository code; a person runs it.
-
-**CI.** Name the branches and choose which evidence is required:
-
-```sh
-mkdir -p .radar && echo '{"version":1,"require":["textual_merge","no_breaking_contracts","integration_execution","test_selection"]}' \
-  > .radar/integration-policy.json
-radar gate --run --policy .radar/integration-policy.json feature/api feature/web
-```
-
-This matches the default execution requirements. A deliberately limited custom
-policy can omit requirements; its pass applies only to the listed checks and
-remaining coverage gaps stay visible.
-
-With a policy, required evidence that is missing makes the gate fail with
-`NOT VERIFIED` (blocked), rather than letting it pass.
-
-For a deployable PR workflow, copy the [GitHub Actions integration](integrations/github-actions/README.md).
-It builds a reviewed immutable Radar revision, keeps static inspection available
-by default, and requires explicit consent for repository-code execution. Its job
-summary and JSON artifact show the candidate, findings, selected tests and missing
-evidence. Additional PR heads participate only when explicitly selected.
+`radar setup claude` (or `codex`, or `both`) installs a project skill and the
+MCP server. Agents then call `radar_gate` (or `radar gate --json`) before they
+propose a merge, read `gate.verdict` and `next`, repair, commit and recheck.
+Agents never run `--run` on their own: it executes repository code, so a
+person authorizes it. `radar help agents` prints the agent contract, and
+[AGENT_GUIDE](docs/AGENT_GUIDE.md) walks through the whole workflow.
 
 ## What a PASS means
 
 Radar reports evidence. It doesn't certify correctness.
 
-- **PASS:** every named requirement passed within the reported scope. It does
-  not mean comprehensive verification. Without `--run`, the gate says
-  `PASS (static)`, because no tests ran.
-- **Import-based analysis:** dependency analysis follows imports. It does not
-  resolve compiler types, and it does not see runtime reads such as files,
-  environment variables or network calls.
-- **Not a sandbox:** `--run` executes your tests with your user's permissions.
-  The tests run in a private copy of the combined source, but that copy is not
-  an operating-system sandbox. Untracked dependency directories such as
-  `node_modules` are not copied, so a runner that is missing is reported as
-  not run rather than as passed.
+- **PASS** means every named requirement passed within the reported scope. It
+  is not comprehensive verification. `PASS (static)` means no test ran.
+- **Import-based analysis** follows imports. It does not resolve compiler
+  types or see runtime reads such as files, environment variables or network
+  calls.
+- **Attribution** (`observed`, `look at`) is a lead for repair. Each rerun
+  happens once, so a flaky test can mislead it.
+- **Not a sandbox:** `--run` executes your tests with your permissions in a
+  private copy of the combined source. That copy is not an operating-system
+  sandbox.
 
-The full guarantees and limits are in [CAPABILITIES](docs/CAPABILITIES.md),
-[VERIFICATION_POLICY](docs/VERIFICATION_POLICY.md) and
-[SECURITY](docs/SECURITY.md).
+Full guarantees and limits: [CAPABILITIES](docs/CAPABILITIES.md),
+[VERIFICATION_POLICY](docs/VERIFICATION_POLICY.md), [SECURITY](docs/SECURITY.md).
 
-## Beyond the gate
+## More
 
-Radar also has a plan-and-evidence toolkit, listed under `radar help --all`.
-You can write plans grounded in the indexed code, approve them with a review
-bound to their digest, record test evidence bound to a commit, query the import
-graph, and lint explicit contracts. See the [usage reference](docs/USAGE.md).
-You can also run the [demos](docs/DEMO.md).
+- **Several repositories:** `radar workspace add ../payments`, then `radar
+  gate` checks every workspace repository, and declared cross-repository
+  links. See [MULTI_REPO](docs/MULTI_REPO.md).
+- **CI:** `radar gate --run --policy .radar/integration-policy.json feature/api
+  feature/web` with an explicit list of required checks, or the
+  [GitHub Actions integration](integrations/github-actions/README.md). See
+  [VERIFICATION_POLICY](docs/VERIFICATION_POLICY.md#policies).
+- **What it checks:** merge in private Git state; OpenAPI and JSON Schema
+  contracts declared in `.radar/contracts.json` (discovered candidates are
+  warnings); import graphs for TypeScript/JavaScript, Python, Go, Rust, Java
+  and C/C++; test selection and execution within a time and command budget.
+  See [CAPABILITIES](docs/CAPABILITIES.md) and [TEST_SELECTION](docs/TEST_SELECTION.md).
+- **Plans and evidence:** grounded plans, digest-bound reviews, commit-bound
+  test evidence and graph queries, under `radar help --all`. See
+  [USAGE](docs/USAGE.md).
+- **Demos:** [DEMO](docs/DEMO.md), including `examples/quickstart/demo.sh` for
+  the scenario above.
 
 ## Development
 

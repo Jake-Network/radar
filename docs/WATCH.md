@@ -70,12 +70,14 @@ are outside the filesystem snapshot and are not checked.
 
 ## Events and scheduling
 
-The terminal lists monitored worktrees and revision identifiers, invalidates the
-previous verdict when inputs change, and reports `CHECKING`, `PASS (static)`,
-`FAIL`, `NOT VERIFIED` or `ERROR`. Completed reports include merge conflicts,
-contract findings, test selection gaps and a next step. Color is decoration;
-the words remain readable in plain output. Unchanged inputs do not trigger
-another check, and a concise heartbeat is emitted periodically.
+The terminal lists worktrees with uncommitted changes and revision identifiers,
+invalidates the previous verdict when inputs change, and reports `CHECKING`
+and then the same verdicts and report as `radar gate` (`PASS (static)`,
+`FAIL`, `NOT VERIFIED`, `ERROR`, ...), headed `Radar watch:`. The next step
+says what to change; watch reruns by itself. Color is decoration; the words
+remain readable in plain output. Unchanged inputs do not trigger another
+check, and a one-line heartbeat (`still watching: ...`) is printed every 30
+seconds.
 
 JSONL events have an increasing sequence number, UTC timestamp, event type and
 input state. Types are `changed`, `checking`, `completed`, `error` and
@@ -86,7 +88,7 @@ an old report. Consumers must invalidate their current verdict on `changed` or
 during analysis cancel or supersede the old check. Watch reobserves inputs before
 publishing a result so a detected obsolete pass is never presented as current.
 
-The JSONL envelope is described in [`schemas/watch-event.schema.json`](../schemas/watch-event.schema.json). It also reports `verification_state`, `last_completed` and `last_change`.
+The JSONL envelope is described in [`schemas/watch-event.schema.json`](../schemas/watch-event.schema.json). It also reports `verification_state` (`NOT VERIFIED`, `CHECKING`, `ERROR` or the gate's verdict text, such as `PASS (static)` or `FAIL`), `last_completed` and `last_change`.
 
 The scheduler has one analysis worker and coalesces saves during the debounce
 window. Its key binds the base commit, selected branch commits, worktree state,

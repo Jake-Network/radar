@@ -25,6 +25,17 @@ gate; results for individual branches never prove the combination works. After
 `--run`, an `attribution` whose `basis` starts with `observed` comes from
 rerunning the failed test on fewer branches; `inferred` comes from imports.
 
+Reading the result: `gate.verdict` is `pass`, `fail`, `blocked` or `error`
+(exit 0, 1, 1, 2). `PASS (static)` means no test ran; say so when you hand
+off. A required check is satisfied only by `passed`. `blocked` means
+required evidence is missing (including a documentation-only change, for
+which no test ran): report `next` and the gaps in `selection.blocking` and
+`uncovered_changes`; never call it a pass.
+Uncommitted worktree changes are listed in `worktrees` and are not checked;
+commit first. `radar doctor --json` shows the base, the branches gate will
+combine and whether test runner programs are on PATH (`project`). `radar help agents`
+prints this contract in short.
+
 In a workspace (`radar workspace add PATH` groups repositories on this
 machine), the same call checks every workspace repository, each combined on
 its own. Pass `targets` (for example `orders:agent/api,payments:agent/client`)
@@ -145,8 +156,9 @@ unexecuted required command blocks the gate and is never a pass or a test failur
 Radar never installs dependencies; an `environment_unavailable` result needs a
 prepared environment or a reviewed plan `test_run` rule with `link`. A command observation does not automatically satisfy
 an unrelated plan criterion. Private copied files are not an OS sandbox.
-MCP is strictly read-only for proposals and preview: never pass execution flags or
-attempt to create approval through a tool call. Consult Radar CLI help and its
+MCP never executes repository code or records approvals (it may write Radar
+state and plan files): never pass execution flags or attempt to create approval
+through a tool call. Consult Radar CLI help and its
 intelligent-verification guide for the supported scope.
 
 Consume finding IDs, evidence classes, source locations, remediation and required

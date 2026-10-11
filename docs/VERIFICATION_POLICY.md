@@ -37,6 +37,14 @@ Check the listed paths, or try `--suite full`.
 Without `--run` or a policy, missing test evidence alone does not fail the
 gate. The report says the tests were not run.
 
+A documentation-only change selects no test, so `--run` has no execution
+evidence and the gate stays `NOT VERIFIED`. The report says that only
+documentation changed and points at the static result. Radar does not treat
+documentation as safe to skip: a test can read or execute a document in ways a
+static scan cannot rule out. To accept documentation changes without test
+evidence, choose that deliberately with a policy that leaves out
+`integration_execution` for those runs.
+
 When no contract is declared and the base has no contract obligations,
 `no_breaking_contracts` passes trivially. The terminal shows it as
 `· Contracts none declared` rather than a check mark. JSON is unchanged.
