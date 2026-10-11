@@ -12,6 +12,8 @@ import (
 )
 
 type options struct {
+	interval, debounce                                                                                                     time.Duration
+	jsonl, includeDirty                                                                                                    bool
 	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence, agent, policy, suite, cwd string
 	reverse, allow, projected, strict, summary, dryRun, hook, verify, suggestTests                                         bool
 	depth, limit                                                                                                           int
@@ -63,6 +65,7 @@ var commands []command
 func init() {
 	commands = []command{
 		gateCommand(),
+		watchCommand(),
 		workspaceCommand(),
 		checkCommand(),
 		discoveryCommand(),
@@ -156,7 +159,7 @@ func init() {
 		{name: "explain", usage: "radar explain FINDING_ID", summary: "Show a persisted finding with its evidence.", state: true, run: (*app).explain},
 	}
 	// The plan/evidence/graph toolkit stays out of the default help.
-	core := map[string]bool{"gate": true, "workspace": true, "check": true, "discover": true, "setup": true, "doctor": true, "mcp": true}
+	core := map[string]bool{"gate": true, "watch": true, "workspace": true, "check": true, "discover": true, "setup": true, "doctor": true, "mcp": true}
 	for i := range commands {
 		commands[i].advanced = !core[commands[i].name]
 	}
@@ -282,7 +285,7 @@ var helpGroups = []struct {
 	title    string
 	commands []string
 }{
-	{"Everyday", []string{"gate", "workspace", "check", "discover", "doctor"}},
+	{"Everyday", []string{"gate", "watch", "workspace", "check", "discover", "doctor"}},
 	{"Agent setup", []string{"setup", "mcp"}},
 }
 

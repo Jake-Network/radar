@@ -133,7 +133,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) int {
 		c.flags(fs, &o)
 	}
 	parseArgs := rest[1:]
-	if c.name == "gate" || c.name == "workspace" {
+	if c.name == "watch" || c.name == "gate" || c.name == "workspace" {
 		var e error
 		parseArgs, e = interspersedFlagArgs(c.name, fs, parseArgs)
 		if e != nil {
