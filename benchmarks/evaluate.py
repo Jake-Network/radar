@@ -115,6 +115,9 @@ def recognize(command):
     kind = command.get('recognizer')
     if command['status'] != 'completed':
         return 'environment_unavailable'
+    if kind in ('pytest', 'unittest') and command['exit_code'] != 0 and re.search(
+            r'(?m)^(?:E\s+)?ModuleNotFoundError:', output):
+        return 'environment_unavailable'
     if kind == 'unittest':
         matched = re.search(r'Ran (\d+) tests?', output)
     elif kind == 'node':
@@ -134,7 +137,10 @@ def recognize(command):
     elif kind == 'pytest':
         if command['exit_code'] not in (0, 1):
             return 'environment_unavailable'
-        matched = re.search(r'\d+ (?:passed|failed|error)', output)
+        # An exit code alone does not demonstrate test execution. Count all
+        # observed outcomes so "0 passed, 1 failed" still records a failure,
+        # while an all-zero summary cannot establish passing ground truth.
+        matched = sum(int(count) for count in re.findall(r'\b(\d+) (?:passed|failed|errors?)\b', output))
     elif kind in ('jest', 'vitest'):
         matched = re.search(r'Tests:?[ \t]+(\d+) (?:passed|failed)', output)
         if matched and int(matched[1]) == 0:

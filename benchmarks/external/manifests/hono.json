@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "Hono",
+    "url": "https://github.com/honojs/hono",
+    "revision": "73ff6c0e82d66468e28ed439481220f56ab03882"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "test_files": [],
+      "recognizer": "vitest"
+    }
+  ],
+  "cases": [
+    {
+      "id": "hono-controlled-source",
+      "category": "typescript-shared-utility-nested-runtime-roots",
+      "ground_truth": "Upstream src/utils/url.test.ts asserts splitPath('/') and splitPath('/hello'). Controlled wrong separator is expected to violate those assertions; runtime unobserved. Exports map and multiple runtime roots complicate full-suite accounting.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "src/utils/url.ts",
+            "find": "const paths = path.split('/')",
+            "replace": "const paths = path.split('-')"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "hono-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "<div align=\"center\">",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "hono-passing-source-control",
+      "category": "no-defect",
+      "ground_truth": "Equivalent split delimiter expression; full npm test must independently establish passing behavior.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "src/utils/url.ts",
+            "find": "const paths = path.split('/')",
+            "replace": "const paths = path.split(String.fromCharCode(47))"
+          }
+        ]
+      ]
+    }
+  ],
+  "runtime": {
+    "image": "sha256:7d5f84bd156b23431dec6afb8b1194d1ed6bf1b80f7a87694753cdce4ea637f9",
+    "toolchain": "Node 20, Python 3, Git, GNU time; upstream Node >=16; locked Fastly dependency requires <=20; yarn frozen lockfile",
+    "dependency_links": [
+      {
+        "path": "node_modules",
+        "target": "/opt/hono/node_modules"
+      }
+    ],
+    "suite_scope": "Complete upstream npm test: tsc plus all three configured Vitest suites. Optional test:all runtime adapters (Deno/Bun/Fastly/Node/workerd/Lambda) unavailable and excluded; this is not test:all.",
+    "dependency_install": "yarn install --frozen-lockfile --ignore-scripts; esbuild install.js explicitly inside disposable preparation image",
+    "yarn_lock_sha256": "994523ffe260fa2fa878913f89c69a1b2366268c19ef2caaf904c830bc7bb62b",
+    "base_image": "node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0",
+    "writable_cache_dirs": [
+      "/opt/hono/node_modules/.vite"
+    ]
+  }
+}

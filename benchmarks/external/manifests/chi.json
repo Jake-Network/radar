@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "go-chi/chi",
+    "url": "https://github.com/go-chi/chi",
+    "revision": "67be7d9cafdaeb4e04e887ff78d09e030ee43b00"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "./..."
+      ],
+      "test_files": [],
+      "recognizer": "go"
+    }
+  ],
+  "cases": [
+    {
+      "id": "chi-controlled-source",
+      "category": "go-routing-semantics",
+      "ground_truth": "Upstream mux_test.go tests not-found routing and custom handlers. The mutation changes an empty mux response handler; expected defect is a hypothesis until runtime tests execute in isolation.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "mux.go",
+            "find": "mx.NotFoundHandler().ServeHTTP(w, r)",
+            "replace": "mx.MethodNotAllowedHandler().ServeHTTP(w, r)",
+            "all": true
+          }
+        ]
+      ]
+    },
+    {
+      "id": "chi-docs-control",
+      "category": "documentation-control",
+      "ground_truth": "Controlled documentation-only change. No defect expected; no runtime evidence establishes absence of defects.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "# <img alt=\"chi\" src=\"https://cdn.rawgit.com/go-chi/chi/master/_examples/chi.svg\" width=\"220\" />",
+            "replace": "<!-- Radar evaluation documentation control -->"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "chi-true-client-integration",
+      "category": "integration-only-hypothesis",
+      "ground_truth": "A simplifies RealIP by removing True-Client-IP support, B adds an independently passing consumer test for the documented header. Integration-only label requires complete baseline/A/B pass and combined failure. This is a controlled challenge, not a discovered upstream defect.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "middleware/realip.go",
+            "find": "if tcip := r.Header.Get(trueClientIP); tcip != \"\" {\n\t\tip = tcip\n\t} else if xrip := r.Header.Get(xRealIP); xrip != \"\" {",
+            "replace": "if xrip := r.Header.Get(xRealIP); xrip != \"\" {"
+          }
+        ],
+        [
+          {
+            "path": "middleware/realip_test.go",
+            "find": "func TestXRealIP(t *testing.T) {",
+            "replace": "func TestExternalTrueClientIP(t *testing.T) {\n\treq, _ := http.NewRequest(\"GET\", \"/\", nil)\n\treq.Header.Set(\"True-Client-IP\", \"192.0.2.9\")\n\tif got := realIP(req); got != \"192.0.2.9\" { t.Fatalf(\"got %q\", got) }\n}\n\nfunc TestXRealIP(t *testing.T) {"
+          }
+        ]
+      ]
+    }
+  ],
+  "runtime": {
+    "toolchain": [
+      "Python 3.12.10",
+      "pytest 8.4.2",
+      "Go 1.23.12",
+      "git",
+      "GNU time"
+    ],
+    "dependency_requirements": [
+      "Click: PYTHONPATH=src; pytest; upstream default non-stress suite",
+      "chi: standard library only; GOTOOLCHAIN=local; GOPROXY=off"
+    ],
+    "preparation": "docker build -f benchmarks/external/images/python-go.Dockerfile -t radar-external-python-go:local benchmarks/external/images",
+    "image": "sha256:c8839a91e139636435c93c3237e36a1e2bc867f549e6afe116e2932fda7a2e4b"
+  }
+}

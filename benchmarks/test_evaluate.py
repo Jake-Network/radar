@@ -48,6 +48,24 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 0, 'stdout': 'OK', 'recognizer': 'custom'}), 'analysis_unsupported')
         self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 0, 'stdout': 'Ran 0 tests', 'recognizer': 'unittest'}), 'ground_truth_unavailable')
 
+    def test_pytest_zero_observed_tests_cannot_pass(self):
+        for output in ('0 passed', '0 passed, 0 failed, 3 skipped', 'no tests ran in 0.1s'):
+            self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 0,
+                'stdout': output, 'recognizer': 'pytest'}), 'ground_truth_unavailable')
+        self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 1,
+            'stdout': '0 passed, 1 failed', 'recognizer': 'pytest'}), 'failed')
+        self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 0,
+            'stdout': '2 passed, 0 failed', 'recognizer': 'pytest'}), 'passed')
+
+    def test_python_missing_dependency_does_not_hide_source_import_error(self):
+        for recognizer, prefix in [('pytest', '1 failed\nE   '), ('unittest', 'Ran 1 test\n')]:
+            self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 1,
+                'stdout': prefix + "ModuleNotFoundError: No module named 'missing_dependency'",
+                'recognizer': recognizer}), 'environment_unavailable')
+            self.assertEqual(evaluation.recognize({'status': 'completed', 'exit_code': 1,
+                'stdout': prefix + "ImportError: cannot import name 'removed_function'",
+                'recognizer': recognizer}), 'failed')
+
     def test_output_limit_and_timeout_cannot_be_success(self):
         import sys
         with tempfile.TemporaryDirectory() as tmp:

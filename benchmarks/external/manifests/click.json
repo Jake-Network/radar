@@ -1,0 +1,846 @@
+{
+  "schema_version": 1,
+  "repository": {
+    "name": "Pallets Click",
+    "url": "https://github.com/pallets/click",
+    "revision": "2247b35ea1c47c727d7a06e51fa280e12a863ff6"
+  },
+  "full_suite": [
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests",
+        "--junitxml=.radar/native-junit.xml",
+        "-o",
+        "junit_family=xunit1"
+      ],
+      "recognizer": "pytest",
+      "junit_report": ".radar/native-junit.xml"
+    }
+  ],
+  "cases": [
+    {
+      "id": "click-intrange-clamp",
+      "category": "python-library",
+      "ground_truth": "Independent existing Click IntRange tests define correct open-bound clamping; runtime remains unavailable until isolated execution.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "src/click/types.py",
+            "find": "return bound + dir",
+            "replace": "return bound - dir"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "click-docs-only",
+      "category": "no-defect",
+      "ground_truth": "Documentation mutation; no test failure expected, not asserted without execution.",
+      "defect_expected": false,
+      "agents": [
+        [
+          {
+            "path": "README.md",
+            "find": "# Click\n",
+            "replace": "# Click\n\n<!-- External evaluation documentation control -->\n"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "click-large-integer-integration",
+      "category": "integration-only-hypothesis",
+      "ground_truth": "A introduces lossy floating-point clamping optimization, B adds a large open-bound regression test. Each full suite must pass individually before combined failure qualifies. Test added on B is an evaluation challenge, not a naturally occurring upstream defect.",
+      "defect_expected": true,
+      "agents": [
+        [
+          {
+            "path": "src/click/types.py",
+            "find": "return bound + dir",
+            "replace": "return int(float(bound)) + dir"
+          }
+        ],
+        [
+          {
+            "path": "tests/test_types/test_IntRange.py",
+            "find": "import click\n",
+            "replace": "import click\n\ndef test_external_large_open_bound():\n    bound = 2**53 + 1\n    assert click.IntRange(min=bound, min_open=True, clamp=True)(0) == bound + 1\n\n"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "click-equivalent-clamp-control",
+      "category": "passing-source-control",
+      "defect_expected": false,
+      "ground_truth": "Equivalent integer addition expression; complete suite must independently pass.",
+      "agents": [
+        [
+          {
+            "path": "src/click/types.py",
+            "find": "return bound + dir",
+            "replace": "return dir + bound"
+          }
+        ]
+      ]
+    }
+  ],
+  "runtime": {
+    "toolchain": [
+      "Python 3.12.10",
+      "pytest 8.4.2",
+      "Go 1.23.12",
+      "git",
+      "GNU time"
+    ],
+    "dependency_requirements": [
+      "Click: PYTHONPATH=src; pytest; upstream default non-stress suite",
+      "chi: standard library only; GOTOOLCHAIN=local; GOPROXY=off",
+      "Installed upstream distribution metadata plus cwd/src .pth; installed source deleted to ensure mutations execute. less pager required."
+    ],
+    "preparation": "Use exact pinned Git archive as source/ build context for benchmarks/external/images/click.Dockerfile; full commands in benchmarks/external/README.md.",
+    "image": "sha256:b0fe450415eb08a267598538939f7108eb45a55305ea4959e1b7ea0856c72bcf"
+  },
+  "file_oracle": [
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_abort_interrupt.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_abort_interrupt.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_arguments.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_arguments.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_basic.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_basic.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_chain.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_chain.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_command_decorators.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_command_decorators.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_commands.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_commands.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_compat.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_compat.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_context.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_context.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_custom_classes.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_custom_classes.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_defaults.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_defaults.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_deprecations.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_deprecations.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_exceptions/test_FileError.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_exceptions/test_FileError.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_formatting.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_formatting.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_imports.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_imports.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_info_dict.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_info_dict.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_normalization.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_normalization.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_options.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_options.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_parser.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_parser.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_shell_completion.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_shell_completion.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_stream_lifecycle.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_stream_lifecycle.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_termui.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_termui.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_testing.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_testing.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_Choice.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_Choice.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_File.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_File.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_FloatRange.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_FloatRange.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_FuncParamType.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_FuncParamType.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_IntRange.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_IntRange.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_ParamType.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_ParamType.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_Path.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_Path.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_types/test_convert_type.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_types/test_convert_type.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_KeepOpenFile.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_KeepOpenFile.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_LazyFile.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_LazyFile.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test__detect_program_name.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test__detect_program_name.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test__expand_args.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test__expand_args.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_confirm.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_confirm.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_echo.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_echo.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_echo_via_pager.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_echo_via_pager.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_format_filename.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_format_filename.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_make_default_short_help.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_make_default_short_help.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_open_file.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_open_file.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_prompt.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_prompt.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_sentinel.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_sentinel.py"
+      ]
+    },
+    {
+      "cwd": ".",
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "-rfE",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_utils/test_style.py"
+      ],
+      "recognizer": "pytest",
+      "test_files": [
+        "tests/test_utils/test_style.py"
+      ]
+    }
+  ]
+}
