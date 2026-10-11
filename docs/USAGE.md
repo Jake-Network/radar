@@ -19,7 +19,9 @@ also shows a progress line on stderr and erases it before the report.
 `radar gate` is a front end to `merge-check`. It picks the base and branches,
 always proposes tests, adds branch attribution and a `next` command, and maps
 `--run` to `merge-check --verify --allow-execution --suite balanced` with a
-10-minute budget.
+10-minute budget. With `--run`, it also reruns failed test commands on smaller
+branch combinations to see which one breaks them (`--attribution-runs N`,
+default 8; see [test selection](TEST_SELECTION.md)). `merge-check` does not.
 
 Use `merge-check` when you want exact control:
 

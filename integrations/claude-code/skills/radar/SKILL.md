@@ -21,7 +21,9 @@ files each finding points at (`attribution`). It never runs repository code.
 Its `next` field is the command to run next; `radar gate --run` (tests on the
 combined tree) executes repository code, so ask the user before running it.
 Repair findings on the branch named in `attribution`, commit, and rerun the
-gate; results for individual branches never prove the combination works.
+gate; results for individual branches never prove the combination works. After
+`--run`, an `attribution` whose `basis` starts with `observed` comes from
+rerunning the failed test on fewer branches; `inferred` comes from imports.
 
 In a workspace (`radar workspace add PATH` groups repositories on this
 machine), the same call checks every workspace repository, each combined on

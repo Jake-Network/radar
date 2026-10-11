@@ -7,8 +7,6 @@ that proves them and a failure case that shows the limit.
 
 - **Watch mode.** Rerun the static gate while agents work, so conflicts show up
   before the branches are finished.
-- **Observed attribution.** Rerun a failing test on subsets of the branches to
-  find which combination breaks it, instead of inferring it from imports.
 - **Windows binaries.** Handle `core.autocrlf` and long paths, then add Windows
   to the release matrix.
 - **Workspace scenarios.** Run a declared test against every repository's

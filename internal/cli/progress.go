@@ -73,6 +73,8 @@ func (l *liveProgress) step(s integration.Step) {
 			cmd = cmd[:57] + "…"
 		}
 		text = fmt.Sprintf("running test command %d/%d  %s", s.Index, s.Total, l.p.cyan(cmd))
+	case integration.StageAttribute:
+		text = "rerunning failed tests on fewer branches to see which combination breaks them"
 	default:
 		return
 	}

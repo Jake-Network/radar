@@ -33,10 +33,12 @@ type gateLead struct {
 }
 
 // gateAttribution is a lead for repair, not a verdict of blame: Basis says
-// whether the files were named by the finding or reached through imports.
+// whether the files were named by the finding, reached through imports, or
+// the branches were observed reproducing the failure on fewer branches.
 type gateAttribution struct {
-	Basis string     `json:"basis"`
-	Leads []gateLead `json:"leads"`
+	Basis    string                   `json:"basis"`
+	Leads    []gateLead               `json:"leads"`
+	Observed *integration.Attribution `json:"observed,omitempty"`
 }
 
 // gateReport is merge-check's report plus branch attribution and the single
@@ -56,7 +58,7 @@ type gateReport struct {
 func gateCommand() command {
 	return command{name: "gate", usage: "radar gate [[REPO:]BRANCH ...] [--base REF] [--with PATH] [--again] [--run [--suite targeted|balanced|full] [--timeout 10m]] [--policy PATH] [--plan PATH]",
 		summary:       "Combine branches (default: every worktree branch) and tell whether they integrate; --run also tests the combined tree.",
-		advancedFlags: []string{"only", "replay"},
+		advancedFlags: []string{"only", "replay", "attribution-runs"},
 		flags: func(fs *flag.FlagSet, o *options) {
 			fs.Var(baseFlag{o}, "base", "integration `REF` (default: origin/HEAD's branch, main, master or trunk)")
 			fs.Var(listFlag{&o.with}, "with", "also check the repository at `PATH` in this run (repeatable; relative to the repository root)")
@@ -67,6 +69,7 @@ func gateCommand() command {
 			fs.StringVar(&o.suite, "suite", "", "test selection `MODE` with --run: targeted, balanced (default) or full")
 			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands (`N`) --run executes")
 			fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "total --run time budget (`DURATION`), maximum 30m")
+			fs.IntVar(&o.attributionRuns, "attribution-runs", integration.DefaultAttributionRuns, "with --run, rerun failed tests on at most `N` smaller branch combinations to find which ones break them (0 turns it off)")
 			policyFlag(fs, o)
 			planFlag(fs, o)
 		}, run: (*app).gate}
@@ -111,6 +114,7 @@ func (a *app) gate(o options) int {
 	options := integration.Options{Base: baseSHA, Branches: refs, Policy: policy, Plan: plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
+		options.AttributionRuns = o.attributionRuns
 		options.Suite = o.suite
 		if options.Suite == "" {
 			options.Suite = testselection.ModeBalanced
@@ -284,11 +288,55 @@ func (g *gateReport) attribute() {
 			}
 			paths = append(paths, reached...)
 			basis = "changed files the failing tests are or import (inferred from static imports; runtime reads are not traced)"
+			if observed := r.ObservedAttribution(f.ID); observed != nil {
+				if a, ok := g.observedAttribution(*observed, paths); ok {
+					g.Attribution[f.ID] = a
+					continue
+				}
+				// Inconclusive: keep the inferred lead and show what was observed.
+				if leads := g.leads(paths); len(leads) > 0 {
+					g.Attribution[f.ID] = gateAttribution{Basis: basis, Leads: leads, Observed: observed}
+				} else {
+					g.Attribution[f.ID] = gateAttribution{Basis: basis, Leads: []gateLead{}, Observed: observed}
+				}
+				continue
+			}
 		}
 		if leads := g.leads(paths); len(leads) > 0 {
 			g.Attribution[f.ID] = gateAttribution{Basis: basis, Leads: leads}
 		}
 	}
+}
+
+// observedAttribution turns a conclusive observation into a lead: the
+// branches whose combination reproduced the failure, with the changed files
+// the failing tests reach as a hint. A failure already on the base names no
+// branch. An inconclusive observation returns false.
+func (g gateReport) observedAttribution(o integration.Attribution, paths []string) (gateAttribution, bool) {
+	switch o.Outcome {
+	case integration.AttributionBase:
+		return gateAttribution{Basis: "observed: the same command fails the same way on the base without any branch (each run observed once)", Leads: []gateLead{}, Observed: &o}, true
+	case integration.AttributionIsolated:
+	default:
+		return gateAttribution{}, false
+	}
+	leads := []gateLead{}
+	for _, set := range o.Reproducing {
+		for _, i := range set {
+			if i < 0 || i >= len(g.Branches) || slices.ContainsFunc(leads, func(l gateLead) bool { return l.Branch == g.Branches[i].Ref }) {
+				continue
+			}
+			files := []string{}
+			for _, p := range paths {
+				if p != "" && contains(g.Branches[i].Changed, p) && !slices.Contains(files, p) {
+					files = append(files, p)
+				}
+			}
+			sort.Strings(files)
+			leads = append(leads, gateLead{Branch: g.Branches[i].Ref, Files: files})
+		}
+	}
+	return gateAttribution{Basis: "observed: the failure reproduces with these branches combined and every smaller combination ran and passed (each run observed once)", Leads: leads, Observed: &o}, true
 }
 
 // leads groups the paths each branch changed.
@@ -328,6 +376,9 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	}
 	if o.suite != "" {
 		args = append(args, "--suite "+shellArg(o.suite))
+	}
+	if o.verify && o.attributionRuns != integration.DefaultAttributionRuns {
+		args = append(args, fmt.Sprintf("--attribution-runs %d", o.attributionRuns))
 	}
 	if len(o.args) > 0 {
 		for _, ref := range refs {
@@ -416,11 +467,7 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 			fmt.Fprintf(w, "    failed cases: %s\n", p.red(cases))
 		}
 		if a, ok := g.Attribution[f.ID]; ok {
-			label := "look at"
-			if strings.HasPrefix(f.Code, "integration_execution_") {
-				label = "look at (import-based lead)"
-			}
-			fmt.Fprintf(w, "    %s: %s\n", label, renderLeads(a.Leads, p))
+			renderAttribution(w, g, a, f.Code, p)
 		}
 		if len(r.Conflicts) > 0 && f.Code == "integration_textual_conflict" {
 			fmt.Fprintf(w, "    paths: %s\n", strings.Join(r.Conflicts, ", "))
@@ -584,9 +631,100 @@ func missingRunner(executions []integration.ExecutionEvidence) string {
 func renderLeads(leads []gateLead, p palette) string {
 	out := []string{}
 	for _, l := range leads {
+		if len(l.Files) == 0 {
+			out = append(out, p.cyan(l.Branch))
+			continue
+		}
 		out = append(out, fmt.Sprintf("%s (%s)", p.cyan(l.Branch), strings.Join(shorten(l.Files, 3), ", ")))
 	}
 	return strings.Join(out, "; ")
+}
+
+// renderAttribution prints a problem's lead: observed reruns when they were
+// conclusive, otherwise the static lead and what the reruns did show.
+func renderAttribution(w io.Writer, g gateReport, a gateAttribution, code string, p palette) {
+	o := a.Observed
+	runs := ""
+	if o != nil {
+		runs = plural(len(o.Runs), "rerun", "reruns")
+	}
+	switch {
+	case o != nil && o.Outcome == integration.AttributionBase:
+		fmt.Fprintf(w, "    observed: already fails on %s without any branch, so these branches did not cause it (%s)\n", g.BaseRef, runs)
+		return
+	case o != nil && o.Outcome == integration.AttributionIsolated:
+		alone := ""
+		if len(g.Branches) > 1 && !slices.ContainsFunc(o.Reproducing, func(set []int) bool { return len(set) > 1 }) {
+			alone = " alone"
+		}
+		fmt.Fprintf(w, "    observed: fails with %s%s; %s (%s)\n", g.subsetNames(o.Reproducing, p), alone, smallerPassed(o), runs)
+		if hint := renderLeads(withFiles(a.Leads), p); hint != "" {
+			fmt.Fprintf(w, "    look at: %s\n", hint)
+		}
+		return
+	}
+	if len(a.Leads) > 0 {
+		label := "look at"
+		if strings.HasPrefix(code, "integration_execution_") {
+			label = "look at (import-based lead)"
+		}
+		fmt.Fprintf(w, "    %s: %s\n", label, renderLeads(a.Leads, p))
+	}
+	if o != nil {
+		if len(o.Reproducing) > 0 {
+			fmt.Fprintf(w, "    observed: reproduced with %s, but not shown minimal: %s (%s)\n", g.subsetNames(o.Reproducing, p), notComparable(o), runs)
+		} else {
+			fmt.Fprintf(w, "    observed: no smaller combination tried reproduced it before the budget ran out (%s; --attribution-runs)\n", runs)
+		}
+	}
+}
+
+// subsetNames renders branch subsets as "a + b; c".
+func (g gateReport) subsetNames(sets [][]int, p palette) string {
+	out := []string{}
+	for _, set := range sets {
+		names := []string{}
+		for _, i := range set {
+			if i >= 0 && i < len(g.Branches) {
+				names = append(names, p.cyan(g.Branches[i].Ref))
+			}
+		}
+		out = append(out, strings.Join(names, " + "))
+	}
+	return strings.Join(out, "; ")
+}
+
+func smallerPassed(o *integration.Attribution) string {
+	for _, set := range o.Reproducing {
+		if len(set) > 1 {
+			return "each smaller combination passes"
+		}
+	}
+	if len(o.Runs) > 0 && len(o.Runs[0].Branches) == 0 {
+		return "passes on the base alone"
+	}
+	return "every smaller combination passes"
+}
+
+// notComparable names why some subset runs could not be compared.
+func notComparable(o *integration.Attribution) string {
+	n := 0
+	for _, run := range o.Runs {
+		if run.Result != integration.SubsetPassed && run.Result != integration.SubsetReproduced {
+			n++
+		}
+	}
+	return plural(n, "smaller combination", "smaller combinations") + " failed differently or could not run"
+}
+
+func withFiles(leads []gateLead) []gateLead {
+	out := []gateLead{}
+	for _, l := range leads {
+		if len(l.Files) > 0 {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 func gateMark(s model.Status) string {

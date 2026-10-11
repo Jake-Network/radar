@@ -103,10 +103,11 @@ func TestGateRunFailsCombinedTreeAndPointsAtBranch(t *testing.T) {
 	if failure == nil {
 		t.Fatal("combined failure missing", r["findings"])
 	}
+	// Imports reach only agent-backend; reruns on fewer branches observe that
+	// the test also needs agent-frontend's runtime-read file to fail.
 	lead := r["attribution"].(map[string]any)[failure["id"].(string)].(map[string]any)
-	leads := lead["leads"].([]any)
-	if len(leads) != 1 || leads[0].(map[string]any)["branch"] != "agent-backend" || !strings.Contains(lead["basis"].(string), "inferred") {
-		t.Fatal("failing test imports backend.py from agent-backend", lead)
+	if got := strings.Join(leadBranches(lead), ","); got != "agent-backend,agent-frontend" || !strings.HasPrefix(lead["basis"].(string), "observed") {
+		t.Fatal("observed lead names both branches", lead)
 	}
 	if !strings.HasPrefix(r["next"].(string), "repair") || !strings.HasSuffix(r["next"].(string), "radar gate --run") {
 		t.Fatal(r["next"])

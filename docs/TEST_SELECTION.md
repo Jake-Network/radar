@@ -172,7 +172,26 @@ output and none failed. The rest are classified like this:
 | runner or command not found, timeout, output limit | `error` |
 | exit 0 with no recognized tests | `unknown` |
 
-When a test fails, the report names the branches whose changed files the test
+When a test command fails on the combined tree for a source reason (a failed
+test or a compile error), `radar gate --run` reruns that command on fresh
+private candidates: the base alone, each branch alone, then pairs and larger
+combinations. It stops at the first size where a run fails the same way (a
+shared failed case, or the same build diagnosis):
+
+| Outcome | Meaning |
+| --- | --- |
+| `isolated` | The listed combination fails and every smaller one ran and passed. |
+| `base` | The base fails the same way without any branch. No branch is named. |
+| `inconclusive` | The budget ran out, or a smaller combination failed differently, timed out or could not run. The report keeps the import-based lead. |
+
+The reruns share the `--timeout` budget and use at most `--attribution-runs`
+executions (default 8, enough for every combination of three branches; `0`
+turns them off). Environment problems such as a missing runner are not rerun,
+because every combination would fail the same way. Each combination is run
+once, so a flaky test can make one look clean or broken. The gate verdict does
+not change. The runs are in `observed_attributions` in `--json`.
+
+Without reruns, the report names the branches whose changed files the test
 imports. That is a place to start looking, not proof of which branch caused it.
 
 ## Native selectors

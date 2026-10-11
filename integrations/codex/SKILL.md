@@ -15,7 +15,9 @@ breaking contract changes and, in `attribution`, the branches whose files each
 finding points at. It never runs repository code. Follow its `next` field;
 `radar gate --run` executes repository tests on the combined tree, so ask the
 user first. Repair on the attributed branch, commit and rerun; results for
-individual branches never prove the combination works.
+individual branches never prove the combination works. After `--run`, an
+`attribution` whose `basis` starts with `observed` comes from rerunning the
+failed test on fewer branches; `inferred` comes from imports.
 
 In a workspace (`radar workspace add PATH` groups repositories on this
 machine), the same command checks every workspace repository, each combined on

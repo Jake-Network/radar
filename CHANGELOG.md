@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+* `radar gate --run` reruns a failed test command on the base, each branch
+  alone and larger combinations, and names the smallest combination that fails
+  the same way while every smaller one passes (`observed_attributions` in
+  `--json`). A failure already on the base names no branch. `--attribution-runs
+  N` bounds the reruns (default 8, `0` turns them off); they share the
+  `--timeout` budget and never change the gate verdict.
+
 ## 0.1.1 — first published release
 
 Same behavior as 0.1.0. The `v0.1.0` tag failed macOS release qualification

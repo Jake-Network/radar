@@ -44,6 +44,7 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	// skipped records a selected command that did not run. A required one
 	// blocks the gate; it is a coverage gap, never a test failure or pass.
 	requiredSkipped := 0
+	targets := []attributionTarget{}
 	skipped := func(selection testselection.Command, reason, explanation string) {
 		if r.Selection != nil {
 			r.Selection.Omitted = append(r.Selection.Omitted, testselection.Omission{ID: selection.ID, Command: selection.Command, CWD: selection.CWD, TestFiles: selection.TestFiles, Tier: selection.Tier, Reason: reason, Explanation: explanation})
@@ -131,10 +132,19 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			f.Remediation = executionRemediation(ev)
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
+			// Only a failure of the combined source can be attributed; an
+			// environment problem would fail every subset the same way.
+			if ev.Status == model.StatusFailed && ev.SourceAfterExecution == "unchanged" {
+				targets = append(targets, attributionTarget{findingID: f.ID, selection: selection.ID, options: executionOptions, failure: ev})
+			}
 		}
 		if ev.SourceAfterExecution != "unchanged" {
 			break
 		}
+	}
+	if o.AttributionRuns > 0 && len(targets) > 0 {
+		o.step(Step{Stage: StageAttribute, Total: len(targets)})
+		attribute(executionCtx, temp, r, targets, o.AttributionRuns)
 	}
 	if len(r.Executions) < len(selections) && executionStatus == model.StatusPassed {
 		executionStatus = model.StatusIncomplete

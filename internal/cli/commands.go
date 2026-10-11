@@ -16,7 +16,7 @@ type options struct {
 	reverse, allow, projected, strict, summary, dryRun, hook, verify, suggestTests                                         bool
 	depth, limit                                                                                                           int
 	timeout                                                                                                                time.Duration
-	maxCommands                                                                                                            int
+	maxCommands, attributionRuns                                                                                           int
 	args                                                                                                                   []string
 	// Workspace gate and workspace command options.
 	bases, with, only         []string
