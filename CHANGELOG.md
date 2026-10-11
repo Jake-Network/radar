@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## Unreleased
 
 * Continuous single-repository verification with `radar watch`, including
   opt-in private snapshots of saved changes with `--include-dirty`. JSONL

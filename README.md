@@ -99,7 +99,7 @@ Radar's sanitized run.
 Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.2.0/scripts/install-release.sh | bash -s -- --version v0.2.0
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.1/scripts/install-release.sh | bash -s -- --version v0.1.1
 ```
 
 This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
@@ -114,13 +114,14 @@ Windows binaries are not published yet: Windows Git defaults such as
 `core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go install github.com/Jake-Network/radar/cmd/radar@v0.2.0
+go install github.com/Jake-Network/radar/cmd/radar@v0.1.1
 ```
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
-This page describes v0.2.0. Release changes are listed in the
-[changelog](CHANGELOG.md).
+This page describes the main branch. Watch and other unreleased changes are
+listed in the [changelog](CHANGELOG.md) and are not included in v0.1.1.
+With v0.1.1, use `radar setup --agent claude` instead of `radar setup claude`.
 
 ## First run in your repository
 
