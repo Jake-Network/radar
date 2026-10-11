@@ -24,7 +24,7 @@ func realTempDir(t *testing.T) string {
 
 func worktreeGit(t *testing.T, root string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=Radar", "-c", "user.email=radar@example.invalid"}, args...)...)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, b)
 	}
@@ -59,6 +59,47 @@ func TestInspectWorktreesSkipsBareRepository(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Path != linked || !got[0].Detached || got[0].InspectionError != "" {
 		t.Fatalf("bare entry must be omitted: %+v", got)
+	}
+}
+
+func TestInspectWorktreesIncludesRenameSourceInChangedCategory(t *testing.T) {
+	root := worktreeRepo(t)
+	worktreeGit(t, root, "mv", "tracked", "renamed file.txt")
+	if err := os.WriteFile(filepath.Join(root, "renamed file.txt"), []byte("modified\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := InspectWorktrees(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].InspectionError != "" ||
+		!reflect.DeepEqual(got[0].Staged, []string{"renamed file.txt", "tracked"}) ||
+		!reflect.DeepEqual(got[0].Unstaged, []string{"renamed file.txt"}) {
+		t.Fatalf("rename source must be staged only: %+v", got)
+	}
+}
+
+func TestParseWorktreeStatusRenameAndCopySources(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		status   string
+		staged   []string
+		unstaged []string
+	}{
+		{"staged copy", "C  new file\x00old file\x00", []string{"new file"}, []string{}},
+		{"unstaged copy", " C new file\x00old file\x00", []string{}, []string{"new file"}},
+		{"unstaged rename", " R new file\x00old file\x00", []string{}, []string{"new file", "old file"}},
+		{"copy then rename", "CR new file\x00old file\x00", []string{"new file"}, []string{"new file", "old file"}},
+		{"rename then copy", "RC new file\x00old file\x00", []string{"new file", "old file"}, []string{"new file"}},
+		{"deduplicate source", "R  new file\x00old file\x00A  old file\x00", []string{"new file", "old file"}, []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := WorktreeStatus{Staged: []string{}, Unstaged: []string{}, Untracked: []string{}}
+			parseWorktreeStatus(&w, []byte(tc.status))
+			if !reflect.DeepEqual(w.Staged, tc.staged) || !reflect.DeepEqual(w.Unstaged, tc.unstaged) {
+				t.Fatalf("status=%+v; staged=%v unstaged=%v", w, tc.staged, tc.unstaged)
+			}
+		})
 	}
 }
 

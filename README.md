@@ -68,8 +68,7 @@ Problems
   ✗ integration_execution_failed
     Combined verification command python3 -m unittest discover -s . -p test_checkout.py (in .) returned failed (exit 1).
     failed cases: test_checkout.Checkout.test_budget
-    observed: fails with agent-backend + agent-frontend; each smaller combination passes (3 reruns)
-    look at: agent-backend (backend.py)
+    look at (import-based lead): agent-backend (backend.py)
     reproduce: d=$(mktemp -d) && git worktree add --detach "$d" e4d5f9ed44f0 && cd "$d" && git merge --no-ff --no-edit --no-verify 2b02738cceb2 && git merge --no-ff --no-edit --no-verify 93f3399937e6 && python3 -m unittest discover -s . -p test_checkout.py
     fix: Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant.
 
@@ -85,8 +84,10 @@ Details: add --json. Radar never touches your branches; the combination is built
 
 </details>
 
-`observed` comes from rerunning the failed test on each branch alone; `look
-at` is where to start. Both are repair leads, not proof of blame. The
+`look at` is an import-based repair lead, not proof of blame. Extra diagnostic
+reruns are off by default. Use `radar gate --run --attribution-runs 8` to look
+for a smaller branch combination that reproduces the failure; `observed` lines
+describe those bounded reruns and remain repair leads. The
 `reproduce` line rebuilds the same commits in a throwaway worktree under a
 new temporary directory (remove it later with `git worktree remove`). It
 skips commit hooks like Radar does, but checkout and merge hooks, your Git
@@ -98,7 +99,7 @@ Radar's sanitized run.
 Linux (amd64, arm64) and macOS (Apple Silicon, Intel):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.1.1/scripts/install-release.sh | bash -s -- --version v0.1.1
+curl -fsSL https://raw.githubusercontent.com/Jake-Network/radar/v0.2.0/scripts/install-release.sh | bash -s -- --version v0.2.0
 ```
 
 This installs a checksum-verified binary to `~/.local/bin` (`--dir` changes it).
@@ -113,14 +114,13 @@ Windows binaries are not published yet: Windows Git defaults such as
 `core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
 
 ```sh
-go install github.com/Jake-Network/radar/cmd/radar@v0.1.1
+go install github.com/Jake-Network/radar/cmd/radar@v0.2.0
 ```
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
-This page describes the main branch. Unreleased items are listed in the
-[changelog](CHANGELOG.md); with v0.1.1, use `radar setup --agent claude`
-instead of `radar setup claude`.
+This page describes v0.2.0. Release changes are listed in the
+[changelog](CHANGELOG.md).
 
 ## First run in your repository
 
@@ -134,8 +134,10 @@ radar gate --run      # also run the related tests on the combined tree
 Radar needs no configuration. `radar gate` picks the base (`origin/HEAD`'s
 branch, `main`, `master` or `trunk`) and every worktree branch with commits
 beyond it. Name branches to choose them: `radar gate agent-a agent-b --base
-develop`. Only committed changes are checked; uncommitted work in a worktree is
-listed and left out, so commit first.
+develop`. Gate checks committed changes; uncommitted work in a worktree is
+listed and left out, so commit first. `radar watch --include-dirty` can instead
+preview saved staged, unstaged and nonignored untracked changes in private
+snapshots; those results do not verify the committed branches.
 
 In a terminal, bare `radar` opens a menu that shows the same information and
 runs the same commands (tests only after you confirm). `radar watch` rechecks

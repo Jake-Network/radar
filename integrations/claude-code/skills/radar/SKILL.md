@@ -24,6 +24,8 @@ Repair findings on the branch named in `attribution`, commit, and rerun the
 gate; results for individual branches never prove the combination works. After
 `--run`, an `attribution` whose `basis` starts with `observed` comes from
 rerunning the failed test on fewer branches; `inferred` comes from imports.
+Gate and watch default to zero diagnostic reruns. After execution is authorized,
+opt in with `--run --attribution-runs 8` for diagnostic subset observations.
 
 Reading the result: `gate.verdict` is `pass`, `fail`, `blocked` or `error`
 (exit 0, 1, 1, 2). `PASS (static)` means no test ran; say so when you hand
@@ -31,10 +33,20 @@ off. A required check is satisfied only by `passed`. `blocked` means
 required evidence is missing (including a documentation-only change, for
 which no test ran): report `next` and the gaps in `selection.blocking` and
 `uncovered_changes`; never call it a pass.
-Uncommitted worktree changes are listed in `worktrees` and are not checked;
-commit first. `radar doctor --json` shows the base, the branches gate will
-combine and whether test runner programs are on PATH (`project`). `radar help agents`
-prints this contract in short.
+Gate lists uncommitted changes in `worktrees` but checks committed inputs only.
+For continuous previews use CLI `radar watch --include-dirty --jsonl`: it includes
+saved staged, unstaged and nonignored untracked changes in selected worktrees.
+Unsaved buffers and ignored files are excluded. Add `--run` only with explicit
+execution authorization; it repeatedly executes with host permissions. Dirty
+preview evidence does not prove the committed branches passed. In JSONL,
+`changed` or `error` invalidates the current verdict; correlate `completed`
+results with `state.key`. `verification_state` is current; `last_completed` and
+`last_change` are event timestamps. Heartbeats contain no report; optional
+`attributed` events leave the Fast Gate verdict unchanged.
+
+`radar doctor --json` shows the base, branches gate will combine and whether test
+runner programs are on PATH (`project`). `radar help agents` prints this contract
+in short.
 
 In a workspace (`radar workspace add PATH` groups repositories on this
 machine), the same call checks every workspace repository, each combined on

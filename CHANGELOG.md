@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+* Continuous single-repository verification with `radar watch`, including
+  opt-in private snapshots of saved changes with `--include-dirty`. JSONL
+  events invalidate stale results; unsaved editor buffers and ignored
+  dependencies remain outside the preview.
+* Additional attribution reruns are off by default for both `radar gate --run`
+  and `radar watch --run`. Use `--attribution-runs N` to opt into bounded
+  diagnostic observations. Inferred repair leads remain available by default.
+* Dirty watch branch reports include staged, unstaged and untracked paths,
+  including renames and deletions, alongside committed changes. Included-commit
+  metadata is accurate, and incomplete file inspection is reported explicitly.
+* Doctor reports inaccessible worktrees as incomplete instead of claiming
+  there are no uncommitted changes. Git test fixtures no longer depend on
+  a developer's global author identity, fixing the main CI failure.
+* Agent guidance distinguishes committed Gate inputs from dirty Watch
+  snapshots and preserves explicit authorization for repository code execution.
 
 * Simpler first run. Default help shows six commands. `radar doctor` reports
   the base, the worktree branches `radar gate` would combine, uncommitted
@@ -33,11 +49,11 @@
   evidence and stays `NOT VERIFIED` (exit 1, JSON unchanged), but the report
   now says that only documentation changed, so no test was selected or run,
   and points at the static `radar gate` result.
-* `radar gate --run` reruns a failed test command on the base, each branch
+* `radar gate --run --attribution-runs N` reruns a failed test command on the base, each branch
   alone and larger combinations, and names the smallest combination that fails
   the same way while every smaller one passes (`observed_attributions` in
   `--json`). A failure already on the base names no branch. `--attribution-runs
-  N` bounds the reruns (default 8, `0` turns them off); they share the
+  N` bounds the reruns (default 0; for example, opt in with `8`); they share the
   `--timeout` budget and never change the gate verdict.
 
 ## 0.1.1 — first published release

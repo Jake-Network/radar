@@ -21,9 +21,10 @@ import (
 // gateBranch records what one input branch changed relative to its merge base
 // with the integration base, so findings can name the branches involved.
 type gateBranch struct {
-	Ref     string   `json:"ref"`
-	Commit  string   `json:"commit"`
-	Changed []string `json:"changed"`
+	Ref            string   `json:"ref"`
+	Commit         string   `json:"commit"`
+	Changed        []string `json:"changed"`
+	changedUnknown bool
 }
 
 // gateLead names a branch whose changed files a finding points at.
@@ -74,7 +75,7 @@ func gateCommand() command {
 			fs.StringVar(&o.suite, "suite", "", "test selection `MODE` with --run: targeted, balanced (default) or full")
 			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands (`N`) --run executes")
 			fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "total --run time budget (`DURATION`), maximum 30m")
-			fs.IntVar(&o.attributionRuns, "attribution-runs", integration.DefaultAttributionRuns, "with --run, rerun failed tests on at most `N` smaller branch combinations to find which ones break them (0 turns it off)")
+			fs.IntVar(&o.attributionRuns, "attribution-runs", 0, "with --run, opt in to at most `N` diagnostic reruns on smaller branch combinations (default 0; for example 8)")
 			policyFlag(fs, o)
 			planFlag(fs, o)
 		}, run: (*app).gate}
@@ -420,7 +421,7 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	if o.timeout != 10*time.Minute {
 		args = append(args, "--timeout "+o.timeout.String())
 	}
-	if o.verify && o.attributionRuns != integration.DefaultAttributionRuns {
+	if o.verify && o.attributionRuns != 0 {
 		args = append(args, fmt.Sprintf("--attribution-runs %d", o.attributionRuns))
 	}
 	if len(o.args) > 0 {
@@ -462,7 +463,11 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		width = max(width, len(b.Ref))
 	}
 	for _, b := range g.Branches {
-		fmt.Fprintf(w, "  %s%s  %s  %s changed\n", p.cyan(b.Ref), strings.Repeat(" ", width-len(b.Ref)), p.dim(short(b.Commit)), plural(len(b.Changed), "file", "files"))
+		changed := plural(len(b.Changed), "file", "files") + " changed"
+		if b.changedUnknown {
+			changed = "changed files unavailable"
+		}
+		fmt.Fprintf(w, "  %s%s  %s  %s\n", p.cyan(b.Ref), strings.Repeat(" ", width-len(b.Ref)), p.dim(short(b.Commit)), changed)
 	}
 	for _, s := range g.Skipped {
 		fmt.Fprintf(w, "  %s skipped: %s\n", p.mark("·"), s)

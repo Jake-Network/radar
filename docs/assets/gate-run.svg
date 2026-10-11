@@ -20,9 +20,9 @@
 <text x="34.8" y="179" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#3fb950">✓</text>
 <text x="51.6" y="179" textLength="42.0" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9" font-weight="700">Merge</text>
 <text x="186.0" y="179" textLength="268.8" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9">branches merge without conflicts</text>
-<text x="34.8" y="198" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#3fb950">✓</text>
+<text x="34.8" y="198" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#8b949e">·</text>
 <text x="51.6" y="198" textLength="75.6" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9" font-weight="700">Contracts</text>
-<text x="186.0" y="198" textLength="277.2" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9">no breaking contract change found</text>
+<text x="186.0" y="198" textLength="714.0" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9">none declared, so no contract was checked (radar discover proposes candidates)</text>
 <text x="34.8" y="217" textLength="8.4" lengthAdjust="spacingAndGlyphs" fill="#ff7b72">✗</text>
 <text x="51.6" y="217" textLength="42.0" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9" font-weight="700">Tests</text>
 <text x="186.0" y="217" textLength="394.8" lengthAdjust="spacingAndGlyphs" fill="#c9d1d9">1 of 1 test command failed on the combined tree</text>

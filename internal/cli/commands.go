@@ -187,12 +187,14 @@ var helpCopy = map[string]struct {
 			{"radar gate", "check every worktree branch with commits beyond the base"},
 			{"radar gate agent-a agent-b", "combine only the named branches"},
 			{"radar gate --run", "also run the related tests on the combined tree"},
+			{"radar gate --run --attribution-runs 8", "opt in to diagnostic subset executions for failed tests"},
 			{"radar gate --run --suite full", "run the whole supported test inventory (within --max-commands)"},
 			{"radar gate --with ../payments", "check another repository in the same run"},
 		},
 		notes: []string{
 			"Without --run, Radar reads committed Git objects only and runs no repository code.",
 			"With --run, selected tests run with your permissions in a private copy of the combined\nbranches (not an OS sandbox). Your checkout and branches are never changed.",
+			"Gate and watch default to zero diagnostic reruns; opt in with --attribution-runs N.",
 			"Exit codes: 0 pass, 1 fail (with --run or --policy also not verified), 2 error.",
 		}},
 	"workspace": {brief: "Group repositories so gate checks them together",
@@ -368,7 +370,8 @@ func printHelp(w io.Writer, all bool) {
 const agentHelp = `Radar for coding agents
 
 Radar combines committed branches in private Git state and reports whether
-they work together. It never writes branches, refs, the index or worktrees.
+they work together. watch --include-dirty also previews saved edits. Radar never
+writes source branches, refs, the index or worktrees.
 
 Commands an agent may run (static; no repository code runs)
   radar doctor --json             base, worktree branches, uncommitted
@@ -376,6 +379,9 @@ Commands an agent may run (static; no repository code runs)
   radar gate --json               combine every worktree branch with commits
                                   beyond the base
   radar gate BRANCH... --json     combine only these branches
+  radar watch --include-dirty --jsonl
+                                  preview saved staged, unstaged and nonignored
+                                  untracked edits; no unsaved buffers or ignored files
   MCP tool radar_gate             the same gate; a bounded summary by default
                                   (agent_brief), detail=true for the full report
 
@@ -383,6 +389,8 @@ Needs the user's explicit authorization (runs repository code)
   radar gate --run                run selected tests on the combined tree
   radar watch --run               rerun tests on every change
   Never add --run on your own; ask the user, or report what is unverified.
+  Gate and watch default to zero diagnostic reruns. Opt in with
+  --run --attribution-runs 8 for additional failed-command subset observations.
 
 Reading a gate result
   gate.verdict                    pass | fail | blocked | error (exit 0 | 1 | 1 | 2)
@@ -397,7 +405,9 @@ Reading a gate result
   selection.blocking,
   selection.uncovered_changes     why tests could not cover the change
   worktrees[].staged/unstaged/untracked
-                                  uncommitted changes: NOT checked; commit first
+                                  gate excludes them; watch --include-dirty previews
+                                  selected snapshots. Preview evidence does not
+                                  qualify committed inputs
   error, next (exit 2)            Radar could not run; next says how to fix it
 
 The loop
@@ -408,6 +418,10 @@ The loop
   4. blocked: report the missing evidence and next to the user; do not call
      it a pass.
   5. pass: "PASS (static)" means no test ran; say so when you hand off.
+
+Watch JSONL: changed/error invalidate the verdict; correlate completed results
+with state.key. verification_state is current; last_completed/last_change are
+event timestamps. Heartbeats carry no report; attributed leaves Fast Gate unchanged.
 
 Full guide: docs/AGENT_GUIDE.md in the Radar repository.
 `

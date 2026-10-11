@@ -27,9 +27,16 @@ also shows a progress line on stderr and erases it before the report.
 `radar gate` is a front end to `merge-check`. It picks the base and branches,
 always proposes tests, adds branch attribution and a `next` command, and maps
 `--run` to `merge-check --verify --allow-execution --suite balanced` with a
-10-minute budget. With `--run`, it also reruns failed test commands on smaller
-branch combinations to see which one breaks them (`--attribution-runs N`,
-default 8; see [test selection](TEST_SELECTION.md)). `merge-check` does not.
+10-minute budget. Gate and watch default to zero diagnostic reruns. Opt in
+with `radar gate --run --attribution-runs 8` to rerun failed commands on smaller
+branch combinations (see [test selection](TEST_SELECTION.md)). These diagnostic
+runs do not change the verdict. `merge-check` does not run them.
+
+Gate checks committed inputs only. `radar watch --include-dirty` also previews
+saved staged, unstaged and nonignored untracked changes in selected worktrees.
+Unsaved editor buffers and ignored files are excluded; `--run` still requires
+explicit execution authorization. A dirty preview pass does not qualify the
+committed branches. See [watch](WATCH.md) for snapshot and JSONL semantics.
 
 Use `merge-check` when you want exact control:
 

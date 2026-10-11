@@ -13,8 +13,111 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/watch"
 )
+
+func TestWatchDirtyFailureHumanRepairLead(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip(err)
+	}
+	root, agent := checkoutRepo(t)
+	branch := agent("dirty-only", nil)
+	put(t, branch, "backend.py", "def price():\n    return 2\n")
+	// The same path appears in staged and unstaged inventories; count it once.
+	gitTest(t, branch, "add", "backend.py")
+	put(t, branch, "backend.py", "def price():\n    return 3\n")
+	before := watchSourceFingerprint(t, branch)
+	var out bytes.Buffer
+	a := &app{ctx: context.Background(), root: root, out: &out}
+	o := options{base: "main", includeDirty: true, verify: true, suite: testselection.ModeFull, maxCommands: 16, timeout: time.Minute}
+	state, err := a.observeWatch(a.ctx, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := state.Value.(watchInput)
+	c, err := integration.BuildDirtyCandidate(a.ctx, root, in.Base, in.SHAs, in.Snapshots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	r, err := integration.Analyze(a.ctx, c, integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Verify: true, AllowExecution: true, Suite: o.suite, MaxCommands: o.maxCommands, Timeout: o.timeout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Verdict != gate.Fail {
+		t.Fatalf("dirty-only candidate did not fail: %+v", r.Gate)
+	}
+	a.renderWatch(watch.Event{Type: watch.Completed, State: state, Result: &watch.Result{Value: r}}, o)
+	text := out.String()
+	for _, want := range []string{"dirty-only", "1 file changed", "look at (import-based lead): dirty-only (backend.py)"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in human dirty failure output:\n%s", want, text)
+		}
+	}
+	if got := watchSourceFingerprint(t, branch); got != before {
+		t.Fatal("dirty preview or human rendering changed the source worktree")
+	}
+}
+
+func TestWatchBranchChangesPinnedSnapshotUnion(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	branch := agent("dirty-files", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	put(t, branch, "backend.py", "def price():\n    return 3\n")
+	gitTest(t, branch, "add", "backend.py")
+	put(t, branch, "backend.py", "def price():\n    return 4\n")
+	gitTest(t, branch, "mv", "frontend.ts", "renamed.ts")
+	if err := os.Remove(filepath.Join(branch, "test_checkout.py")); err != nil {
+		t.Fatal(err)
+	}
+	put(t, branch, "untracked.py", "VALUE = 1\n")
+	a := &app{ctx: context.Background(), root: root}
+	state, err := a.observeWatch(a.ctx, options{base: "main", includeDirty: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := state.Value.(watchInput)
+	// An advanced base's unrelated files must not become branch repair leads.
+	put(t, root, "base_only.py", "VALUE = 1\n")
+	gitTest(t, root, "add", "base_only.py")
+	gitTest(t, root, "commit", "-m", "advance base")
+	in.Base = gitTest(t, root, "rev-parse", "HEAD")
+	// Inventories remain pinned even if the live worktree changes afterwards.
+	put(t, branch, "later.py", "VALUE = 1\n")
+	in.Snapshots = append(in.Snapshots, integration.DirtySnapshot{InputIndex: 99, Untracked: []string{"other-branch.py"}})
+	changed, err := a.watchBranchChanges(in, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"backend.py", "frontend.ts", "renamed.ts", "test_checkout.py", "untracked.py"}
+	if fmt.Sprint(changed) != fmt.Sprint(want) {
+		t.Fatalf("changed files = %v, want %v", changed, want)
+	}
+}
+
+func TestWatchRenderBranchInspectionErrorIsIncomplete(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	base := gitTest(t, root, "rev-parse", "HEAD")
+	in := watchInput{Base: base, Refs: []string{"unavailable", "available"}, SHAs: []string{"missing-commit", base}, Snapshots: []integration.DirtySnapshot{
+		{InputIndex: 0, Untracked: []string{"known.py"}},
+		{InputIndex: 1, Untracked: []string{"available.py"}},
+	}}
+	var out bytes.Buffer
+	a := &app{ctx: context.Background(), root: root, out: &out}
+	changed, err := a.watchBranchChanges(in, 0)
+	if err == nil || fmt.Sprint(changed) != "[known.py]" {
+		t.Fatalf("inspection failure lost known snapshot paths: %v, %v", changed, err)
+	}
+	a.renderWatch(watch.Event{Type: watch.Completed, State: watch.State{Value: in}, Result: &watch.Result{Value: integration.Report{Base: base, Inputs: in.SHAs}}}, options{base: "main", includeDirty: true})
+	text := out.String()
+	for _, want := range []string{"branch \"unavailable\": changed-file inspection unavailable", "changed files unavailable", "available", "1 file changed"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in incomplete inventory output:\n%s", want, text)
+		}
+	}
+}
 
 // watchEventWriter decodes complete JSONL events synchronously. Callbacks can
 // cancel a session or commit a fixture update without timing-dependent sleeps.

@@ -155,6 +155,17 @@ func inspectWorktree(ctx context.Context, w *WorktreeStatus) {
 	if globalErr != nil {
 		w.InspectionError = globalErr.Error()
 	}
+	parseWorktreeStatus(w, b)
+}
+
+func parseWorktreeStatus(w *WorktreeStatus, b []byte) {
+	staged, unstaged := map[string]bool{}, map[string]bool{}
+	add := func(paths *[]string, seen map[string]bool, path string) {
+		if !seen[path] {
+			*paths = append(*paths, path)
+			seen[path] = true
+		}
+	}
 	fields := splitNUL(b)
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]
@@ -167,13 +178,23 @@ func inspectWorktree(ctx context.Context, w *WorktreeStatus) {
 			continue
 		}
 		if f[0] != ' ' {
-			w.Staged = append(w.Staged, path)
+			add(&w.Staged, staged, path)
 		}
 		if f[1] != ' ' {
-			w.Unstaged = append(w.Unstaged, path)
+			add(&w.Unstaged, unstaged, path)
 		}
 		if f[0] == 'R' || f[0] == 'C' || f[1] == 'R' || f[1] == 'C' {
 			i++
+			if i < len(fields) {
+				// Porcelain -z puts the original path after the destination.
+				// Renames also delete that path; copies leave it unchanged.
+				if f[0] == 'R' {
+					add(&w.Staged, staged, fields[i])
+				}
+				if f[1] == 'R' {
+					add(&w.Unstaged, unstaged, fields[i])
+				}
+			}
 		}
 	}
 }

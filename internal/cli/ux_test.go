@@ -171,7 +171,7 @@ func TestGateGapsBoundLongLists(t *testing.T) {
 }
 
 func TestBlockedNextKeepsTheSelection(t *testing.T) {
-	o := options{verify: true, suite: "targeted", maxCommands: 2, timeout: 10 * time.Minute, attributionRuns: integration.DefaultAttributionRuns, args: []string{"agent-a", "agent-b"}}
+	o := options{verify: true, suite: "targeted", maxCommands: 2, timeout: 10 * time.Minute, args: []string{"agent-a", "agent-b"}}
 	again := rerunWith(o, "main", []string{"agent-a", "agent-b"})
 	budget := integration.Report{Selection: &testselection.Selection{MaxCommands: 2, Blocking: []string{"required command omitted by budget: x", "required command omitted by budget: y"}}}
 	if got := blockedNext(budget, gateGaps(budget), again, o); got != "raise the command budget: radar gate --run --suite targeted --max-commands 4 agent-a agent-b" {
@@ -262,7 +262,7 @@ func TestSetupAcceptsTheAgentName(t *testing.T) {
 
 func TestHelpForAgentsNamesTheContract(t *testing.T) {
 	code, out, _ := run(t, t.TempDir(), "help", "agents")
-	for _, want := range []string{"radar gate --json", "radar_gate", "Never add --run on your own", "only passed satisfies", "not proof of blame", "NOT checked; commit first", "PASS (static)\" means no test ran"} {
+	for _, want := range []string{"radar gate --json", "radar_gate", "Never add --run on your own", "only passed satisfies", "not proof of blame", "gate excludes them; watch --include-dirty previews", "Gate and watch default to zero diagnostic reruns", "--run --attribution-runs 8", "no unsaved buffers or ignored files", "Preview evidence does not\n                                  qualify committed inputs", "PASS (static)\" means no test ran"} {
 		if code != 0 || !strings.Contains(out, want) {
 			t.Fatalf("missing %q:\n%s", want, out)
 		}
@@ -467,5 +467,18 @@ func TestDoctorNamesTheWorkspace(t *testing.T) {
 	d := doctorProjectOf(t, root)
 	if d.Workspace == "" || !strings.Contains(d.Next, "gate checks every repository in it") {
 		t.Fatalf("%+v", d)
+	}
+}
+
+func TestGateBranchUnknownChangesDoNotRenderZeroFiles(t *testing.T) {
+	var out bytes.Buffer
+	renderGate(&out, gateReport{
+		BaseRef:  "main",
+		Branches: []gateBranch{{Ref: "agent-a", Commit: "123456789012", changedUnknown: true}, {Ref: "agent-b", Commit: "234567890123", Changed: []string{"app.py"}}},
+		Report:   integration.Report{Base: "345678901234", Gate: gate.Result{Verdict: gate.Blocked}},
+	}, false)
+	text := out.String()
+	if !strings.Contains(text, "agent-a  123456789012  changed files unavailable") || !strings.Contains(text, "agent-b  234567890123  1 file changed") || strings.Contains(text, "0 files changed") {
+		t.Fatal(text)
 	}
 }

@@ -173,9 +173,9 @@ output and none failed. The rest are classified like this:
 | exit 0 with no recognized tests | `unknown` |
 
 When a test command fails on the combined tree for a source reason (a failed
-test or a compile error), `radar gate --run` reruns that command on fresh
-private candidates: the base alone, each branch alone, then pairs and larger
-combinations. It stops at the first size where a run fails the same way: every
+test or a compile error), `radar gate --run --attribution-runs 8` can rerun
+that command on fresh private candidates: the base alone, each branch alone,
+then pairs and larger combinations. It stops at the first size where a run fails the same way: every
 failed case of the original, or the same build diagnosis at every original
 source line. A run that shows only part of the original failure is a different
 failure, so a failure already on the base cannot hide one a branch added. Runs
@@ -188,11 +188,13 @@ failure names no failed case or source line, only passing runs count:
 | `base` | The base fails the same way without any branch. No branch is named. |
 | `inconclusive` | The budget ran out, or a smaller combination failed differently, timed out or could not run. The report keeps the import-based lead. |
 
-The reruns share the `--timeout` budget and use at most `--attribution-runs`
-executions (default 8, enough for every combination of three branches; `0`
-turns them off). Environment problems such as a missing runner are not rerun,
-because every combination would fail the same way. Each combination is run
-once, so a flaky test can make one look clean or broken. The gate verdict does
+Gate reruns share the `--timeout` budget and use at most `--attribution-runs`
+executions. Watch publishes the Fast Gate result first and runs diagnostics with
+a separate timeout budget (see [WATCH](WATCH.md)). Gate and watch default to `0` (no diagnostic reruns); `8` is
+enough for every combination of three branches. Environment problems such as
+a missing runner are not rerun, because every combination would fail the same
+way. Each combination is run once, so a flaky test can make one look clean or
+broken. The gate verdict does
 not change. The runs are in `observed_attributions` in `--json`.
 
 Without reruns, the report names the branches whose changed files the test

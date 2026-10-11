@@ -16,8 +16,9 @@ import (
 	"github.com/Jake-Network/radar/internal/pathutil"
 )
 
-// DefaultAttributionRuns bounds how many subset executions one gate spends
-// on observed attribution: enough for every subset of three branches.
+// DefaultAttributionRuns is a suggested budget when opting in to observed
+// attribution: enough for every subset of three branches. The CLI defaults
+// to zero additional executions; callers must explicitly request this budget.
 const DefaultAttributionRuns = 8
 
 const attributionLimitation = "Observed attribution runs each subset of branches once; a flaky test can make a subset look clean or broken."

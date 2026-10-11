@@ -51,6 +51,27 @@ command works.
 
 When the version line reaches 0.4, skip v0.4.0 and v0.4.1 and use v0.4.2.
 
+## Subsequent releases
+
+After the release commit's main CI passes, create an annotated version tag and
+push that tag. For 0.2.0:
+
+```sh
+git tag -a v0.2.0 -m "Radar 0.2.0" <release-commit>
+git push origin v0.2.0
+```
+
+Wait for the tag's native qualification workflow to pass on all four targets,
+then publish through the same workflow:
+
+```sh
+gh workflow run release.yml --ref v0.2.0 -f publish=true
+```
+
+After that run passes, verify the public release assets, checksums and an
+installation using the release's installer. Historical tags and Go module
+retractions stay in place.
+
 ## Building assets locally
 
 On the matching host, with Go, a C compiler, Git and Python:

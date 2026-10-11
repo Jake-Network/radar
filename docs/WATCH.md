@@ -32,7 +32,7 @@ watch waits and reports `NOT VERIFIED` rather than a vacuous pass.
 | `--timeout 10m` | Fast Gate execution budget; optional attribution has a separate budget of this duration. |
 | `--max-commands 16` | Bound selected commands per check; omitted required commands block the gate. |
 | `--policy PATH` | Require declared checks; policies do not authorize execution. |
-| `--attribution-runs N` | With `--run`, bound optional diagnostic subset executions; watch defaults to zero. |
+| `--attribution-runs N` | With `--run`, bound optional diagnostic subset executions; gate and watch default to zero. |
 
 `--run` authorizes repository code repeatedly, including new worktrees discovered
 during an automatically selected session. The command prints this scope on
@@ -88,7 +88,16 @@ an old report. Consumers must invalidate their current verdict on `changed` or
 during analysis cancel or supersede the old check. Watch reobserves inputs before
 publishing a result so a detected obsolete pass is never presented as current.
 
-The JSONL envelope is described in [`schemas/watch-event.schema.json`](../schemas/watch-event.schema.json). It also reports `verification_state` (`NOT VERIFIED`, `CHECKING`, `ERROR` or the gate's verdict text, such as `PASS (static)` or `FAIL`), `last_completed` and `last_change`.
+The JSONL envelope is described in
+[`schemas/watch-event.schema.json`](../schemas/watch-event.schema.json). It also
+reports `verification_state` (`NOT VERIFIED`, `CHECKING`, `ERROR` or the gate's
+verdict text, such as `PASS (static)` or `FAIL`), `last_completed` and
+`last_change`. These are the most recent completion and
+change event timestamps; before the first event of each kind they contain the
+zero UTC timestamp (`0001-01-01T00:00:00Z`). An earlier completion timestamp
+does not establish that its report still applies after an input change.
+`state.value.worktrees[].commit_included` identifies commits in the pinned base
+or selected inputs; `uncommitted_included` identifies selected dirty snapshots.
 
 The scheduler has one analysis worker and coalesces saves during the debounce
 window. Its key binds the base commit, selected branch commits, worktree state,

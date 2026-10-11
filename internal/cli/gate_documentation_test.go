@@ -74,7 +74,7 @@ func TestGateRunDocumentationOnlyChangeStaysNotVerified(t *testing.T) {
 func TestDocumentationNextStepOnlyWhenItIsTheWholeBlock(t *testing.T) {
 	r := integration.Report{Changed: []string{"README.md"}, Selection: &testselection.Selection{}}
 	r.Gate = gate.Result{Verdict: gate.Blocked, Policy: gate.Policy{Name: "supported-integration"}, Required: []gate.Check{{ID: "textual_merge", Status: model.StatusPassed}, {ID: "integration_execution", Status: model.StatusUnknown}}}
-	again := rerunWith(options{verify: true, timeout: 10 * time.Minute, maxCommands: 16, attributionRuns: integration.DefaultAttributionRuns}, "main", nil)
+	again := rerunWith(options{verify: true, timeout: 10 * time.Minute, maxCommands: 16}, "main", nil)
 	if got := blockedNext(r, gateGaps(r), again, options{}); got != "documentation changes have no test evidence; the static check is what Radar verifies: radar gate" {
 		t.Fatal(got)
 	}

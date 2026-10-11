@@ -347,8 +347,11 @@ func (a *app) renderWatch(e watch.Event, o options) {
 					g.BaseRef = "base"
 				}
 				for i, ref := range in.Refs {
-					changed, _ := gitrepo.ChangedFiles(a.ctx, a.root, in.Base, in.SHAs[i])
-					g.Branches = append(g.Branches, gateBranch{Ref: ref, Commit: r.Inputs[i], Changed: changed})
+					changed, err := a.watchBranchChanges(in, i)
+					if err != nil {
+						fmt.Fprintf(a.out, "  %s branch %q: changed-file inspection unavailable: %s. Candidate verification is unchanged; inspect this branch manually for repair leads.\n", p.mark("!"), ref, err)
+					}
+					g.Branches = append(g.Branches, gateBranch{Ref: ref, Commit: r.Inputs[i], Changed: changed, changedUnknown: err != nil})
 				}
 			}
 			g.attribute()
@@ -364,6 +367,22 @@ func (a *app) renderWatch(e watch.Event, o options) {
 			fmt.Fprintln(a.out, e.Result.Value)
 		}
 	}
+}
+
+// Snapshot paths belong to the pinned input, even when its committed head has
+// no changes beyond the base. Keep the union sorted for gate's path lookup.
+func (a *app) watchBranchChanges(in watchInput, i int) ([]string, error) {
+	changed, err := a.branchChanges(in.Base, in.SHAs[i])
+	for _, snapshot := range in.Snapshots {
+		if snapshot.InputIndex != i {
+			continue
+		}
+		changed = append(changed, snapshot.Staged...)
+		changed = append(changed, snapshot.Unstaged...)
+		changed = append(changed, snapshot.Untracked...)
+	}
+	slices.Sort(changed)
+	return slices.Compact(changed), err
 }
 
 // watchNext is the next step after a completed watch check. Watch reruns by
