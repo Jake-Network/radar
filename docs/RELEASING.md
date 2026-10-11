@@ -68,6 +68,22 @@ then publish through the same workflow:
 gh workflow run release.yml --ref v0.2.0 -f publish=true
 ```
 
+If an existing tag needs a workflow-only repair, keep the tag and its source
+commit unchanged. Run the repaired workflow from main, selecting the existing
+tag explicitly; every archive and collection script still checks out the
+resolved tag commit. For example:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v0.2.0
+# After all four targets qualify:
+gh workflow run release.yml --ref main -f tag=v0.2.0 -f publish=true
+```
+
+The resolver rejects missing or malformed tags and branch publication requests.
+Publishing rechecks that the tag still points to the qualified commit. On macOS,
+the workflow resolves `TMPDIR` to its physical path before testing, matching
+Git's path reporting without changing the tagged source.
+
 After that run passes, verify the public release assets, checksums and an
 installation using the release's installer. Historical tags and Go module
 retractions stay in place.
@@ -103,7 +119,8 @@ and installer tests, actionlint and a Windows installer job.
 
 `release.yml` builds each archive on its native runner and collects them only
 after every host passes. A tag only prepares assets. Publishing needs a manual
-dispatch with `publish=true` on an existing tag, through the protected
+dispatch with `publish=true` selecting an existing tag (the dispatch ref or
+explicit `tag` input), through the protected
 `release` environment. Configure required reviewers on that environment before
 the first publication. Checksums are verified again before
 `gh release create --verify-tag`.

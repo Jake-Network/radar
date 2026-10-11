@@ -6,6 +6,10 @@ on:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   workflow_dispatch:
     inputs:
+      tag:
+        description: Existing version tag to qualify (empty uses the selected ref)
+        type: string
+        default: ''
       publish:
         description: Publish the selected existing version tag after native validation
         type: boolean
@@ -13,7 +17,51 @@ on:
 permissions:
   contents: read
 jobs:
+  resolve:
+    runs-on: ubuntu-22.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      tag: ${{ steps.source.outputs.tag }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Resolve an immutable source commit
+        id: source
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          REQUESTED_PUBLISH: ${{ inputs.publish }}
+        run: |
+          tag="$REQUESTED_TAG"
+          if [[ -z "$tag" && "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [[ -n "$tag" ]]; then
+            [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]
+            if [[ "$tag" == *-* ]]; then
+              IFS=. read -r -a identifiers <<< "${tag#*-}"
+              for identifier in "${identifiers[@]}"; do
+                if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+                  [[ "$identifier" =~ ^(0|[1-9][0-9]*)$ ]]
+                fi
+              done
+            fi
+            git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
+            sha="$(git rev-parse --verify "refs/tags/$tag^{commit}")"
+            version="${tag#v}"
+          else
+            # Branch dispatches remain qualification-only dry runs.
+            [[ "$REQUESTED_PUBLISH" != true ]]
+            sha="$GITHUB_SHA"
+            version="0.0.0-dryrun.${sha::7}"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'sha=%s\ntag=%s\nversion=%s\n' "$sha" "$tag" "$version" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +79,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
           go-version-file: go.mod
@@ -56,15 +105,20 @@ jobs:
           'CC=gcc' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Pin release version and clean source
         shell: bash
+        env:
+          SOURCE_VERSION: ${{ needs.resolve.outputs.version }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test -z "$(git status --porcelain)"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            version="${GITHUB_REF_NAME#v}"
-          else
-            version="0.0.0-dryrun.${GITHUB_SHA::7}"
-          fi
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]
-          echo "RADAR_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RADAR_VERSION=$SOURCE_VERSION" >> "$GITHUB_ENV"
+      - name: Canonicalize macOS temporary directory
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # Git reports physical paths; /var aliases /private/var on macOS.
+          tmpdir="$(cd "$TMPDIR" && pwd -P)"
+          echo "TMPDIR=$tmpdir/" >> "$GITHUB_ENV"
       - name: Vet and test (required on every host)
         shell: bash
         run: |
@@ -98,12 +152,13 @@ jobs:
           if-no-files-found: error
 
   collect:
-    needs: build
+    needs: [resolve, build]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: radar-*
@@ -117,9 +172,11 @@ jobs:
           sha256sum --check *.sha256
           cat *.sha256 > checksums.txt
       - name: Prepare Homebrew formula for manual review
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: needs.resolve.outputs.tag != ''
         shell: bash
-        run: bash scripts/homebrew-formula.sh "$GITHUB_REF_NAME" dist > dist/radar.rb
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: bash scripts/homebrew-formula.sh "$RELEASE_TAG" dist > dist/radar.rb
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: reviewed-release-assets
@@ -127,13 +184,25 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && startsWith(github.ref, 'refs/tags/v')
-    needs: collect
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && needs.resolve.outputs.tag != ''
+    needs: [resolve, collect]
     runs-on: ubuntu-22.04
     environment: release
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+      - name: Confirm the existing tag still identifies the qualified commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: reviewed-release-assets
@@ -144,9 +213,10 @@ jobs:
       - name: Publish the already existing tag
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         shell: bash
         run: |
           prerelease=()
-          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
-            --title "Radar $GITHUB_REF_NAME" --generate-notes --verify-tag "${prerelease[@]}"
+          [[ "$RELEASE_TAG" == *-* ]] && prerelease+=(--prerelease)
+          gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Radar $RELEASE_TAG" --generate-notes --verify-tag "${prerelease[@]}"

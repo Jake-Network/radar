@@ -94,15 +94,20 @@ func TestDoctorFirstRunDetection(t *testing.T) {
 		root, agent := agentRepo(t, map[string]string{"a.py": "A = 1\n"})
 		dir := agent("agent-a", map[string]string{"a.py": "A = 2\n"})
 		put(t, dir, "a.py", "A = 3\n")
+		// Git records the physical worktree path (e.g. /private/var on macOS).
+		physicalDir, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Rename(dir, dir+"-offline"); err != nil {
 			t.Fatal(err)
 		}
 		d := doctorProjectOf(t, root)
-		if d.Worktrees != 2 || len(d.Dirty) != 0 || !strings.Contains(strings.Join(d.Problems, "\n"), "worktree inspection unavailable for "+dir+":") || !strings.HasPrefix(d.Next, "restore access to the worktrees") {
+		if d.Worktrees != 2 || len(d.Dirty) != 0 || !strings.Contains(strings.Join(d.Problems, "\n"), "worktree inspection unavailable for "+physicalDir+":") || !strings.HasPrefix(d.Next, "restore access to the worktrees") {
 			t.Fatalf("%+v", d)
 		}
 		code, out, _ := run(t, root, "doctor")
-		if code != 0 || strings.Contains(out, "no uncommitted changes") || !strings.Contains(out, "inspection incomplete") || !strings.Contains(out, "worktree inspection unavailable for "+dir+":") {
+		if code != 0 || strings.Contains(out, "no uncommitted changes") || !strings.Contains(out, "inspection incomplete") || !strings.Contains(out, "worktree inspection unavailable for "+physicalDir+":") {
 			t.Fatalf("%d %s", code, out)
 		}
 	})

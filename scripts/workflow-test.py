@@ -4,7 +4,11 @@
 These targeted guardrails deliberately do not claim to validate arbitrary YAML
 or replace protected GitHub environments and branch protection settings.
 """
+import os
 import pathlib
+import subprocess
+import tempfile
+import textwrap
 import re
 import unittest
 
@@ -80,9 +84,9 @@ class WorkflowPolicyTests(unittest.TestCase):
         source = (ROOT / WORKFLOWS[1]).read_text()
         publish = source.split("\n  publish:\n", 1)[1]
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.publish", publish)
-        self.assertIn("startsWith(github.ref, 'refs/tags/v')", publish)
+        self.assertIn("needs.resolve.outputs.tag != ''", publish)
         self.assertIn("environment: release", publish)
-        self.assertIn("needs: collect", publish)
+        self.assertIn("needs: [resolve, collect]", publish)
         self.assertIn("--verify-tag", publish)
         self.assertEqual(source.count("contents: write"), 1)
         self.assertNotRegex(source, r"git (?:push|tag)\s")
@@ -94,8 +98,62 @@ class WorkflowPolicyTests(unittest.TestCase):
         for required in ("CGO_ENABLED: \"1\"", "go vet ./...", "go test ./...", "go test -race ./...", "scripts/release-test.py", "scripts/validate-release.py", "scripts/install-release-test.ps1", "sha256sum --check"):
             self.assertIn(required, source)
         self.assertNotIn("continue-on-error", source)
-        self.assertIn("needs: build", source)
+        self.assertIn("needs: [resolve, build]", source)
         self.assertIn("if: runner.os != 'Windows'", source)
+
+    def test_release_sources_are_pinned_to_resolved_commit(self):
+        source = (ROOT / WORKFLOWS[1]).read_text()
+        for job in ("build", "collect", "publish"):
+            body = re.split(r"\n  [a-z]+:\n", source.split("\n  " + job + ":\n", 1)[1], maxsplit=1)[0]
+            self.assertIn("ref: ${{ needs.resolve.outputs.sha }}", body)
+        self.assertIn('test "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"', source)
+        self.assertIn('tmpdir="$(cd "$TMPDIR" && pwd -P)"', source)
+        self.assertLess(source.index("Canonicalize macOS temporary directory"), source.index("Vet and test"))
+
+    def test_source_resolution_uses_existing_tags_and_rejects_untrusted_input(self):
+        source = (ROOT / WORKFLOWS[1]).read_text()
+        resolver = source.split("      - name: Resolve an immutable source commit\n", 1)[1]
+        resolver = resolver.split("        run: |\n", 1)[1].split("\n  build:", 1)[0]
+        script = textwrap.dedent(resolver)
+        with tempfile.TemporaryDirectory() as directory:
+            repo = pathlib.Path(directory) / "repo"
+            repo.mkdir()
+            def git(*args):
+                return subprocess.check_output(
+                    ["git", "-c", "user.name=Radar", "-c", "user.email=radar@example.invalid", *args],
+                    cwd=repo, text=True, stderr=subprocess.DEVNULL,
+                ).strip()
+            git("init", "-q")
+            git("commit", "-q", "--allow-empty", "-m", "fixture")
+            sha = git("rev-parse", "HEAD")
+            git("tag", "-a", "v0.2.0", "-m", "immutable")
+            git("remote", "add", "origin", str(repo))
+            output = pathlib.Path(directory) / "outputs"
+            def resolve(tag="", publish="false", ref="refs/heads/main"):
+                output.write_text("")
+                env = dict(os.environ, REQUESTED_TAG=tag, REQUESTED_PUBLISH=publish,
+                           GITHUB_REF=ref, GITHUB_REF_NAME=ref.rsplit("/", 1)[-1],
+                           GITHUB_SHA=sha, GITHUB_OUTPUT=str(output))
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+                                        cwd=repo, env=env, capture_output=True, text=True)
+                return result.returncode, output.read_text()
+            for tag, ref in (("v0.2.0", "refs/heads/main"), ("", "refs/tags/v0.2.0")):
+                code, values = resolve(tag, "true", ref)
+                self.assertEqual(code, 0)
+                self.assertIn("sha=" + sha + "\n", values)
+                self.assertIn("tag=v0.2.0\nversion=0.2.0\n", values)
+            code, values = resolve()
+            self.assertEqual(code, 0)
+            self.assertIn("version=0.0.0-dryrun." + sha[:7], values)
+            self.assertNotEqual(resolve(publish="true")[0], 0)
+            marker = pathlib.Path(directory) / "injected"
+            for tag in ("v9.9.9", "v00.2.0", "v0.2.0-01", "--upload-pack=bad", "v0.2.0\nsha=bad",
+                        "$(touch " + str(marker) + ")"):
+                with self.subTest(tag=tag):
+                    code, values = resolve(tag)
+                    self.assertNotEqual(code, 0)
+                    self.assertEqual(values, "")
+            self.assertFalse(marker.exists())
 
 
 if __name__ == "__main__":
