@@ -46,6 +46,8 @@ jobs:
         run: bash examples/verification/demo.sh /tmp/radar
       - name: Combined integration demo
         run: bash examples/integration/demo.sh /tmp/radar
+      - name: Continuous worktree watch demo
+        run: bash examples/watch/demo.sh /tmp/radar
       - name: Intelligent verification demo
         run: bash examples/intelligent-verification/demo.sh /tmp/radar
       - name: Gate safety and bounded selection demo

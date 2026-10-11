@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radar watch event",
+  "type": "object",
+  "required": ["type", "sequence", "time", "state", "verification_state", "last_completed", "last_change"],
+  "properties": {
+    "type": {"enum": ["changed", "checking", "completed", "attributed", "error", "heartbeat"]},
+    "sequence": {"type": "integer", "minimum": 1},
+    "time": {"type": "string", "format": "date-time"},
+    "state": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": {"type": "string"},
+        "value": {"type": "object"}
+      }
+    },
+    "result": {
+      "type": "object",
+      "properties": {"value": {"type": "object"}}
+    },
+    "error": {"type": "string"},
+    "verification_state": {"type": "string"},
+    "last_completed": {"type": "string", "format": "date-time"},
+    "last_change": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "completed"}}}, "then": {"required": ["result"]}},
+    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"required": ["error"]}},
+    {"if": {"properties": {"type": {"const": "heartbeat"}}}, "then": {"not": {"required": ["result"]}}}
+  ]
+}

@@ -181,6 +181,7 @@ var helpCopy = map[string]struct {
 	examples [][2]string
 	notes    []string
 }{
+	"watch": {brief: "Continuously verify changes across agent worktrees", examples: [][2]string{{"radar watch", "watch committed branches; runs no code"}, {"radar watch --include-dirty", "also preview saved uncommitted edits"}, {"radar watch --run --attribution-runs 8", "publish Fast Gate, then diagnostic subset observations"}, {"radar watch --jsonl", "stream structured events"}}, notes: []string{"--run authorizes repeated repository code execution for this session with your permissions.", "Ctrl+C stops watch and cleans private candidates. Unsaved editor buffers are not included."}},
 	"gate": {brief: "Combine branches and tell whether they work together",
 		examples: [][2]string{
 			{"radar gate", "check every worktree branch with commits beyond the base"},

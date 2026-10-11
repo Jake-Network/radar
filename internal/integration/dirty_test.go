@@ -236,3 +236,97 @@ func TestDirtyCandidateIdentityIncludesIndexProvenance(t *testing.T) {
 		t.Fatal("index provenance must change commit identity while preserving final tree")
 	}
 }
+
+func TestDirtySnapshotIncludesModeChangeHiddenByGit(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("executable mode requires POSIX filesystem")
+	}
+	root := dirtyFixture(t)
+	gitTest(t, root, "config", "core.fileMode", "false")
+	if err := os.Chmod(filepath.Join(root, "tracked.txt"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if status := gitTest(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("fixture must have status-hidden executable change: %s", status)
+	}
+	s := observeTestDirty(t, root)
+	if len(s.Unstaged) != 1 || s.Unstaged[0] != "tracked.txt" {
+		t.Fatalf("hidden mode provenance absent: %+v", s)
+	}
+	c, err := BuildDirtyCandidate(context.Background(), root, "baseline", []string{"feature"}, []DirtySnapshot{s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	entries, err := gitrepo.Entries(context.Background(), c.Dir, c.Commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.Path == "tracked.txt" {
+			found = true
+			if entry.Mode != "100755" {
+				t.Fatalf("lost executable change: %+v", entry)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("tracked file disappeared")
+	}
+	if status := gitTest(t, root, "status", "--porcelain"); status != "" {
+		t.Fatal("source status mutated", status)
+	}
+}
+
+func TestDirtySnapshotRejectsNormalizationHiddenByGit(t *testing.T) {
+	for _, autocrlf := range []string{"true", "input"} {
+		t.Run("autocrlf-"+autocrlf, func(t *testing.T) {
+			root := dirtyFixture(t)
+			gitTest(t, root, "config", "core.autocrlf", autocrlf)
+			gitTest(t, root, "add", "--renormalize", "tracked.txt")
+			put(t, root, "tracked.txt", "base\r\n")
+			gitTest(t, root, "add", "tracked.txt")
+			if status := gitTest(t, root, "status", "--porcelain"); status != "" {
+				t.Fatalf("fixture must have normalized status-clean bytes: %s", status)
+			}
+			if _, err := ObserveDirty(context.Background(), gitrepo.WorktreeStatus{Path: root}); err == nil || !strings.Contains(err.Error(), "core.autocrlf") {
+				t.Fatalf("unsupported autocrlf must fail closed: %v", err)
+			}
+		})
+	}
+	for _, attribute := range []string{"text", "text=auto", "eol=crlf", "working-tree-encoding=UTF-8", "ident"} {
+		t.Run(attribute, func(t *testing.T) {
+			root := dirtyFixture(t)
+			put(t, root, ".gitattributes", "tracked.txt "+attribute+"\n")
+			if _, err := ObserveDirty(context.Background(), gitrepo.WorktreeStatus{Path: root}); err == nil || !strings.Contains(err.Error(), "normalization") {
+				t.Fatalf("unsupported attribute must fail closed: %v", err)
+			}
+		})
+	}
+	root := dirtyFixture(t)
+	put(t, root, ".gitattributes", "tracked.txt -text\n")
+	put(t, root, "tracked.txt", "base\r\n")
+	s := observeTestDirty(t, root)
+	if string(s.files["tracked.txt"].data) != "base\r\n" {
+		t.Fatal("raw bytes changed for explicitly non-normalized file")
+	}
+}
+
+func TestDirtySnapshotRejectsLocalAttributesFileNormalization(t *testing.T) {
+	root := dirtyFixture(t)
+	attrs := filepath.Join(t.TempDir(), "attributes")
+	if err := os.WriteFile(attrs, []byte("tracked.txt text\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, root, "config", "core.attributesFile", attrs)
+	gitTest(t, root, "add", "--renormalize", "tracked.txt")
+	put(t, root, "tracked.txt", "base\r\n")
+	gitTest(t, root, "add", "tracked.txt")
+	if status := gitTest(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("fixture must hide normalization: %s", status)
+	}
+	if _, err := ObserveDirty(context.Background(), gitrepo.WorktreeStatus{Path: root}); err == nil || !strings.Contains(err.Error(), "normalization") {
+		t.Fatalf("local attributes normalization must fail closed: %v", err)
+	}
+}

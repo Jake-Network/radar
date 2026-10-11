@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -69,6 +70,17 @@ func dirtyGit(ctx context.Context, root string, stdin io.Reader, args ...string)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := gitrepo.PrivateCommand(ctx, root, args...)
+	// Attribute inspection is data-only and must honor repository-local
+	// core.attributesFile as well as .gitattributes and .git/info/attributes.
+	// Suppressing it could conceal normalization used by source status.
+	if len(args) > 0 && args[0] == "check-attr" {
+		for i := 1; i < len(cmd.Args); i++ {
+			if cmd.Args[i-1] == "-c" && cmd.Args[i] == "core.attributesFile="+gitrepo.NullPath {
+				cmd.Args = append(cmd.Args[:i-1], cmd.Args[i+1:]...)
+				break
+			}
+		}
+	}
 	cmd.Env = append(cmd.Env, "GIT_OPTIONAL_LOCKS=0")
 	cmd.Stdin = stdin
 	var out bytes.Buffer
@@ -100,6 +112,9 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 	}
 	root = canonical
 	s.Worktree = root
+	if err := rejectDirtyNormalizationConfig(ctx, root); err != nil {
+		return s, err
+	}
 	w, err := gitrepo.InspectWorktree(ctx, root)
 	if err != nil {
 		return s, err
@@ -117,6 +132,7 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		return s, err
 	}
 	tracked := map[string]bool{}
+	hidden := map[string]bool{}
 	for _, v := range strings.Split(string(index), "\x00") {
 		if v == "" {
 			continue
@@ -129,8 +145,26 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		if f[0] != "100644" && f[0] != "100755" {
 			return s, &UnsupportedEntryError{Path: p}
 		}
-		if _, err := safeDirtyPath(root, p); err != nil {
+		abs, err := safeDirtyPath(root, p)
+		if err != nil {
 			return s, err
+		}
+		info, err := os.Lstat(abs)
+		if os.IsNotExist(err) {
+			hidden[p] = true
+		} else if err != nil {
+			return s, err
+		} else {
+			if !info.Mode().IsRegular() {
+				return s, &UnsupportedEntryError{Path: p}
+			}
+			mode := "100644"
+			if info.Mode()&0111 != 0 {
+				mode = "100755"
+			}
+			if mode != f[0] {
+				hidden[p] = true
+			}
 		}
 		tracked[p] = true
 	}
@@ -141,6 +175,46 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 	for _, f := range strings.Split(string(flags), "\x00") {
 		if len(f) > 1 && (f[0] == 'S' || f[0] >= 'a' && f[0] <= 'z') {
 			return s, errors.New("sparse or assume-unchanged index entries cannot be previewed")
+		}
+	}
+	for p := range hidden {
+		found := false
+		for _, v := range s.Unstaged {
+			if v == p {
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.Unstaged = append(s.Unstaged, p)
+		}
+	}
+	sort.Strings(s.Unstaged)
+	attrPaths := make([]string, 0, len(tracked)+len(s.Untracked))
+	for p := range tracked {
+		attrPaths = append(attrPaths, p)
+	}
+	for _, p := range s.Untracked {
+		if _, err := safeDirtyPath(root, p); err != nil {
+			return s, err
+		}
+		attrPaths = append(attrPaths, p)
+	}
+	sort.Strings(attrPaths)
+	attrs, err := dirtyGit(ctx, root, strings.NewReader(strings.Join(attrPaths, "\x00")+"\x00"), "check-attr", "-z", "--stdin", "text", "eol", "working-tree-encoding", "ident")
+	if err != nil {
+		return s, err
+	}
+	fields := strings.Split(strings.TrimSuffix(string(attrs), "\x00"), "\x00")
+	if len(attrPaths) == 0 {
+		fields = nil
+	}
+	if len(fields)%3 != 0 {
+		return s, errors.New("dirty normalization attributes could not be inspected")
+	}
+	for i := 0; i < len(fields); i += 3 {
+		if fields[i+2] != "unspecified" && fields[i+2] != "unset" {
+			return s, fmt.Errorf("dirty preview does not support Git %s normalization for %s", fields[i+1], fields[i])
 		}
 	}
 	paths := map[string]bool{}
@@ -173,6 +247,7 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 	h := sha256.New()
 	fmt.Fprintf(h, "dirty-preview-v1\x00%s\x00", s.Head)
 	h.Write(index)
+	h.Write(attrs)
 	total := 0
 	for _, p := range ordered {
 		if ctx.Err() != nil {
@@ -237,6 +312,24 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 	}
 	s.Digest = hex.EncodeToString(h.Sum(nil))
 	return s, nil
+}
+
+// Status can conceal normalized raw-byte differences. Until raw checkout
+// normalization is reproduced, fail closed rather than verify a different file.
+func rejectDirtyNormalizationConfig(ctx context.Context, root string) error {
+	value, err := dirtyGit(ctx, root, nil, "config", "--get", "core.autocrlf")
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return nil
+		}
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(string(value))) {
+	case "false", "no", "off", "0":
+		return nil
+	}
+	return errors.New("dirty preview does not support core.autocrlf normalization")
 }
 
 func safeDirtyPath(root, p string) (string, error) {

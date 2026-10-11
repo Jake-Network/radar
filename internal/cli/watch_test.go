@@ -360,3 +360,342 @@ func TestWatchDirtyUnsupportedEntryInvalidatesCurrentResult(t *testing.T) {
 		t.Fatal("watch removed user entry", err)
 	}
 }
+
+func TestWatchAttributionRequiresExecutionAuthorization(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	for _, value := range []string{"1", "-1", "65"} {
+		code, _, errs := run(t, root, "watch", "--attribution-runs", value)
+		if code != 2 || errs == "" {
+			t.Fatalf("attribution %s: exit %d %q", value, code, errs)
+		}
+	}
+}
+
+func TestWatchAttributionFollowsCompletedFailure(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip(err)
+	}
+	root, agent := checkoutRepo(t)
+	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("agent-frontend", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
+	var completed watch.Event
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		switch e.Type {
+		case watch.Completed:
+			if completed.Sequence != 0 {
+				t.Fatal("gate completed twice", e)
+			}
+			completed = e
+			if watchVerdict(t, e) != "fail" {
+				t.Fatal("Fast Gate lost failure", watchReport(t, e))
+			}
+			if watchReport(t, e)["observed_attributions"] != nil {
+				t.Fatal("Fast Gate waited for attribution", e)
+			}
+		case watch.Attributed:
+			if completed.Sequence == 0 || e.Sequence <= completed.Sequence || e.State.Key != completed.State.Key {
+				t.Fatal("attribution ordering or identity", e)
+			}
+			diagnostic := watchReport(t, e)
+			if diagnostic["gate"] != nil || diagnostic["candidate_tree"] != watchReport(t, completed)["candidate_tree"] {
+				t.Fatal("attribution replaced gate or candidate", diagnostic)
+			}
+			observations, ok := diagnostic["observed_attributions"].([]any)
+			if !ok || len(observations) == 0 {
+				t.Fatal("missing diagnostic observations", diagnostic)
+			}
+			if watchVerdict(t, completed) != "fail" {
+				t.Fatal("attribution changed original verdict")
+			}
+			cancel()
+		case watch.Error:
+			t.Fatal("attribution error", e.Error)
+		}
+	}, "--run", "--suite", "full", "--attribution-runs", "8")
+	if len(events) == 0 || events[len(events)-1].Type != watch.Attributed {
+		t.Fatal("attribution not published", events)
+	}
+}
+
+func TestWatchDirtyExplicitFullBranchReference(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("feature", nil)
+	put(t, wt, "backend.py", "def price():\n    return 8\n")
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			if watchVerdict(t, e) != "pass" {
+				t.Fatal(e)
+			}
+			cancel()
+		}
+	}, "--include-dirty", "refs/heads/feature")
+	state := events[0].State.Value.(map[string]any)
+	snapshots, ok := state["dirty_snapshots"].([]any)
+	if !ok || len(snapshots) != 1 || snapshots[0].(map[string]any)["branch"] != "feature" {
+		t.Fatal("full branch ref omitted dirty worktree", state)
+	}
+	r := watchReport(t, events[len(events)-1])
+	if r["inputs"].([]any)[0] == gitTest(t, root, "rev-parse", "main") {
+		t.Fatal("dirty input not represented", r)
+	}
+}
+
+func TestWatchDirtySharedSHARefusesAmbiguousWorktree(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	a := agent("feature-a", nil)
+	agent("feature-b", nil)
+	put(t, a, "backend.py", "def price():\n    return 8\n")
+	sha := gitTest(t, root, "rev-parse", "main")
+	code, out, errs := run(t, root, "watch", "--jsonl", "--include-dirty", sha)
+	if code != 2 || !strings.Contains(errs, "multiple worktrees") || strings.Contains(out, `"completed"`) {
+		t.Fatalf("ambiguous SHA: exit %d stdout %q stderr %q", code, out, errs)
+	}
+}
+
+func TestWatchUnsupportedTestConfigurationCannotPass(t *testing.T) {
+	root, agent := agentRepo(t, map[string]string{"app.ts": "export const n = 1;\n", "app.test.ts": "import test from 'node:test';\ntest('n', () => {});\n"})
+	agent("feature", map[string]string{"app.test.ts": "import test from 'node:test';\ntest('edited', () => {});\n"})
+	var completed watch.Event
+	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed = e
+			cancel()
+		}
+	}, "--run", "--suite", "full")
+	if watchVerdict(t, completed) == "pass" {
+		t.Fatal("unsupported TypeScript runner passed", watchReport(t, completed))
+	}
+	r := watchReport(t, completed)
+	selection, ok := r["selection"].(map[string]any)
+	if !ok {
+		t.Fatal("unsupported inventory missing selection", r)
+	}
+	omitted, ok := selection["omitted"].([]any)
+	if !ok || len(omitted) == 0 {
+		t.Fatal("unsupported test silently omitted", selection)
+	}
+	found := false
+	for _, item := range omitted {
+		if item.(map[string]any)["reason"] == "unsupported_configuration" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("unsupported configuration not explained", omitted)
+	}
+}
+
+func TestWatchDiscoversWorktreeCreationAndRemoval(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("agent-a", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	var checks []watch.Event
+	var added string
+	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type != watch.Completed {
+			return
+		}
+		checks = append(checks, e)
+		switch len(checks) {
+		case 1:
+			if watchVerdict(t, e) != "pass" {
+				t.Fatal(e)
+			}
+			added = agent("agent-b", map[string]string{"backend.py": "def price():\n    return 3\n"})
+		case 2:
+			if watchVerdict(t, e) != "fail" {
+				t.Fatal("new worktree omitted", watchReport(t, e))
+			}
+			gitTest(t, root, "worktree", "remove", added)
+		case 3:
+			if watchVerdict(t, e) != "pass" {
+				t.Fatal("removed worktree retained", watchReport(t, e))
+			}
+			cancel()
+		}
+	})
+	if len(checks) != 3 || checks[0].State.Key == checks[1].State.Key || checks[1].State.Key == checks[2].State.Key {
+		t.Fatal("worktree lifecycle not observed", checks)
+	}
+	if _, err := os.Stat(added); !os.IsNotExist(err) {
+		t.Fatal("fixture worktree unexpectedly remains", err)
+	}
+}
+
+func TestWatchReusesCommittedAnalysisForExcludedDirtyMetadata(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("feature", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	var checks []watch.Event
+	var savedFingerprint string
+	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type != watch.Completed {
+			return
+		}
+		checks = append(checks, e)
+		if watchVerdict(t, e) != "pass" {
+			t.Fatal("static gate", watchReport(t, e))
+		}
+		if len(checks) == 1 {
+			put(t, wt, "backend.py", "def price():\n    return 999\n")
+			savedFingerprint = watchSourceFingerprint(t, wt)
+			return
+		}
+		first := watchReport(t, checks[0])
+		reused := watchReport(t, e)
+		if checks[0].State.Key == e.State.Key {
+			t.Fatal("excluded dirty status was not observed")
+		}
+		for _, field := range []string{"base", "inputs", "candidate_commit", "candidate_tree", "gate", "checks", "executions"} {
+			before, _ := json.Marshal(first[field])
+			after, _ := json.Marshal(reused[field])
+			if !bytes.Equal(before, after) {
+				t.Fatalf("cache changed %s evidence: %s -> %s", field, before, after)
+			}
+		}
+		found := false
+		for _, v := range reused["limitations"].([]any) {
+			if strings.Contains(v.(string), "Reused analysis") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("unchanged committed analysis was redundantly rebuilt", reused)
+		}
+		if got := watchSourceFingerprint(t, wt); got != savedFingerprint {
+			t.Fatal("cache check changed saved user edits")
+		}
+		cancel()
+	})
+	if len(checks) != 2 {
+		t.Fatal("expected initial and reused report", checks)
+	}
+}
+
+func TestWatchRefusesNonregularPolicy(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	code, out, errs := run(t, root, "watch", "--jsonl", "--policy", t.TempDir())
+	if code != 2 || !strings.Contains(errs, "regular file") || strings.Contains(out, `"completed"`) {
+		t.Fatalf("nonregular policy: exit %d stdout %q stderr %q", code, out, errs)
+	}
+}
+
+func TestWatchDirtyUnattachedLocalBranchDoesNotSelectSharedHeadWorktree(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("attached", nil)
+	gitTest(t, root, "branch", "unattached", "main")
+	put(t, wt, "backend.py", "def price():\n    return 99\n")
+	var completed watch.Event
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed = e
+			cancel()
+		}
+	}, "--include-dirty", "unattached")
+	state := events[0].State.Value.(map[string]any)
+	if snapshots, ok := state["dirty_snapshots"].([]any); ok && len(snapshots) > 0 {
+		t.Fatal("unattached branch acquired unrelated dirty worktree", snapshots)
+	}
+	if watchVerdict(t, completed) != "pass" {
+		t.Fatal("explicit committed branch refused", watchReport(t, completed))
+	}
+	inputs := watchReport(t, completed)["inputs"].([]any)
+	if len(inputs) != 1 || inputs[0] != gitTest(t, root, "rev-parse", "unattached") {
+		t.Fatal("unattached branch preview identity changed", inputs)
+	}
+}
+
+func TestWatchDirtyHEADSelectsOnlyInvocationWorktree(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	sibling := agent("sibling", nil)
+	put(t, root, "backend.py", "def price():\n    return 7\n")
+	put(t, sibling, "backend.py", "def price():\n    return 99\n")
+	var completed watch.Event
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed = e
+			cancel()
+		}
+	}, "--include-dirty", "HEAD")
+	state := events[0].State.Value.(map[string]any)
+	snapshots, ok := state["dirty_snapshots"].([]any)
+	if !ok || len(snapshots) != 1 || snapshots[0].(map[string]any)["worktree"] != root {
+		t.Fatal("HEAD selected sibling snapshot or omitted root", state)
+	}
+	if watchVerdict(t, completed) != "pass" {
+		t.Fatal("HEAD dirty preview not verified", watchReport(t, completed))
+	}
+	if watchReport(t, completed)["inputs"].([]any)[0] == gitTest(t, root, "rev-parse", "HEAD") {
+		t.Fatal("HEAD dirty edits omitted")
+	}
+}
+
+func TestWatchDirtyAutoSelectsStatusHiddenModeChange(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("hidden-mode", nil)
+	gitTest(t, wt, "config", "core.fileMode", "false")
+	path := filepath.Join(wt, "backend.py")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, info.Mode()|0111); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode()&0111 == 0 {
+		t.Skip("filesystem does not expose executable permissions")
+	}
+	if status := gitTest(t, wt, "status", "--porcelain"); status != "" {
+		t.Fatalf("fixture mode was not hidden: %q", status)
+	}
+	var completed watch.Event
+	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed = e
+			cancel()
+		}
+	}, "--include-dirty")
+	if watchVerdict(t, completed) != "pass" {
+		t.Fatal("hidden mode preview not checked", watchReport(t, completed))
+	}
+	if watchReport(t, completed)["inputs"].([]any)[0] == gitTest(t, wt, "rev-parse", "HEAD") {
+		t.Fatal("hidden mode preview fell back to committed state")
+	}
+}
+
+func TestWatchDirtyRejectsNormalizationEvenWithCleanStatus(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	wt := agent("normalized", nil)
+	gitTest(t, wt, "config", "core.autocrlf", "true")
+	if status := gitTest(t, wt, "status", "--porcelain"); status != "" {
+		t.Fatalf("fixture unexpectedly dirty: %q", status)
+	}
+	code, out, errs := run(t, root, "watch", "--include-dirty", "--jsonl")
+	if code != 2 || !strings.Contains(errs, "normalization") || strings.Contains(out, `"completed"`) {
+		t.Fatalf("normalization was not refused: exit %d stdout %q stderr %q", code, out, errs)
+	}
+}
+
+func TestWatchDirtyCanonicalBaseReferenceExcludesBaseWorktree(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	put(t, root, "backend.py", "def price():\n    return 42\n")
+	before := watchSourceFingerprint(t, root)
+	var completed watch.Event
+	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+		if e.Type == watch.Completed {
+			completed = e
+			cancel()
+		}
+	}, "--include-dirty", "--base", "refs/heads/main")
+	r := watchReport(t, completed)
+	if r["state"] != "NOT VERIFIED" || r["gate"] != nil {
+		t.Fatal("dirty base was incorrectly treated as agent input", r)
+	}
+	state := events[0].State.Value.(map[string]any)
+	for _, field := range []string{"branches", "commits", "dirty_snapshots"} {
+		if entries, ok := state[field].([]any); ok && len(entries) > 0 {
+			t.Fatalf("base reference admitted %s: %v", field, entries)
+		}
+	}
+	if got := watchSourceFingerprint(t, root); got != before {
+		t.Fatal("base exclusion changed user source")
+	}
+}

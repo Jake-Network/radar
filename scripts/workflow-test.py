@@ -67,7 +67,7 @@ class WorkflowPolicyTests(unittest.TestCase):
             "gofmt -l cmd internal", "go vet ./...", "go test ./...",
             "go test -race ./...", "go build", "scripts/smoke.sh",
             "examples/organization/demo.sh", "examples/verification/demo.sh",
-            "examples/integration/demo.sh", "examples/intelligent-verification/demo.sh",
+            "examples/integration/demo.sh", "examples/watch/demo.sh", "examples/intelligent-verification/demo.sh",
             "examples/selection-eval/demo.sh", "github-actions/test_workflow.py",
             "scripts/release-test.py", "scripts/install-release-test.sh",
             "scripts/install-release-test.ps1", "scripts/validate-release.py",

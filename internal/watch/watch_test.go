@@ -203,3 +203,144 @@ func TestObservationErrorDoesNotVerifyStaleInputs(t *testing.T) {
 	case <-time.After(10 * time.Millisecond):
 	}
 }
+
+func TestFailedAnalysisIsReportedOnceUntilInputsChange(t *testing.T) {
+	var calls atomic.Int32
+	events, _, _ := launch(t, Options{Interval: time.Millisecond, Heartbeat: 5 * time.Millisecond},
+		func(context.Context) (State, error) { return State{Key: "revision"}, nil },
+		func(context.Context, State) (Result, error) {
+			calls.Add(1)
+			return Result{}, errors.New("verification failed")
+		})
+	event := waitEvent(t, events, Error, "revision")
+	if event.Error != "verification failed" {
+		t.Fatalf("missing analysis error: %#v", event)
+	}
+	waitEvent(t, events, Heartbeat, "revision")
+	if calls.Load() != 1 {
+		t.Fatalf("failed unchanged inputs repeatedly analyzed: %d", calls.Load())
+	}
+}
+
+func TestInvalidOptionsAndEmptyObservation(t *testing.T) {
+	observe := func(context.Context) (State, error) { return State{}, nil }
+	analyze := func(context.Context, State) (Result, error) { t.Fatal("invalid state analyzed"); return Result{}, nil }
+	if err := Run(context.Background(), Options{Interval: -1}, observe, analyze, func(Event) {}); err == nil {
+		t.Fatal("negative interval accepted")
+	}
+	if err := Run(context.Background(), Options{}, nil, analyze, func(Event) {}); err == nil {
+		t.Fatal("nil callback accepted")
+	}
+	events, _, _ := launch(t, Options{Interval: time.Millisecond}, observe, analyze)
+	event := waitEvent(t, events, Error, "")
+	if event.Error != "watch observation returned an empty key" {
+		t.Fatalf("empty key accepted: %#v", event)
+	}
+}
+
+func TestFastResultPrecedesFollowupAndCleanup(t *testing.T) {
+	var closed atomic.Int32
+	release := make(chan struct{})
+	events, _, _ := launch(t, Options{Interval: time.Millisecond},
+		func(context.Context) (State, error) { return State{Key: "revision"}, nil },
+		func(context.Context, State) (Result, error) {
+			return Result{
+				Value: "fast",
+				Close: func() { closed.Add(1) },
+				Followup: func(ctx context.Context) (Result, error) {
+					select {
+					case <-release:
+						return Result{Value: "observed"}, nil
+					case <-ctx.Done():
+						return Result{}, ctx.Err()
+					}
+				},
+			}, nil
+		})
+	fast := waitEvent(t, events, Completed, "revision")
+	if fast.Result.Value != "fast" || closed.Load() != 0 {
+		t.Fatal("fast result waited for attribution or closed its candidate early")
+	}
+	close(release)
+	observed := waitEvent(t, events, Attributed, "revision")
+	if observed.Result.Value != "observed" || closed.Load() != 1 {
+		t.Fatal("attribution or retained candidate cleanup missing")
+	}
+}
+
+func TestFollowupCanceledWhenInputsChange(t *testing.T) {
+	var key atomic.Value
+	key.Store("old")
+	var closed atomic.Int32
+	started := make(chan struct{})
+	events, _, _ := launch(t, Options{Interval: time.Millisecond},
+		func(context.Context) (State, error) { return State{Key: key.Load().(string)}, nil },
+		func(_ context.Context, state State) (Result, error) {
+			if state.Key == "new" {
+				return Result{}, nil
+			}
+			return Result{
+				Close: func() { closed.Add(1) },
+				Followup: func(ctx context.Context) (Result, error) {
+					close(started)
+					<-ctx.Done()
+					return Result{Value: "obsolete observed"}, nil
+				},
+			}, nil
+		})
+	<-started
+	key.Store("new")
+	for {
+		select {
+		case event := <-events:
+			if event.Type == Attributed {
+				t.Fatal("obsolete attribution published")
+			}
+			if event.Type == Completed && event.State.Key == "new" {
+				if closed.Load() != 1 {
+					t.Fatalf("candidate closed %d times", closed.Load())
+				}
+				return
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("new inputs not analyzed")
+		}
+	}
+}
+
+func TestStaleResultStillClosesResources(t *testing.T) {
+	var key atomic.Value
+	key.Store("old")
+	var closed atomic.Int32
+	events, _, _ := launch(t, Options{Interval: time.Hour},
+		func(context.Context) (State, error) { return State{Key: key.Load().(string)}, nil },
+		func(_ context.Context, state State) (Result, error) {
+			if state.Key == "old" {
+				key.Store("new")
+				return Result{Close: func() { closed.Add(1) }}, nil
+			}
+			return Result{}, nil
+		})
+	waitEvent(t, events, Completed, "new")
+	if closed.Load() != 1 {
+		t.Fatalf("stale candidate closed %d times", closed.Load())
+	}
+}
+
+func TestFollowupErrorPreservesFastResultEvent(t *testing.T) {
+	events, _, _ := launch(t, Options{},
+		func(context.Context) (State, error) { return State{Key: "revision"}, nil },
+		func(context.Context, State) (Result, error) {
+			return Result{Value: "fast pass", Followup: func(context.Context) (Result, error) {
+				return Result{}, errors.New("attribution unavailable")
+			}}, nil
+		})
+	fast := waitEvent(t, events, Completed, "revision")
+	if fast.Result.Value != "fast pass" {
+		t.Fatal("missing initial fast result")
+	}
+	observed := waitEvent(t, events, Attributed, "revision")
+	if observed.Error != "attribution unavailable" || observed.Result != nil {
+		t.Fatalf("attribution error replaced fast gate: %#v", observed)
+	}
+}

@@ -75,6 +75,8 @@ func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.W
 			if !s.nothingToCheck() && s.confirmRun(s.selected) {
 				ok = run(append([]string{"gate", "--run"}, s.selected...)...)
 			}
+		case "w":
+			ok = run(append([]string{"watch"}, s.selected...)...)
 		case "4":
 			ok = run("doctor")
 		case "c":
@@ -279,6 +281,7 @@ func (s *session) menu() {
 	item("2", "Choose which branches to combine", "", pickDetail)
 	item("3", "Check, then run the related tests", p.yellow("runs your test commands")+p.dim(" · asks first"),
 		"Same as 1, then runs the tests that cover the change on the combined code.")
+	item("w", "Watch branches continuously", "safe · runs no code", "Rechecks committed changes until Ctrl+C; use radar watch --include-dirty for saved edits.")
 	item("4", "Check my setup", "",
 		"Shows the languages, test runners and tools Radar found (radar doctor).")
 	fmt.Fprintf(w, "\n  %s  All commands   %s  Quit", p.command("h"), p.command("q"))

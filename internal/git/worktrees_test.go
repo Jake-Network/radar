@@ -305,3 +305,75 @@ func TestInspectWorktreesNeverExecutesConfiguredFilters(t *testing.T) {
 		t.Fatal("source diff filter executed", err)
 	}
 }
+
+func TestInspectWorktreesDoesNotExecuteNestedSubmoduleFilters(t *testing.T) {
+	root := realTempDir(t)
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0700); err != nil {
+		t.Fatal(err)
+	}
+	worktreeGit(t, root, "init", "-q")
+	worktreeGit(t, nested, "init", "-q")
+	if err := os.WriteFile(filepath.Join(nested, "tracked.txt"), []byte("base\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	worktreeGit(t, nested, "add", ".")
+	worktreeGit(t, nested, "commit", "-qm", "nested base")
+	worktreeGit(t, root, "add", "nested")
+	worktreeGit(t, root, "commit", "-qm", "gitlink base")
+	marker := filepath.Join(root, "nested-filter-ran")
+	worktreeGit(t, nested, "config", "filter.danger.clean", "touch '"+marker+"'; cat")
+	if err := os.WriteFile(filepath.Join(nested, ".gitattributes"), []byte("tracked.txt filter=danger\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "tracked.txt"), []byte("modified\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := InspectWorktrees(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("nested repository filter executed", err)
+	}
+}
+
+func TestFilterInspectionFailureNeverLaunchesFallbackAlias(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Git command shim requires POSIX executable scripts")
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("Git command shim requires POSIX shell")
+	}
+	root := worktreeRepo(t)
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "alias-ran")
+	t.Setenv("RADAR_FILTER_MARKER", marker)
+	// An invented fallback subcommand is still executable Git configuration.
+	// Failed filter enumeration must stop before launching any Git operation.
+	worktreeGit(t, root, "config", "alias.radar-filter-inspection-unavailable", `!printf triggered > "$RADAR_FILTER_MARKER"`)
+	bin := t.TempDir()
+	shim := "#!/bin/sh\nfor arg in \"$@\"; do\n if [ \"$arg\" = --get-regexp ]; then exit 2; fi\ndone\nexec \"$RADAR_FILTER_REAL_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(shim), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RADAR_FILTER_REAL_GIT", realGit)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, operation := range []string{"status", "diff"} {
+		if _, err := run(context.Background(), root, operation, "--porcelain"); err == nil || !strings.Contains(err.Error(), "filter inspection unavailable") {
+			t.Fatalf("%s must fail without launching Git: %v", operation, err)
+		}
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("fallback alias executed", err)
+	}
+	ws, err := InspectWorktrees(context.Background(), root)
+	if err != nil || len(ws) != 1 || ws[0].InspectionError == "" {
+		t.Fatalf("failed filter inspection must remain unavailable: %v %+v", err, ws)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("worktree inspection launched fallback alias", err)
+	}
+}

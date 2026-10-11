@@ -38,7 +38,8 @@ type Options struct {
 	MaxCommands int
 	// AttributionRuns, when positive, reruns each failed command on the base
 	// plus subsets of the branches, within the same time budget, spending at
-	// most this many executions. It requires Verify.
+	// most this many executions. It requires Verify. Set zero for Fast Gate,
+	// then call RunObservedAttribution separately after publishing its result.
 	AttributionRuns int
 	// Progress, when set, hears what the gate is doing so a terminal can
 	// show it live. It is presentation only and never affects the report.
@@ -243,8 +244,10 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 		}
 		r.VerificationProposal = &proposal
 	}
+	executionCtx, cancelExecution := context.WithTimeout(ctx, o.Timeout)
+	defer cancelExecution()
 	if o.Verify {
-		if e = runVerification(ctx, temp, &r, o); e != nil {
+		if e = runVerification(executionCtx, temp, &r, o); e != nil {
 			return r, e
 		}
 	} else {
@@ -261,6 +264,16 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	}
 	r.Status = overallStatus(r.Checks)
 	applyGate(&r, o)
+	if o.AttributionRuns > 0 && sourceUnchanged {
+		r.Attributions, e = RunObservedAttribution(executionCtx, c, r, o)
+		if e != nil {
+			return r, e
+		}
+		if len(r.Attributions) > 0 {
+			r.Limitations = append(r.Limitations, attributionLimitation)
+			r.Coverage = gate.CoverageFor(r.Checks, r.Limitations)
+		}
+	}
 	return r, nil
 }
 

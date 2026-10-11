@@ -6,12 +6,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/watch"
 )
@@ -23,6 +26,7 @@ func watchCommand() command {
 		fs.DurationVar(&o.debounce, "debounce", 500*time.Millisecond, "wait for changes to settle")
 		fs.BoolVar(&o.includeDirty, "include-dirty", false, "preview saved staged, unstaged and nonignored untracked changes")
 		fs.BoolVar(&o.jsonl, "jsonl", false, "emit one structured event per line")
+		fs.IntVar(&o.attributionRuns, "attribution-runs", 0, "with --run, separately observe up to N diagnostic subset executions after Fast Gate")
 		fs.BoolVar(&o.verify, "run", false, "authorize repeated repository test execution for this session with host permissions")
 		fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "execution time budget per check")
 		fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum commands per check")
@@ -83,7 +87,11 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 		}
 	}
 	if o.includeDirty {
-		for _, w := range input.Worktrees {
+		localBranches, e := gitrepo.LocalBranches(ctx, a.root)
+		if e != nil {
+			return watch.State{}, e
+		}
+		for wi, w := range input.Worktrees {
 			idx := -1
 			for i, ref := range input.Refs {
 				named := strings.TrimPrefix(ref, "refs/heads/")
@@ -91,10 +99,13 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 					idx = i
 					break
 				}
+				if ref == "HEAD" {
+					continue
+				}
 				if input.SHAs[i] != w.Commit {
 					continue
 				}
-				knownBranch := slices.ContainsFunc(input.Worktrees, func(t gitrepo.WorktreeStatus) bool { return t.Branch == named })
+				knownBranch := slices.Contains(localBranches, named)
 				if knownBranch {
 					continue
 				}
@@ -110,24 +121,44 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 				idx = i
 				break
 			}
-			if idx < 0 && len(o.args) == 0 && !w.Detached && w.Branch != base && w.Branch != strings.TrimPrefix(base, "origin/") && len(w.Staged)+len(w.Unstaged)+len(w.Untracked) > 0 {
+			baseBranch := strings.TrimPrefix(strings.TrimPrefix(base, "refs/heads/"), "origin/")
+			autoEligible := len(o.args) == 0 && !w.Detached && w.Branch != baseBranch
+			if idx < 0 && !autoEligible {
+				continue
+			}
+			// Inspect eligible worktrees even when Git status is clean: index flags,
+			// file modes and normalization can hide unsupported working state.
+			snap, e := integration.ObserveDirty(ctx, w)
+			if e != nil {
+				return watch.State{}, fmt.Errorf("dirty preview NOT VERIFIED for %q: %w", w.Path, e)
+			}
+			if len(snap.Staged)+len(snap.Unstaged)+len(snap.Untracked) == 0 {
+				continue
+			}
+			if idx < 0 {
 				idx = len(input.Refs)
 				input.Refs = append(input.Refs, w.Branch)
 				input.SHAs = append(input.SHAs, w.Commit)
 			}
-
-			if idx < 0 {
-				continue
-			}
 			if len(input.Snapshots) >= 8 {
 				return watch.State{}, errors.New("dirty watch supports at most 8 selected worktree snapshots")
 			}
-			snap, e := integration.ObserveDirty(ctx, w)
-			if e != nil {
-				return watch.State{}, e
-			}
 			snap.InputIndex = idx
 			input.Snapshots = append(input.Snapshots, snap)
+			input.Worktrees[wi].UncommittedIncluded = true
+		}
+	}
+	if o.policy != "" {
+		path := o.policy
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(a.root, path)
+		}
+		info, e := os.Stat(path)
+		if e != nil {
+			return watch.State{}, e
+		}
+		if !info.Mode().IsRegular() {
+			return watch.State{}, errors.New("watch policy must be a regular file")
 		}
 	}
 	input.config, err = b.captureConfiguration(o)
@@ -142,6 +173,9 @@ func (a *app) observeWatch(ctx context.Context, o options) (watch.State, error) 
 func (a *app) watch(o options) int {
 	if e := a.repository(); e != nil {
 		return a.fail(e)
+	}
+	if o.attributionRuns < 0 || o.attributionRuns > 64 || o.attributionRuns > 0 && !o.verify {
+		return a.fail(errors.New("attribution-runs must be 0..64 and requires --run"))
 	}
 	if o.suite != "" && !o.verify {
 		return a.fail(errors.New("--suite requires --run"))
@@ -167,11 +201,29 @@ func (a *app) watch(o options) int {
 	if o.verify {
 		fmt.Fprintln(a.errout, "Watch execution authorized for this session: repeated selected tests on the monitored branches, including newly discovered worktrees, with your permissions. Private checkouts are not OS sandboxes. No dependencies are installed or fetched.")
 	}
-	err := watch.Run(a.ctx, watch.Options{Interval: o.interval, Debounce: o.debounce, Heartbeat: 30 * time.Second}, func(ctx context.Context) (watch.State, error) { return a.observeWatch(ctx, o) }, func(ctx context.Context, s watch.State) (watch.Result, error) {
+	sessionCtx, stop := context.WithCancel(a.ctx)
+	defer stop()
+	var outputErr error
+	display := watchDisplay{VerificationState: "NOT VERIFIED"}
+	var cachedKey string
+	var cachedReport *integration.Report
+	err := watch.Run(sessionCtx, watch.Options{Interval: o.interval, Debounce: o.debounce, Heartbeat: 30 * time.Second}, func(ctx context.Context) (watch.State, error) { return a.observeWatch(ctx, o) }, func(ctx context.Context, s watch.State) (watch.Result, error) {
 		in := s.Value.(watchInput)
 		in.config.Inputs = append([]ConfigurationInput(nil), in.config.Inputs...)
 		if len(in.SHAs) == 0 {
 			return watch.Result{Value: map[string]string{"state": "NOT VERIFIED", "reason": "No selected branches with commits beyond the base; waiting for changes."}}, nil
+		}
+		semantic, _ := json.Marshal(struct {
+			Base      string
+			Inputs    []string
+			Config    []ConfigurationInput
+			Snapshots []integration.DirtySnapshot
+		}{in.Base, in.SHAs, in.Configuration, in.Snapshots})
+		semanticKey := configurationDigest(semantic)
+		if o.attributionRuns == 0 && cachedReport != nil && cachedKey == semanticKey {
+			reused := *cachedReport
+			reused.Limitations = append(append([]string(nil), reused.Limitations...), "Reused analysis and evidence for unchanged pinned verification inputs; worktree monitoring metadata changed.")
+			return watch.Result{Value: reused}, nil
 		}
 		var c *integration.Candidate
 		var e error
@@ -180,17 +232,66 @@ func (a *app) watch(o options) int {
 		} else {
 			c, e = integration.BuildCandidate(ctx, a.root, in.Base, in.SHAs)
 		}
-		defer c.Close()
 		if e != nil {
+			c.Close()
 			return watch.Result{}, e
 		}
-		r, e := integration.Analyze(ctx, c, integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands})
+		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands}
+		r, e := integration.Analyze(ctx, c, opts)
 		if e != nil {
+			c.Close()
 			return watch.Result{}, e
 		}
 		in.config.applyIntegration(&r)
-		return watch.Result{Value: r}, nil
-	}, func(e watch.Event) { a.renderWatch(e, o) })
+		if !configurationUnstable(in.config.Inputs) {
+			cachedKey = semanticKey
+			cachedReport = &r
+		}
+		result := watch.Result{Value: r, Close: func() { c.Close() }}
+		if o.attributionRuns > 0 && slices.ContainsFunc(r.Executions, func(ev integration.ExecutionEvidence) bool { return ev.Status == model.StatusFailed }) {
+			result.Followup = func(ctx context.Context) (watch.Result, error) {
+				opts.AttributionRuns = o.attributionRuns
+				observed, e := integration.RunObservedAttribution(ctx, c, r, opts)
+				return watch.Result{Value: watchAttribution{CandidateTree: r.CandidateTree, Observed: observed}}, e
+			}
+		}
+		return result, nil
+	}, func(e watch.Event) {
+		switch e.Type {
+		case watch.Changed:
+			display.VerificationState = "NOT VERIFIED"
+			display.LastChange = e.Time
+		case watch.Checking:
+			display.VerificationState = "CHECKING"
+		case watch.Error:
+			display.VerificationState = "ERROR"
+		case watch.Completed:
+			display.LastCompleted = e.Time
+			display.VerificationState = "NOT VERIFIED"
+			if e.Result != nil {
+				if r, ok := e.Result.Value.(integration.Report); ok {
+					display.VerificationState = verdictText(r.Gate.Verdict, o.verify)
+				}
+			}
+		}
+		if o.jsonl || a.machine {
+			outputErr = json.NewEncoder(a.out).Encode(struct {
+				watch.Event
+				watchDisplay
+			}{e, display})
+			if outputErr != nil {
+				stop()
+			}
+		} else {
+			a.renderWatch(e, o)
+			if e.Type == watch.Heartbeat {
+				fmt.Fprintf(a.out, "  %s; latest completed %s; last change %s\n", display.VerificationState, watchTime(display.LastCompleted), watchTime(display.LastChange))
+			}
+		}
+	})
+	if outputErr != nil {
+		return a.fail(fmt.Errorf("watch output: %w", outputErr))
+	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return a.fail(err)
 	}
@@ -204,13 +305,18 @@ func (a *app) renderWatch(e watch.Event, o options) {
 	p := paletteOf(a.out)
 	fmt.Fprintf(a.out, "%s Radar watch %s @ %s\n", p.cyan(e.Time.Format("15:04:05")), e.Type, short(e.State.Key))
 	if e.Error != "" {
-		fmt.Fprintln(a.out, p.yellow("NOT VERIFIED: "+e.Error))
+		label := "ERROR (NOT VERIFIED): "
+		if e.Type == watch.Attributed {
+			label = "Observed Attribution unavailable (Fast Gate unchanged): "
+		}
+		fmt.Fprintln(a.out, p.yellow(label+e.Error))
 		return
 	}
 	if e.Type == "checking" {
 		fmt.Fprintln(a.out, "CHECKING — latest change; previous result superseded")
 	}
 	if e.Type == "changed" {
+		fmt.Fprintln(a.out, p.yellow("NOT VERIFIED — inputs changed; previous result superseded"))
 		if in, ok := e.State.Value.(watchInput); ok {
 			for _, w := range in.Worktrees {
 				fmt.Fprintf(a.out, "  %s @ %s %q: %d staged, %d unstaged, %d untracked (%s)\n", w.Branch, short(w.Commit), w.Path, len(w.Staged), len(w.Unstaged), len(w.Untracked), dirtyWatchLabel(o.includeDirty))
@@ -222,7 +328,23 @@ func (a *app) renderWatch(e watch.Event, o options) {
 			fmt.Fprintln(a.out, p.verdict(r.Gate.Verdict, verdictText(r.Gate.Verdict, o.verify)))
 			fmt.Fprintf(a.out, "  snapshot %s: %d merge conflicts; %d findings; %d selected tests\n", short(r.CandidateTree), len(r.Conflicts), len(r.Findings), len(r.Selected))
 			g := gateReport{Report: r, Attribution: map[string]gateAttribution{}, Next: "Repair reported problems or missing evidence; watch rechecks after the next change."}
+			if in, ok := e.State.Value.(watchInput); ok {
+				g.BaseRef = o.base
+				if g.BaseRef == "" {
+					g.BaseRef = "default base"
+				}
+				for i, ref := range in.Refs {
+					changed, _ := gitrepo.ChangedFiles(a.ctx, a.root, in.Base, in.SHAs[i])
+					g.Branches = append(g.Branches, gateBranch{Ref: ref, Commit: r.Inputs[i], Changed: changed})
+				}
+			}
+			g.attribute()
 			renderGate(a.out, g, o.verify)
+		} else if observed, ok := e.Result.Value.(watchAttribution); ok {
+			fmt.Fprintln(a.out, "Observed Attribution — diagnostic observations; Fast Gate unchanged")
+			for _, attr := range observed.Observed {
+				fmt.Fprintf(a.out, "  %s: %s (%d subset runs)\n", attr.SelectionID, attr.Outcome, len(attr.Runs))
+			}
 		} else {
 			fmt.Fprintln(a.out, e.Result.Value)
 		}
@@ -234,4 +356,22 @@ func dirtyWatchLabel(included bool) string {
 		return "selected worktree snapshots included; others excluded"
 	}
 	return "excluded"
+}
+
+type watchAttribution struct {
+	CandidateTree string                    `json:"candidate_tree"`
+	Observed      []integration.Attribution `json:"observed_attributions"`
+}
+
+type watchDisplay struct {
+	VerificationState string    `json:"verification_state"`
+	LastCompleted     time.Time `json:"last_completed"`
+	LastChange        time.Time `json:"last_change"`
+}
+
+func watchTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return t.Format("15:04:05")
 }

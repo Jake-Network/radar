@@ -72,7 +72,7 @@ func command(ctx context.Context, root string, args ...string) *exec.Cmd {
 		if err != nil {
 			// Keep command's existing error propagation fail closed without launching
 			// the unsafe operation when configuration could not be enumerated.
-			cmd.Args = []string{"git", "-C", root, "radar-filter-inspection-unavailable"}
+			cmd.Err = fmt.Errorf("filter inspection unavailable: %w", err)
 			return cmd
 		}
 		cmd.Args = append(cmd.Args[:len(cmd.Args)-len(args)], append(overrides, args...)...)

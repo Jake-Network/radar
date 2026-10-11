@@ -123,6 +123,20 @@ files are left out and listed under `worktrees` in the report, along with
 detached worktrees. Commit what you want checked and rerun. A detached worktree
 commit has to be named by SHA.
 
+`radar watch` follows this committed-input behavior by default. Its separate
+`--include-dirty` opt-in constructs private previews with staged, unstaged and
+untracked provenance. Snapshot identity is distinct from committed evidence.
+Incomplete, unsupported or inconsistent snapshots cannot produce a pass for
+the live working state. A detected input change invalidates the displayed
+verdict, and superseded results are discarded. Polling and before-and-after
+checks can miss edits reverted between observations; unsaved buffers are outside
+scope. See [Watch](WATCH.md).
+
+Fast Gate evaluates the combined candidate. Observed Attribution runs bounded
+diagnostic subset executions separately under explicit execution authorization.
+It cannot change the gate verdict, checks, test selection or candidate execution
+evidence. A subset result is a repair lead, and flaky tests can affect it.
+
 `--plan` and `--policy` files are read once. Radar records their SHA-256 in
 `configuration_inputs`, reads them again after the run, and marks
 `configuration_stability` incomplete if they changed. That invalidates any pass

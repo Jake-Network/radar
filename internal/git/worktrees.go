@@ -144,7 +144,9 @@ func inspectWorktree(ctx context.Context, w *WorktreeStatus) {
 			args = append(args, "-c", "core.excludesFile="+globalExcludes)
 		}
 	}
-	args = append(args, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
+	// Submodule contents are unsupported preview inputs. Do not recurse into
+	// their repositories: nested configuration can contain executable filters.
+	args = append(args, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=all")
 	b, err := runListing(ctx, w.Path, args...)
 	if err != nil {
 		w.InspectionError = err.Error()

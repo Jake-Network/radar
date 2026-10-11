@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -111,5 +112,84 @@ func TestEnvironmentFailureIsNotAttributed(t *testing.T) {
 	}
 	if len(r.Attributions) != 0 {
 		t.Fatal("an environment problem fails every subset the same way; no reruns", r.Attributions)
+	}
+}
+
+func TestObservedAttributionSeparateFromFastGate(t *testing.T) {
+	root := fixture(t)
+	o := opts("backend", "frontend")
+	c, err := BuildCandidate(context.Background(), root, o.Base, o.Branches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	r, err := Analyze(context.Background(), c, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Attributions) != 0 || len(r.Executions) != 1 || r.Gate.Verdict != gate.Fail {
+		t.Fatal("Fast Gate must complete without subset executions", r)
+	}
+	before, _ := json.Marshal(r)
+	o.AttributionRuns = DefaultAttributionRuns
+	attributions, err := RunObservedAttribution(context.Background(), c, r, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attributions) != 1 || attributions[0].Outcome != AttributionIsolated || len(attributions[0].Runs) != 3 {
+		t.Fatal("separate runner observes only subsets", attributions)
+	}
+	after, _ := json.Marshal(r)
+	if string(before) != string(after) {
+		t.Fatal("observed attribution changed Fast Gate report")
+	}
+	for name, options := range map[string]Options{
+		"no authorization": {Verify: true, Command: o.Command, AttributionRuns: 1},
+		"static":           {},
+		"other command":    {Verify: true, AllowExecution: true, Command: []string{"true"}, AttributionRuns: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := RunObservedAttribution(context.Background(), c, r, options); err == nil {
+				t.Fatal("unauthorized invocation accepted")
+			}
+		})
+	}
+	stale := r
+	stale.CandidateTree = strings.Repeat("0", 40)
+	if _, err := RunObservedAttribution(context.Background(), c, stale, o); err == nil {
+		t.Fatal("stale report accepted")
+	}
+	stale = r
+	stale.Executions = append([]ExecutionEvidence(nil), r.Executions...)
+	stale.Executions[0].OutputDigest = "tampered"
+	if _, err := RunObservedAttribution(context.Background(), c, stale, o); err == nil {
+		t.Fatal("tampered failure accepted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	attributions, err = RunObservedAttribution(ctx, c, r, o)
+	if err != nil || len(attributions) != 1 || attributions[0].Outcome != AttributionInconclusive || len(attributions[0].Runs) != 0 {
+		t.Fatal("cancelled attribution must remain inconclusive without executions", err, attributions)
+	}
+}
+
+func TestLazyAttributionCombinations(t *testing.T) {
+	for n := 0; n <= 8; n++ {
+		for size := 0; size <= n; size++ {
+			subset := make([]int, size)
+			for i := range subset {
+				subset[i] = i
+			}
+			got := [][]int{}
+			for {
+				got = append(got, append([]int{}, subset...))
+				if !nextCombination(subset, n) {
+					break
+				}
+			}
+			if fmt.Sprint(got) != fmt.Sprint(combinations(n, size)) {
+				t.Fatalf("n=%d size=%d: lazy=%v eager=%v", n, size, got, combinations(n, size))
+			}
+		}
 	}
 }

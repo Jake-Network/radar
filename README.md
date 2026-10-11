@@ -86,6 +86,11 @@ radar gate          # combine every worktree branch; conflicts, contract breaks,
 radar gate --run    # also run those tests on the combined tree
 ```
 
+For continuous feedback while agents work, use `radar watch --base main`.
+Add `--include-dirty` to preview uncommitted worktree changes and `--run` to
+authorize repeated test execution. Static inspection is the default. See
+[watch usage, security scope and the live demo](docs/WATCH.md).
+
 Run bare `radar` in a terminal for a menu that lists the branches beyond the
 base, lets you pick which to combine, and dispatches the same commands (it
 prints each one). Tests run only after you confirm. When stdin or stdout is not

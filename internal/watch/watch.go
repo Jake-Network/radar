@@ -12,32 +12,38 @@ import (
 // State identifies all inputs relevant to a check. Value belongs to the caller;
 // it must remain immutable while analysis is running. Key must be nonempty.
 type State struct {
-	Key   string
-	Value any
+	Key   string `json:"key"`
+	Value any    `json:"value,omitempty"`
 }
 
 type Result struct {
-	Value any
+	Value any `json:"value,omitempty"`
+	// Followup performs slower observations after the initial result is emitted.
+	// It uses the same bounded worker slot and cancellation scope as Analyze.
+	Followup func(context.Context) (Result, error) `json:"-"`
+	// Close releases retained resources after followup or when superseded.
+	Close func() `json:"-"`
 }
 
 // Event is delivered synchronously, in sequence order. A completed event always
 // refers to inputs reobserved after analysis; a changed event invalidates the
 // previous result immediately. Heartbeats deliberately contain no old result.
 type Event struct {
-	Type     string
-	Sequence uint64
-	Time     time.Time
-	State    State
-	Result   *Result
-	Error    string
+	Type     string    `json:"type"`
+	Sequence uint64    `json:"sequence"`
+	Time     time.Time `json:"time"`
+	State    State     `json:"state"`
+	Result   *Result   `json:"result,omitempty"`
+	Error    string    `json:"error,omitempty"`
 }
 
 const (
-	Changed   = "changed"
-	Checking  = "checking"
-	Completed = "completed"
-	Error     = "error"
-	Heartbeat = "heartbeat"
+	Changed    = "changed"
+	Checking   = "checking"
+	Completed  = "completed"
+	Attributed = "attributed"
+	Error      = "error"
+	Heartbeat  = "heartbeat"
 )
 
 type Options struct {
@@ -51,10 +57,11 @@ type Analyze func(context.Context, State) (Result, error)
 type Emit func(Event)
 
 type completion struct {
-	state  State
-	result Result
-	err    error
-	ctx    context.Context
+	state    State
+	result   Result
+	err      error
+	ctx      context.Context
+	followup bool
 }
 
 // Run uses one analysis worker and coalesces changes until the debounce period
@@ -155,7 +162,10 @@ func Run(ctx context.Context, options Options, observe Observe, analyze Analyze,
 				cancel()
 			}
 			if busy {
-				<-done
+				completed := <-done
+				if completed.result.Close != nil {
+					completed.result.Close()
+				}
 			}
 			return ctx.Err()
 		case <-poll.C:
@@ -167,12 +177,35 @@ func Run(ctx context.Context, options Options, observe Observe, analyze Analyze,
 			busy = false
 			// Re-observe even between polling ticks before publishing a verdict.
 			refresh()
-			if completed.ctx.Err() == nil && valid && completed.state.Key == current.Key && ctx.Err() == nil {
+			accepted := completed.ctx.Err() == nil && valid && completed.state.Key == current.Key && ctx.Err() == nil
+			if accepted {
 				if completed.err != nil {
-					publish(Error, completed.state, nil, completed.err)
+					kind := Error
+					if completed.followup {
+						kind = Attributed
+					}
+					publish(kind, completed.state, nil, completed.err)
 				} else {
-					publish(Completed, completed.state, &completed.result, nil)
+					kind := Completed
+					if completed.followup {
+						kind = Attributed
+					}
+					publish(kind, completed.state, &completed.result, nil)
 				}
+			}
+			if accepted && ctx.Err() == nil && completed.err == nil && !completed.followup && completed.result.Followup != nil {
+				busy = true
+				go func() {
+					result, err := completed.result.Followup(completed.ctx)
+					if completed.result.Close != nil {
+						completed.result.Close()
+					}
+					done <- completion{state: completed.state, result: result, err: err, ctx: completed.ctx, followup: true}
+				}()
+				continue
+			}
+			if completed.result.Close != nil {
+				completed.result.Close()
 			}
 			if cancel != nil {
 				cancel()
