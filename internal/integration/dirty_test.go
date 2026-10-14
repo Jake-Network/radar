@@ -61,6 +61,12 @@ func TestDirtySnapshotProvenanceAndSourceImmutability(t *testing.T) {
 	}
 	dir := c.Dir
 	defer c.Close()
+	for key, want := range map[string]string{"maintenance.auto": "false", "maintenance.autoDetach": "false", "gc.auto": "0", "gc.autoDetach": "false"} {
+		got, err := gitrepo.RunPrivate(context.Background(), c.Dir, "config", "--get", key)
+		if err != nil || got != want {
+			t.Fatalf("private candidate permits unowned background writes: %s=%q: %v", key, got, err)
+		}
+	}
 	if len(c.Conflicts) != 0 {
 		t.Fatal(c.Conflicts)
 	}
