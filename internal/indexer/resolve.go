@@ -12,10 +12,11 @@ import (
 )
 
 // resolver maps import specifiers to repository files using each language's
-// path conventions. Results are inferred: no compiler, PYTHONPATH or Cargo
-// workspace configuration is consulted. TypeScript uses tsconfig aliases and
+// path conventions and literal workspace manifests. Results are inferred: no
+// compiler, PYTHONPATH or executable configuration is consulted. TypeScript uses tsconfig aliases and
 // repository package names (tsresolve.go). Java keys on declared packages.
 type resolver struct {
+	workspace         workspaceState
 	files             map[string]bool // every non-excluded repository path
 	sources           map[string]bool // indexed source files
 	byDir             map[string][]string
@@ -32,11 +33,14 @@ type resolver struct {
 }
 
 func newResolver() *resolver {
-	return &resolver{files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}, javaTypes: map[string][]string{}, javaPackages: map[string][]string{}, language: map[string]string{}}
+	return &resolver{workspace: newWorkspaceState(), files: map[string]bool{}, sources: map[string]bool{}, byDir: map[string][]string{}, imports: map[string][]languages.Import{}, goMods: map[string]string{}, tsconfigs: map[string]tsConfig{}, packages: map[string]workspacePackage{}, ambiguousPackages: map[string]bool{}, javaTypes: map[string][]string{}, javaPackages: map[string][]string{}, language: map[string]string{}}
 }
 
 // addManifest records build configuration consulted by import resolution.
 func (r *resolver) addManifest(p string, content []byte) {
+	if workspaceManifest(p) || path.Base(p) == "package.json" || strings.HasPrefix(path.Base(p), "tsconfig") {
+		r.workspace.manifests[p] = content
+	}
 	switch base := path.Base(p); {
 	case base == "go.mod":
 		r.addGoModule(p, content)
@@ -52,7 +56,7 @@ func (r *resolver) addManifest(p string, content []byte) {
 // isManifest reports whether addManifest reads the path.
 func isManifest(p string) bool {
 	base := path.Base(p)
-	return base == "go.mod" || base == "package.json" || base == "jsconfig.json" || base == "compile_commands.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
+	return workspaceManifest(p) || base == "go.mod" || base == "package.json" || base == "jsconfig.json" || base == "compile_commands.json" || strings.HasPrefix(base, "tsconfig") && strings.HasSuffix(base, ".json")
 }
 
 func (r *resolver) addSource(p string, parsed languages.Result) {
@@ -107,7 +111,11 @@ func (r *resolver) edges(repository, revision string) []model.Edge {
 					continue
 				}
 				seen[id] = true
-				out = append(out, model.Edge{ID: id, From: from, To: to, Kind: "DEPENDS_ON", Provenance: model.Provenance{Repository: repository, Revision: revision, Path: importer, Line: imp.Line, Method: "import_path_resolution:" + imp.Language, Evidence: model.Inferred}})
+				method := "import_path_resolution:" + imp.Language
+				if r.workspaceEdge(importer, target) {
+					method = "workspace_member:" + imp.Language
+				}
+				out = append(out, model.Edge{ID: id, From: from, To: to, Kind: "DEPENDS_ON", Provenance: model.Provenance{Repository: repository, Revision: revision, Path: importer, Line: imp.Line, Method: method, Evidence: model.Inferred}})
 			}
 		}
 	}
@@ -226,6 +234,33 @@ func (r *resolver) python(importer, module string, names []string) []string {
 			return found
 		}
 	}
+	if dots == 0 {
+		var found []string
+		owners := map[string]bool{}
+		for _, root := range r.workspace.pythonRoots {
+			if includes := r.workspace.pythonIncludes[root]; len(includes) > 0 {
+				allowed := false
+				for _, include := range includes {
+					allowed = allowed || rest == include || strings.HasPrefix(rest, include+"/")
+				}
+				if !allowed {
+					continue
+				}
+			}
+			pkg := path.Join(root, rest)
+			targets := r.first(pkg+".py", path.Join(pkg, "__init__.py"))
+			if len(targets) > 0 {
+				owners[root] = true
+				found = append(found, targets...)
+				for _, name := range names {
+					found = append(found, r.first(path.Join(pkg, name+".py"), path.Join(pkg, name, "__init__.py"))...)
+				}
+			}
+		}
+		if len(owners) == 1 {
+			return found
+		}
+	}
 	return nil
 }
 
@@ -293,7 +328,22 @@ func (r *resolver) rust(importer, spec string) []string {
 			segments = segments[1:]
 		}
 	default:
-		return nil // external crate or standard library
+		entry, ok := r.workspace.crates[segments[0]]
+		if !ok || r.workspace.ambiguousCrates[segments[0]] {
+			return nil
+		}
+		base = path.Dir(entry)
+		segments = segments[1:]
+		if len(segments) == 0 {
+			return r.first(entry)
+		}
+		for i := len(segments); i >= 1; i-- {
+			candidate := path.Join(base, strings.Join(segments[:i], "/"))
+			if found := r.first(candidate+".rs", path.Join(candidate, "mod.rs")); found != nil {
+				return found
+			}
+		}
+		return r.first(entry)
 	}
 	if !within(base) {
 		return nil

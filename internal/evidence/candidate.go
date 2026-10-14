@@ -55,6 +55,10 @@ func ObserveCandidateAt(ctx context.Context, root, cwd string, argv []string, ti
 // is known to write. The report must not exist before the command runs, so a
 // committed or earlier report cannot stand in for this execution.
 func ObserveCandidateReport(ctx context.Context, root, cwd string, argv []string, report string, timeout time.Duration) (CandidateObservation, error) {
+	return observeCandidateReport(ctx, root, cwd, argv, report, timeout, nil)
+}
+
+func observeCandidateReport(ctx context.Context, root, cwd string, argv []string, report string, timeout time.Duration, observed *[]string) (CandidateObservation, error) {
 	r := CandidateObservation{Status: model.StatusError, ExitCode: -1}
 	dir := root
 	if cwd != "" && cwd != "." {
@@ -94,7 +98,14 @@ func ObserveCandidateReport(ctx context.Context, root, cwd string, argv []string
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var out output
-	state, e := execute(runCtx, argv, dir, environment(home, nil), &out)
+	env := environment(home, nil)
+	if observed != nil {
+		env, e = prepareFileObservation(root, home, argv, env)
+		if e != nil {
+			return r, e
+		}
+	}
+	state, e := execute(runCtx, argv, dir, env, &out)
 	r.OutputDigest = hex.EncodeToString(out.sum())
 	if e != nil {
 		return r, nil
@@ -114,6 +125,12 @@ func ObserveCandidateReport(ctx context.Context, root, cwd string, argv []string
 	r.Harness = result.Harness
 	r.Status = outcome(runCtx.Err() != nil, r.ExitCode, result, out.exceeded, argv, out.b.Bytes())
 	decorateCandidateObservation(&r, argv, out.b.Bytes(), root, dir, cwd)
+	if observed != nil {
+		*observed, e = readFileObservation(root, home)
+		if e != nil {
+			return r, e
+		}
+	}
 	return r, nil
 }
 

@@ -99,7 +99,7 @@ func gateGaps(r integration.Report) []gateGap {
 			case notCopied(*g):
 				g.fix = "Radar copies only committed files, so node_modules and virtualenvs are missing. Run these tests yourself on the combined branches, or declare a reviewed plan test_run with link (see docs/USAGE.md)."
 			case len(reasons) > 0:
-				g.fix = "Install the runner where you run radar (Radar never installs dependencies), then rerun."
+				g.fix = "Prepare the runner or declare .radar/runners.json setup with execution opt-in, then rerun."
 			default:
 				g.fix = "Radar could not confirm the runner before running; install it or check the command, then rerun."
 			}

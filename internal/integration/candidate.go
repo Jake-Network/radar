@@ -106,33 +106,41 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 	if _, e = gitrepo.RunPrivate(ctx, temp, "init", "--quiet"); e != nil {
 		return fail(e)
 	}
-	// Copy immutable objects through a pack stream. No alternates, hard links,
-	// clone hooks, source config copying, source refs or source objects are written.
-	copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	producer := gitrepo.PrivateCommand(copyCtx, root, "pack-objects", "--stdout", "--revs")
-	producer.Stdin = strings.NewReader(strings.Join(append([]string{c.Base}, c.Inputs...), "\n") + "\n")
-	pipe, e := producer.StdoutPipe()
-	if e != nil {
-		return fail(e)
+	// Ordinary local stores already have immutable pack indexes. Copy their
+	// bytes instead of rebuilding and revalidating a pack of the entire history.
+	copied, copyErr := gitrepo.CopyObjectStore(ctx, root, temp)
+	if copyErr != nil {
+		return fail(copyErr)
 	}
-	consumer := gitrepo.PrivateCommand(copyCtx, temp, "index-pack", "--stdin")
-	consumer.Stdin = pipe
-	consumer.Stdout = io.Discard
-	consumer.Stderr = io.Discard
-	producer.Stderr = io.Discard
-	if e = consumer.Start(); e != nil {
-		return fail(e)
-	}
-	if e = producer.Start(); e != nil {
-		_ = pipe.Close()
-		_ = consumer.Wait()
-		return fail(e)
-	}
-	producerErr := producer.Wait()
-	consumerErr := consumer.Wait()
-	if producerErr != nil || consumerErr != nil {
-		return fail(errors.New("unable to copy integration objects"))
+	if !copied {
+		// Copy immutable objects through a pack stream. No alternates, hard links,
+		// clone hooks, source config copying, source refs or source objects are written.
+		copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		producer := gitrepo.PrivateCommand(copyCtx, root, "pack-objects", "--stdout", "--revs")
+		producer.Stdin = strings.NewReader(strings.Join(append([]string{c.Base}, c.Inputs...), "\n") + "\n")
+		pipe, e := producer.StdoutPipe()
+		if e != nil {
+			return fail(e)
+		}
+		consumer := gitrepo.PrivateCommand(copyCtx, temp, "index-pack", "--stdin")
+		consumer.Stdin = pipe
+		consumer.Stdout = io.Discard
+		consumer.Stderr = io.Discard
+		producer.Stderr = io.Discard
+		if e = consumer.Start(); e != nil {
+			return fail(e)
+		}
+		if e = producer.Start(); e != nil {
+			_ = pipe.Close()
+			_ = consumer.Wait()
+			return fail(e)
+		}
+		producerErr := producer.Wait()
+		consumerErr := consumer.Wait()
+		if producerErr != nil || consumerErr != nil {
+			return fail(errors.New("unable to copy integration objects"))
+		}
 	}
 	// A shallow source copies history only down to its boundary; the private
 	// repository shares that boundary so Git does not walk missing parents.

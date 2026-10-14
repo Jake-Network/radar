@@ -49,6 +49,24 @@ type pyModule struct {
 // resolvePython observes syntax and resolves bounded local import relationships.
 // It never imports Python modules or treats response serialization as observed.
 func resolvePython(ctx context.Context, sources map[string]string, revision string) ([]Schema, []endpoint, []model.Diagnostic, error) {
+	// Every supported model/router resolution chain terminates in a literal
+	// fastapi or pydantic import (including local re-export wrappers). A raw
+	// substring prefilter is deliberately conservative: comments and strings
+	// can keep the full scan, but no supported framework import can be omitted.
+	// Discovery remains incomplete when no framework facts are available.
+	frameworkPresent := false
+	for file, source := range sources {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, nil, err
+		}
+		if path.Ext(file) == ".py" && (strings.Contains(source, "fastapi") || strings.Contains(source, "pydantic")) {
+			frameworkPresent = true
+			break
+		}
+	}
+	if !frameworkPresent {
+		return nil, nil, nil, ctx.Err()
+	}
 	x := &pyResolver{revision: revision, modules: map[string]*pyModule{}, diagnostics: []model.Diagnostic{}, files: []string{}, schemaFields: map[string][]string{}, modelState: map[string]int{}, registrations: map[string][]pyRegistration{}, graph: map[string][]pyEdge{}}
 	for file := range sources {
 		if path.Ext(file) == ".py" {

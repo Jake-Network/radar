@@ -1,0 +1,15 @@
+{
+ "$schema":"https://json-schema.org/draft/2020-12/schema",
+ "title":"Radar command coverage relationship",
+ "description":"An executed suite observed a file; this does not assert that every individual test case covered it. Stale records never establish selection evidence.",
+ "type":"object","additionalProperties":false,
+ "required":["test","file","commit","baseline","command","stale"],
+ "properties": {
+  "test":{"type":"string","minLength":1},
+  "file":{"type":"string","minLength":1},
+  "commit":{"type":"string","minLength":1},
+  "baseline":{"type":"string","minLength":1},
+  "command":{"type":"string","minLength":1},
+  "stale":{"type":"boolean"}
+ }
+}

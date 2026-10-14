@@ -71,6 +71,7 @@ func gateCommand() command {
 			fs.BoolVar(&o.again, "again", false, "repeat the previous workspace run's selection on the latest commits")
 			fs.Var(listFlag{&o.only}, "only", "check only workspace repository `REPO` in this run (repeatable)")
 			fs.StringVar(&o.replay, "replay", "", "rebuild the exact commits of workspace `RUN` (run ID or last)")
+			fs.BoolVar(&o.observeCoverage, "observe-coverage", false, "with execution opt-in, observe covered files for later test selection")
 			fs.BoolVar(&o.verify, "run", false, "execute the selected tests on the combined tree with your host permissions (not an OS sandbox)")
 			fs.StringVar(&o.suite, "suite", "", "test selection `MODE` with --run: targeted, balanced (default) or full")
 			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands (`N`) --run executes")
@@ -82,6 +83,9 @@ func gateCommand() command {
 }
 
 func (a *app) gate(o options) int {
+	if o.observeCoverage && !o.verify {
+		return a.fail(errors.New("--observe-coverage requires --run"))
+	}
 	if o.suite != "" && !o.verify {
 		return a.fail(errors.New("--suite selects what --run executes; add --run or use --suite only with it"))
 	}
@@ -113,11 +117,16 @@ func (a *app) gate(o options) int {
 		return a.fail(fmt.Errorf("base %q: %w", baseRef, err))
 	}
 	refs, skipped, err := a.gateBranches(o.args, baseRef, baseSHA)
+	if err != nil && len(o.args) == 0 && strings.HasPrefix(err.Error(), "no branches to combine:") {
+		// First-run gate can inspect HEAD even without parallel worktrees.
+		// Watch and doctor keep their independent empty-selection behavior.
+		refs, err = []string{"HEAD"}, nil
+	}
 	if err != nil {
 		return a.fail(err)
 	}
 	plan := configuration.Plan
-	options := integration.Options{Base: baseSHA, Branches: refs, Policy: policy, Plan: plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout}
+	options := integration.Options{Base: baseSHA, Branches: refs, Policy: policy, Plan: plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout, ObserveCoverage: o.observeCoverage}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
 		options.AttributionRuns = o.attributionRuns
@@ -159,6 +168,9 @@ func (a *app) gate(o options) int {
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
 	case r.Gate.Verdict == gate.Fail:
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+	case r.Gate.Verdict == gate.Blocked && staticGap(r) != "":
+		// Running tests cannot settle a static check Radar could not read.
+		g.Next = staticGap(r) + " could not be checked; resolve what its explanation names, then rerun: " + strings.TrimSpace("radar gate "+rerun)
 	case r.Gate.Verdict == gate.Blocked && o.verify:
 		g.Next = blockedNext(r, gateGaps(r), rerunWith(o, baseRef, refs), o)
 	case configurationUnstable(configuration.Inputs):
@@ -170,6 +182,7 @@ func (a *app) gate(o options) int {
 	case !o.verify:
 		g.Next = strings.TrimSpace("radar gate --run " + rerun)
 	}
+	recordVerdict(a.ctx, r.Gate.Verdict)
 	a.report(g, func(w io.Writer) { renderGate(w, g, o.verify) })
 	if policy != nil || o.verify || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
@@ -183,6 +196,21 @@ func (a *app) gate(o options) int {
 		return 2
 	}
 	return 0
+}
+
+// staticChecks are required checks a person settles by editing files, not by
+// running tests.
+var staticChecks = map[string]bool{"no_breaking_contracts": true, "declared_contracts": true, "declared_contract_configuration": true, "migration_order": true, "no_symbol_conflicts": true, "lockfile_consistency": true, "unique_keys": true, "generated_drift": true}
+
+// staticGap names the first required static check that neither passed nor
+// failed, or "" when only other evidence (such as tests) is missing.
+func staticGap(r integration.Report) string {
+	for _, c := range r.Gate.Required {
+		if staticChecks[c.ID] && c.Status != model.StatusPassed && c.Status != model.StatusFailed {
+			return gateCheckName(c.ID)
+		}
+	}
+	return ""
 }
 
 // explainGateError adds the next step to candidate errors a person can act
@@ -421,6 +449,9 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	if o.timeout != 10*time.Minute {
 		args = append(args, "--timeout "+o.timeout.String())
 	}
+	if o.observeCoverage {
+		args = append(args, "--observe-coverage")
+	}
 	if o.verify && o.attributionRuns != 0 {
 		args = append(args, fmt.Sprintf("--attribution-runs %d", o.attributionRuns))
 	}
@@ -505,8 +536,23 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		nameWidth = max(nameWidth, len(x.name))
 	}
 	fmt.Fprintln(w)
+	checked, unchecked := []row{}, []row{}
 	for _, x := range rows {
+		if x.mark == "✓" || x.mark == "✗" {
+			checked = append(checked, x)
+		} else {
+			unchecked = append(unchecked, x)
+		}
+	}
+	fmt.Fprintln(w, p.bold(fmt.Sprintf("Checked %d", len(checked))))
+	for _, x := range checked {
 		fmt.Fprintf(w, "  %s %s%s  %s\n", p.mark(x.mark), p.bold(x.name), strings.Repeat(" ", nameWidth-len(x.name)), x.text)
+	}
+	if len(unchecked) > 0 {
+		fmt.Fprintln(w, p.bold(fmt.Sprintf("Couldn't check %d", len(unchecked))))
+		for _, x := range unchecked {
+			fmt.Fprintf(w, "  %s %s%s  %s\n", p.mark(x.mark), p.bold(x.name), strings.Repeat(" ", nameWidth-len(x.name)), x.text)
+		}
 	}
 	fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("policy %s requires %s", r.Gate.Policy.Name, strings.Join(r.Gate.Policy.Require, ", "))))
 
@@ -895,6 +941,16 @@ func gateCheckName(id string) string {
 		return "Tests"
 	case "test_selection":
 		return "Test selection"
+	case "migration_order":
+		return "Migrations"
+	case "no_symbol_conflicts", "symbol_conflicts":
+		return "Symbols"
+	case "lockfile_consistency":
+		return "Lockfiles"
+	case "unique_keys":
+		return "Unique keys"
+	case "generated_drift":
+		return "Generated files"
 	}
 	return id
 }
@@ -912,6 +968,11 @@ func gateLabel(c gate.Check, r integration.Report) string {
 		"no_breaking_contracts": {"no breaking contract change found", "breaking contract change"},
 		"integration_execution": {"selected tests pass on the combined tree", "tests on the combined tree did not pass"},
 		"test_selection":        {"complete (no uncovered changes)", "test selection failed"},
+		"migration_order":       {"migration history stays in order on the combined tree", "migration order conflict on the combined tree"},
+		"no_symbol_conflicts":   {"supported declarations and named references stay consistent", "symbol conflict on the combined tree"},
+		"lockfile_consistency":  {"direct dependencies are recorded in supported lockfiles", "manifest and lockfile disagree"},
+		"unique_keys":           {"supported route and declared keys stay unique", "duplicate unique key"},
+		"generated_drift":       {"declared generated outputs match", "declared generated outputs drift"},
 	}
 	l, ok := labels[c.ID]
 	switch {

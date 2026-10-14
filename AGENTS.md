@@ -44,12 +44,12 @@ CI(`.github/workflows/ci.yml`)는 위에 더해 `integrations/github-actions/tes
 
 1. **CLI** (`internal/cli/gate.go`, `gate_flags.go`): base(`origin/HEAD` → `main`/`master`/`trunk`)와 base 이후 커밋이 있는 worktree 브랜치를 고른다. 커밋된 변경만 입력이며 dirty worktree의 staged/unstaged/untracked는 제외 사항으로 보고한다. workspace에 속한 저장소면 `workspace_gate.go`가 저장소별로 같은 경로를 돌린다.
 2. **비공개 후보** (`internal/integration/candidate.go` `BuildCandidate`): 임시 Git 저장소에 객체를 복사하고 `RunPrivate`로 hook·외부 설정을 막은 채 `merge --no-ff --no-verify`를 순서대로 적용한다. 원래 저장소의 refs·index·작업 트리는 절대 쓰지 않는다. 원본이 shallow clone이면 `.git/shallow` 경계를 후보에도 복사하고, 이력 부족 오류는 `gitrepo.ShallowHistoryError`(`internal/git/shallow.go`)로 감싸 `git fetch --unshallow` / `fetch-depth: 0`을 안내한다. **Radar는 fetch하지 않는다.**
-3. **분석** (`integration.Analyze`): `textual_merge` → 명시 계약(`analyze.go` `analyzeContracts`, `.radar/contracts.json`) → 발견된 후보(경고만) → `checkpoint.Index`(공통 `indexer.Build`) → 역 import 영향 → `testselection.Recommend`.
-4. **실행** (`--run`일 때만, `integration/execute.go` → `internal/evidence`): 선택된 argv를 선언된 CWD에서 timeout·출력 제한·정제된 환경으로 실행한다. 기본 명령 예산 16개, 생략된 필수 명령은 gate를 막는다.
-5. **판정** (`integration/gate.go` `applyGate` → `internal/gate`): 기본 정책 `supported-integration`은 `textual_merge`, `no_breaking_contracts`, `--run`이면 `integration_execution`, suite가 있으면 `test_selection`을 요구한다. `--policy`는 요구사항을 고르는 데이터일 뿐 실행 권한을 주지 않는다.
+3. **분석** (`integration.Analyze`): `textual_merge` → 명시 계약(`analyze.go` `analyzeContracts`, `.radar/contracts.json`) → migration 순서·manifest/lockfile·unique key 검사 → 발견된 후보·생성물 관계(경고만) → `checkpoint.Index`(공통 `indexer.Build`, workspace manifest 해석) → 지원하는 symbol 충돌 → 역 import 영향 → `testselection.Recommend`.
+4. **실행** (`--run`일 때만, `integration/execute.go` → `internal/evidence`): 선택된 argv를 선언된 CWD에서 timeout·출력 제한·정제된 환경으로 실행한다. 기본 명령 예산 16개는 생성·선언 setup·선택 테스트가 공유하며, 생략된 필수 명령은 gate를 막는다. `.radar/runners.json`의 선언 setup만 opt-in 후 실행하며, 캐시 적중은 테스트 근거가 아니다. `--observe-coverage`는 실행 opt-in을 요구하고 stale·다른 이력의 관측은 선택 근거로 쓰지 않는다.
+5. **판정** (`integration/gate.go` `applyGate` → `internal/gate`): 기본 정책 `supported-integration`은 `textual_merge`, `no_breaking_contracts`, `--run`이면 `integration_execution`, suite가 있으면 `test_selection`을 요구한다. 관련 변경이 있을 때 `migration_order`, `no_symbol_conflicts`, `lockfile_consistency`, `unique_keys`가 추가되며, `--run`에서 선언된 생성물이 있으면 `generated_drift`도 요구한다. `--policy`는 요구사항을 고르는 데이터일 뿐 실행 권한을 주지 않는다.
 6. **렌더링** (`gate.go` `renderGate`, `workspace_gate_render.go`, `render.go`, `style.go`/`internal/termui`): 색은 장식이고 모든 의미는 ✓ ✗ ? ! · 기호와 단어에 있다. `--json`과 MCP 출력은 절대 스타일링하지 않는다.
 
-종료 코드: `gate`는 pass `0`, fail/blocked `1`, error `2`. `check`/`merge-check`의 정책 없는 기존 동작은 보존하며 모든 명령에 같은 의미를 강제하지 않는다.
+종료 코드: 정책 또는 `--run`을 지정한 `gate`는 pass `0`, fail/blocked `1`, error `2`. 기존 정책 없는 정적 `gate`는 blocked에서도 `0`을 유지하므로 자동화는 JSON `gate.verdict`를 반드시 확인한다. `check`/`merge-check`의 정책 없는 기존 동작은 보존하며 모든 명령에 같은 의미를 강제하지 않는다.
 
 ## 실행 결과 분류 규칙 (`internal/evidence`)
 

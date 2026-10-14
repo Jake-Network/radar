@@ -352,7 +352,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 			return a.fail(wsError("radar gate "+inv.scope.Repos[0].ID+":<BRANCH>", "no branches to combine: no worktree branch of %s has commits beyond its base", strings.Join(inv.scope.All, ", ")))
 		}
 	}
-	options := integration.Options{Policy: configuration.Policy, Plan: configuration.Plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout}
+	options := integration.Options{Policy: configuration.Policy, Plan: configuration.Plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout, ObserveCoverage: o.observeCoverage}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
 		options.Suite = o.suite
@@ -419,6 +419,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 			g.RunID = ""
 		}
 	}
+	recordVerdict(a.ctx, g.Verdict)
 	a.report(g, func(w io.Writer) { renderWorkspaceGate(w, g) })
 	if configuration.Policy != nil || o.verify || unstable {
 		return gate.Exit(gate.Result{Verdict: g.Verdict})

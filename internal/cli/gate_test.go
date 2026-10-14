@@ -150,8 +150,8 @@ func TestGateDiscoveredContractBreakWithoutManifest(t *testing.T) {
 
 func TestGateInvocationErrors(t *testing.T) {
 	root, _ := checkoutRepo(t)
-	if code, _, errs := run(t, root, "gate"); code != 2 || !strings.Contains(errs, "no branches to combine") {
-		t.Fatal("no worktree branches", code, errs)
+	if code, out, errs := run(t, root, "gate"); code != 0 || !strings.Contains(out, "HEAD") || !strings.Contains(out, "Checked 1") {
+		t.Fatal("single checkout fallback", code, out, errs)
 	}
 	if code, _, errs := run(t, root, "gate", "--suite", "full", "main"); code != 2 || !strings.Contains(errs, "--run") {
 		t.Fatal("--suite without --run", code, errs)

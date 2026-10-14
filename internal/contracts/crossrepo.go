@@ -168,7 +168,7 @@ func CheckLink(in LinkInput) LinkResult {
 							incomplete(change.Explanation)
 							continue
 						}
-						if change.Kind != "required_added" && !overlapsAny(fields[c], change.Field) {
+						if !requiredChange(change) && !overlapsAny(fields[c], change.Field) {
 							continue
 						}
 						classification := classify(change, in.Direction)

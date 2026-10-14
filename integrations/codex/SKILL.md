@@ -136,6 +136,10 @@ manifest, a binding or a consumed field declaration never makes
 `no_breaking_contracts` pass. Retire an obligation only with a reviewed
 `"retired": [{"id", "fields", "reason"}]` entry (or an approved plan removal
 delta); never remove declarations to silence a finding.
+When a branch changes a migration history, `migration_order` is required.
+Repair a reported head, leaf, label or version conflict as its `remediation`
+proposes (re-point the later migration, add a merge migration or renumber a
+duplicated version); never delete another branch's migration to silence it.
 
 After explicit execution authorization, use the CLI:
 `radar merge-check --base BASE --branches A,B --verify --suite targeted
@@ -148,8 +152,10 @@ observations; inspect every result and its CWD. Same-directory per-file commands
 are grouped; `--max-commands` (default 16) and `--timeout` bound one run. Read
 `selection.omitted`, `uncovered_changes` and `blocking`: an omitted, unrunnable or
 unexecuted required command blocks the gate and is never a pass or a test failure.
-Radar never installs dependencies; an `environment_unavailable` result needs a
-prepared environment or a reviewed plan `test_run` rule with `link`. A command observation does not automatically satisfy
+Radar never installs dependencies without explicit declared setup and execution
+opt-in. An `environment_unavailable` result needs a prepared environment,
+`.radar/runners.json`, or reviewed plan `test_run` setup; combined candidates reject
+host dependency links. A command observation does not automatically satisfy
 an unrelated plan criterion. Private copied files are not an OS sandbox.
 MCP never executes repository code or records approvals (it may write Radar
 state and plan files): never pass execution flags or attempt to create approval
@@ -168,3 +174,23 @@ one-hop import and declared contract neighbors; inspect provenance and source.
 Radar cannot infer contradictions in free-form design prose or establish runtime
 architecture from static context. Consequential alternatives and tradeoffs still
 need agent reasoning and actual human review; no MCP tool can supply that approval.
+
+## Additional static and declared execution checks
+
+Gate checks supported literal symbol conflicts (`no_symbol_conflicts`), changed
+migration histories (`migration_order`), direct manifest/lockfile consistency
+(`lockfile_consistency`) and literal or declared unique keys (`unique_keys`).
+Workspace manifests improve inferred import relationships; none of these execute
+repository code. Unsupported syntax stays visible as unknown. A static PASS
+covers only the checks and supported scope listed in the report.
+
+`.radar/runners.json` declares runner prefixes and setup argv; only explicit
+execution opt-in can run them. Dependency cache hits are not test evidence.
+`.radar/generated.json` declares sources, outputs and generator argv. Static
+observations are warnings; --run regenerates in a separate private copy.
+Contract bindings may declare `generate` argv, also execution-only. Generated
+observations carry their exact checkpoint and output digest, never raw output.
+Protobuf and GraphQL checks support a bounded literal subset; unsupported grammar
+cannot establish compatibility. `--observe-coverage` requires execution opt-in;
+fresh observed file relationships supplement static selection, and stale or
+unrelated baseline records do not count as coverage.

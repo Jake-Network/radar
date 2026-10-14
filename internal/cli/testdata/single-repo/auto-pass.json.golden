@@ -158,7 +158,8 @@ exit 0
       "name": "supported-integration",
       "require": [
         "textual_merge",
-        "no_breaking_contracts"
+        "no_breaking_contracts",
+        "no_symbol_conflicts"
       ]
     },
     "required_checks": [
@@ -173,6 +174,12 @@ exit 0
         "status": "passed",
         "evidence": "verified_static",
         "explanation": "No supported authoritative contract incompatibility was found and every declared obligation was analyzed; unknown and inferred relationships remain visible in coverage."
+      },
+      {
+        "id": "no_symbol_conflicts",
+        "status": "passed",
+        "evidence": "inferred",
+        "explanation": "Compared supported namespace declarations, named references and literal call argument counts: 0 conflicts; 0 unresolved relationships retained separately. Receiver binding, parameter types, overloads, defaults and macro expansion are not checked."
       }
     ],
     "explanation": "All selected policy requirements passed; this does not establish universal software correctness."
@@ -224,6 +231,18 @@ exit 0
       "uncertainty": [
         "Compared supported discovered producer and consumer relationships; candidates remain proposed."
       ]
+    },
+    {
+      "analyzer": "no_symbol_conflicts",
+      "status": "passed",
+      "analyzed_scope": [
+        "Compared supported namespace declarations, named references and literal call argument counts: 0 conflicts; 0 unresolved relationships retained separately. Receiver binding, parameter types, overloads, defaults and macro expansion are not checked."
+      ],
+      "excluded_scope": [
+        "compiler type resolution, dynamic imports, ambiguous namespaces, overloaded calls and unsupported conditional compilation"
+      ],
+      "unavailable_capabilities": [],
+      "uncertainty": []
     },
     {
       "analyzer": "dependency_compatibility",
@@ -297,6 +316,12 @@ exit 0
       "explanation": "Compared supported discovered producer and consumer relationships; candidates remain proposed."
     },
     {
+      "id": "no_symbol_conflicts",
+      "status": "passed",
+      "evidence": "inferred",
+      "explanation": "Compared supported namespace declarations, named references and literal call argument counts: 0 conflicts; 0 unresolved relationships retained separately. Receiver binding, parameter types, overloads, defaults and macro expansion are not checked."
+    },
+    {
       "id": "dependency_compatibility",
       "status": "unknown",
       "evidence": "inferred",
@@ -319,16 +344,6 @@ exit 0
   "diagnostics": [
     {
       "message": "explicit contract bindings unavailable: committed file \".radar/contracts.json\": file does not exist",
-      "severity": "warning"
-    },
-    {
-      "path": "test_checkout.py",
-      "message": "model Checkout inheritance is unresolved or unsupported",
-      "severity": "warning"
-    },
-    {
-      "path": "test_checkout.py",
-      "message": "model Checkout inheritance is unresolved or unsupported",
       "severity": "warning"
     },
     {

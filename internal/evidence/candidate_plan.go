@@ -247,6 +247,12 @@ func MatchesCandidateCommand(p planning.Plan, argv []string, cwd string) bool {
 // RunCandidate runs exact reviewed plan declarations exclusively inside an
 // already private candidate. Host dependency links are deliberately unsupported.
 func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p planning.Plan, argv []string, cwd string, timeout time.Duration) (CandidateRun, error) {
+	return RunCandidateBudget(ctx, root, c, p, argv, cwd, timeout, nil)
+}
+
+// RunCandidateBudget bounds reviewed setup using the caller's shared command
+// budget. The selected test command is reserved separately by the caller.
+func RunCandidateBudget(ctx context.Context, root string, c CandidateCheckpoint, p planning.Plan, argv []string, cwd string, timeout time.Duration, take func() bool) (CandidateRun, error) {
 	var result CandidateRun
 	if !planning.Approved(p) {
 		return result, errors.New("candidate criterion evidence requires a valid reviewed plan")
@@ -364,6 +370,10 @@ func RunCandidate(ctx context.Context, root string, c CandidateCheckpoint, p pla
 		return CandidateRun{Record: r, Observation: observation}
 	}
 	for _, step := range spec.Setup {
+		if take != nil && !take() {
+			r.Phase = "setup"
+			return finish(model.StatusIncomplete), nil
+		}
 		state, startErr := execute(runCtx, step, dir, env, &out)
 		r.Phase = "setup"
 		if runCtx.Err() != nil {

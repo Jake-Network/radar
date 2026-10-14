@@ -1,0 +1,89 @@
+# Copy this file to .github/workflows/radar.yml and the reviewed pr_matrix.py/publish_matrix.py
+# to .github/radar/. Set RADAR_REVISION to a reviewed immutable Radar commit.
+# Static inspection is the default. See the adjacent README before execution.
+name: Radar open PR matrix
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write # Required only for the explicitly enabled publisher below
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RADAR_REVISION: ${{ vars.RADAR_REVISION }}
+      RADAR_BASE: ${{ github.event.pull_request.base.sha }}
+      RADAR_HEAD: ${{ github.event.pull_request.head.sha }}
+      RADAR_REPOSITORY: ${{ github.repository }}
+      RADAR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+      RADAR_PUBLISH_COMMENTS: ${{ vars.RADAR_PUBLISH_COMMENTS == 'true' && 'true' || 'false' }}
+      RADAR_TRUSTED: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'true' || 'false' }}
+      RADAR_TRIGGER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Validate the immutable tool revision
+        shell: bash
+        run: |
+          if [[ ! "$RADAR_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo '::error::Set the RADAR_REVISION repository variable to a reviewed 40-character Radar commit SHA.'
+            exit 2
+          fi
+      # Read helpers from the trusted PR base, never from the PR merge/head.
+      - name: Check out trusted workflow helpers
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: radar-control
+          persist-credentials: false
+      - name: Check out pinned Radar source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Jake-Network/radar
+          ref: ${{ env.RADAR_REVISION }}
+          path: radar-tool
+          persist-credentials: false
+      - name: Set up Go for the trusted tool
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version-file: radar-tool/go.mod
+          cache: false
+      - name: Build the pinned tool
+        shell: bash
+        working-directory: radar-tool
+        run: go build -trimpath -o "$RUNNER_TEMP/radar" ./cmd/radar
+      - name: Check out repository revisions for inspection
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: radar-target
+          persist-credentials: false
+      - name: Evaluate changed PR against other open PR chains
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 radar-control/.github/radar/pr_matrix.py \
+            --root "$GITHUB_WORKSPACE/radar-target" --radar "$RUNNER_TEMP/radar" \
+            --repo "$RADAR_REPOSITORY" --base "$RADAR_BASE" --base-ref "$RADAR_BASE_REF" \
+            --trigger "$RADAR_TRIGGER" --output "$RUNNER_TEMP/radar-matrix.json"
+      - name: Update pair comments when explicitly enabled
+        if: always() && vars.RADAR_PUBLISH_COMMENTS == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 radar-control/.github/radar/publish_matrix.py \
+            --repo "$RADAR_REPOSITORY" --report "$RUNNER_TEMP/radar-matrix.json"
+      - name: Preserve static pair reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: radar-pr-matrix
+          path: ${{ runner.temp }}/radar-matrix.json
+          if-no-files-found: error
+          retention-days: 7

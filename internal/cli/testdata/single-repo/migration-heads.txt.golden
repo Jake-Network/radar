@@ -1,0 +1,28 @@
+exit 1
+--- stdout
+Radar gate: FAIL — migration order conflict on the combined tree
+2 branches onto main @ 84d71f0816ed
+
+  agent-orders   e77a4bd7d19a  3 files changed
+  agent-refunds  0015c963347f  3 files changed
+
+Checked 2
+  ✓ Merge       branches merge without conflicts
+  ✗ Migrations  migration order conflict on the combined tree
+Couldn't check 2
+  · Contracts   none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests       combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts, migration_order
+
+Problems
+  ✗ migration_multiple_heads
+    Alembic history db/versions has more than one head: revisions "a1" (db/versions/a1_orders.py), "b1" (db/versions/b1_refunds.py) all revise "r0". `alembic upgrade head` refuses multiple heads. Neither the base nor any branch merged alone onto it has this; it appears only when the branches are combined.
+    look at: agent-orders (db/versions/a1_orders.py); agent-refunds (db/versions/b1_refunds.py)
+    fix: In db/versions/b1_refunds.py, set down_revision = "a1" so it follows the other line, or add a merge revision with `alembic merge heads`.
+
+Suggested tests (static relationships; not run)
+  python3 -m unittest discover -s . -p test_checkout.py  (in .)
+
+Next: repair on the branches above, commit, then rerun: radar gate
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+--- stderr

@@ -32,7 +32,9 @@ func subset(a, b []string) bool {
 // what consumers receive. "unanalyzed" changes are never classified.
 func classify(c Change, direction string) string {
 	switch c.Kind {
-	case "contract_removed":
+	case "graphql_compatible":
+		return "compatible"
+	case "contract_removed", "idl_field_removed", "idl_enum_value_removed", "protobuf_number_reused", "protobuf_number_changed", "protobuf_type_changed", "protobuf_reserved_violation", "protobuf_required_added", "graphql_argument_required", "graphql_argument_changed", "graphql_argument_removed", "graphql_type_changed", "graphql_input_tightened", "graphql_output_weakened", "idl_definition_kind_changed", "protobuf_package_changed", "protobuf_enum_number_changed":
 		return "breaking"
 	case "unanalyzed":
 		return "unanalyzed"
@@ -66,4 +68,8 @@ func classify(c Change, direction string) string {
 		return pick("breaking", "compatible")
 	}
 	return "risk"
+}
+
+func requiredChange(c Change) bool {
+	return c.Kind == "required_added" || c.Kind == "protobuf_required_added" || c.Kind == "graphql_input_tightened" || c.Kind == "protobuf_reserved_violation"
 }

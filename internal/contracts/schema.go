@@ -28,6 +28,10 @@ func DecodeDocument(data []byte) (map[string]any, error) {
 // YAML is normalized through JSON so both formats compare identically.
 func DecodeDocumentAt(p string, data []byte) (map[string]any, error) {
 	switch strings.ToLower(path.Ext(p)) {
+	case ".proto":
+		return decodeProto(data)
+	case ".graphql", ".gql", ".graphqls":
+		return decodeGraphQL(data)
 	case ".yaml", ".yml":
 		var value any
 		if err := yaml.Unmarshal(data, &value); err != nil {
@@ -440,6 +444,13 @@ func intersect(a, b []string) []string {
 
 // Analyzable reports whether the object at pointer can be normalized.
 func Analyzable(doc map[string]any, pointer string) (*Schema, error) {
+	if _, ok := doc[idlFormat].(idlKind); ok {
+		var err error
+		doc, err = normalizedIDL(doc)
+		if err != nil {
+			return nil, err
+		}
+	}
 	obj, err := Pointer(doc, pointer)
 	if err != nil {
 		return nil, err
@@ -450,6 +461,12 @@ func Analyzable(doc map[string]any, pointer string) (*Schema, error) {
 // Compare reports supported differences between two schema objects. Unsupported
 // constructs that differ are reported as changes of kind "unanalyzed".
 func Compare(before, after map[string]any, pointer string) ([]Change, error) {
+	if _, ok := before[idlFormat].(idlKind); ok {
+		return compareIDL(before, after, pointer)
+	}
+	if _, ok := after[idlFormat].(idlKind); ok {
+		return nil, fmt.Errorf("contract IDL format changed")
+	}
 	a, err := Analyzable(before, pointer)
 	if err != nil {
 		return nil, err

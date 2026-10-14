@@ -12,8 +12,11 @@ import (
 	"github.com/Jake-Network/radar/internal/discovery"
 	"github.com/Jake-Network/radar/internal/evidence"
 	"github.com/Jake-Network/radar/internal/graph"
+	"github.com/Jake-Network/radar/internal/lockfiles"
+	"github.com/Jake-Network/radar/internal/migrations"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/uniqueness"
 	"github.com/Jake-Network/radar/internal/verification"
 )
 
@@ -33,6 +36,10 @@ func reportConflicts(r *Report, conflicts []string) {
 // analyzeContracts checks declared contract configuration and obligations
 // between the base and the candidate.
 func analyzeContracts(ctx context.Context, temp string, r *Report, o Options) error {
+	docs, generationErr := generatedContractDocuments(ctx, temp, r, o)
+	if generationErr != nil {
+		return generationErr
+	}
 	configurationCheck := Check{ID: "declared_contract_configuration", Status: model.StatusPassed, Evidence: model.VerifiedStatic, Explanation: "Declared contract configuration is absent or readable at both checkpoints."}
 	for _, ref := range []string{r.Base, r.CandidateCommit} {
 		manifest, loadErr := contracts.LoadManifest(ctx, temp, ref)
@@ -44,6 +51,9 @@ func analyzeContracts(ctx context.Context, temp string, r *Report, o Options) er
 		}
 		for _, binding := range manifest.Bindings {
 			schema, schemaErr := contracts.ReadSchema(ctx, temp, ref, binding.Schema)
+			if document, ok := docs[ref][binding.Schema]; ok {
+				schema, schemaErr = document.Document, document.Err
+			}
 			if schemaErr == nil {
 				_, schemaErr = contracts.Analyzable(schema, binding.Pointer)
 			}
@@ -55,7 +65,7 @@ func analyzeContracts(ctx context.Context, temp string, r *Report, o Options) er
 		}
 	}
 
-	impact, e := contracts.Impact(ctx, temp, r.Base, r.CandidateCommit, verification.ApprovedRetirements(o.Plan)...)
+	impact, e := contracts.ImpactWithDocuments(ctx, temp, r.Base, r.CandidateCommit, docs, verification.ApprovedRetirements(o.Plan)...)
 	if e != nil {
 		return e
 	}
@@ -84,6 +94,19 @@ func analyzeDiscovered(ctx context.Context, temp string, r *Report) error {
 	r.Diagnostics = append(r.Diagnostics, discovered.Diagnostics...)
 	r.Limitations = append(r.Limitations, discovered.Limitations...)
 	r.Checks = append(r.Checks, Check{ID: "discovered_contracts", Status: discovered.Status, Evidence: model.Proposed, Explanation: "Compared supported discovered producer and consumer relationships; candidates remain proposed."})
+	return nil
+}
+
+// analyzeMigrations checks migration histories the branches changed. It adds
+// no check when no changed file belongs to a recognized history.
+func analyzeMigrations(ctx context.Context, temp string, r *Report) error {
+	m, e := migrations.Analyze(ctx, temp, r.Base, r.Inputs, r.CandidateCommit, r.Changed)
+	if e != nil || !m.Applicable {
+		return e
+	}
+	r.Findings = append(r.Findings, m.Findings...)
+	r.Diagnostics = append(r.Diagnostics, m.Diagnostics...)
+	r.Checks = append(r.Checks, Check{ID: migrations.CheckID, Status: m.Status, Evidence: m.Evidence, Explanation: m.Explanation})
 	return nil
 }
 
@@ -127,6 +150,26 @@ func verifyPlan(ctx context.Context, temp string, r *Report, p planning.Plan, sn
 	r.Checks = append(r.Checks, Check{ID: "plan_verification", Status: planReport.Status, Evidence: model.VerifiedStatic, Explanation: "Reviewed exact-command criteria use only source-intact records from this combined candidate; unmatched observations remain informational."})
 	for _, criterion := range planReport.Checks {
 		r.Checks = append(r.Checks, Check{ID: "criterion:" + criterion.ID, Status: criterion.Status, Evidence: criterion.Evidence, Explanation: criterion.Explanation})
+	}
+	return nil
+}
+
+// analyzeTreeRules checks changed, supported dependency and uniqueness inputs.
+func analyzeTreeRules(ctx context.Context, temp string, r *Report) error {
+	for _, detector := range []struct {
+		id      string
+		analyze func(context.Context, string, string, []string, string, []string) (migrations.Result, error)
+	}{{lockfiles.CheckID, lockfiles.Analyze}, {uniqueness.CheckID, uniqueness.Analyze}} {
+		result, err := detector.analyze(ctx, temp, r.Base, r.Inputs, r.CandidateCommit, r.Changed)
+		if err != nil {
+			return err
+		}
+		if !result.Applicable {
+			continue
+		}
+		r.Findings = append(r.Findings, result.Findings...)
+		r.Diagnostics = append(r.Diagnostics, result.Diagnostics...)
+		r.Checks = append(r.Checks, Check{ID: detector.id, Status: result.Status, Evidence: result.Evidence, Explanation: result.Explanation})
 	}
 	return nil
 }

@@ -33,7 +33,10 @@ jobs:
       - name: GitHub Actions PR driver regression
         env:
           RADAR_TEST_BIN: /tmp/radar
-        run: python3 integrations/github-actions/test_workflow.py
+        run: |
+          python3 integrations/github-actions/test_workflow.py
+          python3 integrations/github-actions/test_pr_matrix.py
+          python3 integrations/github-actions/test_publish_matrix.py
       - name: Release archive metadata regression
         run: python3 scripts/release-test.py
       - name: Benchmark harness and executable trusted fixture
@@ -42,6 +45,7 @@ jobs:
         run: |
           python3 -m unittest discover -s benchmarks -p 'test_*.py'
           python3 -m unittest discover -s benchmarks/external -p 'test_*.py'
+          python3 -m unittest discover -s benchmarks/history -p 'test_*.py'
       - name: Gate smoke test (two passing branches, one failing combination)
         run: bash scripts/smoke.sh /tmp/radar
       - name: End-to-end demo
@@ -52,6 +56,10 @@ jobs:
         run: bash examples/integration/demo.sh /tmp/radar
       - name: README quickstart demo
         run: bash examples/quickstart/demo.sh /tmp/radar
+      - name: Migrations demo
+        run: bash examples/migrations/demo.sh /tmp/radar
+      - name: Supported symbol and declared uniqueness demo
+        run: bash examples/static-rules/demo.sh /tmp/radar
       - name: Continuous worktree watch demo
         run: bash examples/watch/demo.sh /tmp/radar
       - name: Intelligent verification demo

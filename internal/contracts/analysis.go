@@ -16,10 +16,10 @@ import (
 // retirements reviewed outside the manifest (an approved plan's removal delta);
 // they apply in addition to "retired" entries the head manifest introduces.
 func Impact(ctx context.Context, root, base, head string, approved ...Retirement) (Report, error) {
-	return analyze(ctx, root, base, []string{head}, false, approved)
+	return analyze(ctx, root, base, []string{head}, false, approved, nil)
 }
 func Scan(ctx context.Context, root, base string, branches []string) (Report, error) {
-	return analyze(ctx, root, base, branches, true, nil)
+	return analyze(ctx, root, base, branches, true, nil, nil)
 }
 
 // FieldOverlaps reports whether a declared consumer field depends on a changed
@@ -35,7 +35,17 @@ type manifestAt struct {
 	err      error
 }
 
-func analyze(ctx context.Context, root, base string, heads []string, cross bool, approved []Retirement) (Report, error) {
+// DocumentOverride is a schema produced by authorized execution, or its explicit failure.
+type DocumentOverride struct {
+	Document map[string]any
+	Err      error
+}
+
+// ImpactWithDocuments compares generated documents while retaining the original committed manifests and checkpoint identities.
+func ImpactWithDocuments(ctx context.Context, root, base, head string, docs map[string]map[string]DocumentOverride, approved ...Retirement) (Report, error) {
+	return analyze(ctx, root, base, []string{head}, false, approved, docs)
+}
+func analyze(ctx context.Context, root, base string, heads []string, cross bool, approved []Retirement, docs map[string]map[string]DocumentOverride) (Report, error) {
 	r := Report{Base: base, Heads: heads, Checkpoint: "authoritative", Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}, Obligations: []ObligationChange{}, Unverified: []string{}}
 	baseSHA, err := gitrepo.Resolve(ctx, root, base)
 	if err != nil {
@@ -55,7 +65,7 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool,
 		heads[i] = sha
 	}
 	r.Heads = heads
-	a := &analyzer{ctx: ctx, root: root, baseSHA: baseSHA, heads: heads, cross: cross, approved: approved, r: &r, manifests: map[string]manifestAt{}, baseBindings: map[string]Binding{}, changedConsumers: map[string]bool{}, seen: map[string]bool{}}
+	a := &analyzer{documents: docs, ctx: ctx, root: root, baseSHA: baseSHA, heads: heads, cross: cross, approved: approved, r: &r, manifests: map[string]manifestAt{}, baseBindings: map[string]Binding{}, changedConsumers: map[string]bool{}, seen: map[string]bool{}}
 	manifest, err := LoadManifest(ctx, root, baseSHA)
 	if err != nil {
 		a.warn("", err.Error())
@@ -86,14 +96,15 @@ func analyze(ctx context.Context, root, base string, heads []string, cross bool,
 
 // analyzer holds the state of one obligation analysis across bindings.
 type analyzer struct {
-	ctx      context.Context
-	root     string
-	baseSHA  string
-	heads    []string
-	cross    bool
-	approved []Retirement
-	manifest Manifest
-	r        *Report
+	documents map[string]map[string]DocumentOverride
+	ctx       context.Context
+	root      string
+	baseSHA   string
+	heads     []string
+	cross     bool
+	approved  []Retirement
+	manifest  Manifest
+	r         *Report
 	// manifests caches head manifests by ref.
 	manifests    map[string]manifestAt
 	baseBindings map[string]Binding
@@ -212,7 +223,7 @@ func (a *analyzer) consumerChanged(head string, b Binding) bool {
 // recordObligations records how each head changed the binding's declaration.
 // It reports false when a head leaves the obligation unverifiable.
 func (a *analyzer) recordObligations(binding Binding) bool {
-	ctx, root, heads := a.ctx, a.root, a.heads
+	heads := a.heads
 	complete := true
 	// Record how each head changed this obligation, whether or not the
 	// schema changed: a vanished declaration is itself unverified coverage.
@@ -224,7 +235,7 @@ func (a *analyzer) recordObligations(binding Binding) bool {
 			a.obligation(binding, head, "invalid", err.Error())
 			complete = false
 		case "moved":
-			doc, err := ReadSchema(ctx, root, head, hb.Schema)
+			doc, err := a.readSchema(head, hb.Schema)
 			if err == nil {
 				_, err = Analyzable(doc, hb.Pointer)
 			}
@@ -268,9 +279,9 @@ func (a *analyzer) recordObligations(binding Binding) bool {
 // reports findings against the consumer declarations they affect. It reports
 // false when any change could not be fully analyzed.
 func (a *analyzer) compareSchemas(binding Binding) bool {
-	ctx, root, baseSHA, heads, cross, seen, r := a.ctx, a.root, a.baseSHA, a.heads, a.cross, a.seen, a.r
+	root, baseSHA, heads, cross, seen, r := a.root, a.baseSHA, a.heads, a.cross, a.seen, a.r
 	complete := true
-	before, err := ReadSchema(ctx, root, baseSHA, binding.Schema)
+	before, err := a.readSchema(baseSHA, binding.Schema)
 	if err == nil {
 		_, err = Analyzable(before, binding.Pointer)
 	}
@@ -279,7 +290,7 @@ func (a *analyzer) compareSchemas(binding Binding) bool {
 		return false
 	}
 	for _, producerHead := range heads {
-		changes, err := headChanges(ctx, root, binding, before, producerHead)
+		changes, err := a.headChanges(binding, before, producerHead)
 		if err != nil {
 			a.warn(binding.Schema, producerHead+": binding "+binding.ID+": "+err.Error())
 			complete = false
@@ -302,8 +313,8 @@ func (a *analyzer) compareSchemas(binding Binding) bool {
 				if cross && consumerHead != producerHead && state == "present" && !a.consumerChanged(consumerHead, consumerBinding) {
 					continue
 				}
-				usedBase := change.Kind == "required_added" || overlapsAny(binding.Fields, change.Field)
-				usedHead := state == "present" && (change.Kind == "required_added" || overlapsAny(consumerBinding.Fields, change.Field))
+				usedBase := requiredChange(change) || overlapsAny(binding.Fields, change.Field)
+				usedHead := state == "present" && (requiredChange(change) || overlapsAny(consumerBinding.Fields, change.Field))
 				if !usedBase && !usedHead {
 					continue
 				}
@@ -380,8 +391,18 @@ func containsRetirement(list []Retirement, r Retirement) bool {
 
 // headChanges compares a binding's base schema with its state at head,
 // recognizing a committed schema-file deletion as a contract removal.
-func headChanges(ctx context.Context, root string, binding Binding, before map[string]any, head string) ([]Change, error) {
-	after, readErr := ReadSchema(ctx, root, head, binding.Schema)
+func (a *analyzer) readSchema(ref, path string) (map[string]any, error) {
+	if d, ok := a.documents[ref][path]; ok {
+		return d.Document, d.Err
+	}
+	return ReadSchema(a.ctx, a.root, ref, path)
+}
+func (a *analyzer) headChanges(binding Binding, before map[string]any, head string) ([]Change, error) {
+	ctx, root := a.ctx, a.root
+	after, readErr := a.readSchema(head, binding.Schema)
+	if _, overridden := a.documents[head][binding.Schema]; overridden && readErr != nil {
+		return nil, readErr
+	}
 	if readErr == nil {
 		return Compare(before, after, binding.Pointer)
 	}
@@ -412,7 +433,7 @@ func finding(id string, binding, consumer Binding, change Change, classification
 		Remediation:  "Coordinate producer and consumer migration; retain the old field until declared consumers are updated.",
 		Verification: "Re-run radar scan at committed checkpoints and run producer/consumer integration tests.",
 		Locations: []model.Provenance{
-			{Repository: root, Revision: producerHead, Path: binding.Schema, Method: "json_schema_comparison", Evidence: model.VerifiedStatic},
+			{Repository: root, Revision: producerHead, Path: binding.Schema, Method: contractComparisonMethod(binding.Schema), Evidence: model.VerifiedStatic},
 			{Repository: root, Revision: consumerHead, Path: ManifestPath, Method: "explicit_consumer_binding", Evidence: model.VerifiedStatic},
 			{Repository: root, Revision: consumerHead, Path: consumer.Consumer, Method: "declared_consumer_location", Evidence: model.Inferred},
 		},
@@ -442,4 +463,22 @@ func reportStatus(r Report) model.Status {
 		return model.StatusIncomplete
 	}
 	return model.StatusPassed
+}
+
+func headChanges(ctx context.Context, root string, binding Binding, before map[string]any, head string) ([]Change, error) {
+	a := analyzer{ctx: ctx, root: root}
+	return a.headChanges(binding, before, head)
+}
+
+func contractComparisonMethod(schema string) string {
+	s := strings.ToLower(schema)
+	if strings.HasSuffix(s, ".proto") {
+		return "protobuf_schema_comparison"
+	}
+	for _, suffix := range []string{".graphql", ".graphqls", ".gql"} {
+		if strings.HasSuffix(s, suffix) {
+			return "graphql_sdl_comparison"
+		}
+	}
+	return "json_schema_comparison"
 }

@@ -217,7 +217,6 @@ func TestGateErrorsSayWhatToDoNext(t *testing.T) {
 		message    string
 		nextSubstr string
 	}{
-		{[]string{"gate"}, "no branches to combine", "radar doctor"},
 		{[]string{"gate", "agent-missing"}, `branch "agent-missing" not found`, "git branch --list"},
 		{[]string{"gate", "orders:agent/api"}, `branch "orders:agent/api" not found`, "workspace"},
 	} {

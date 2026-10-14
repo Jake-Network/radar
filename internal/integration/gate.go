@@ -2,7 +2,9 @@ package integration
 
 import (
 	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/migrations"
 	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/symbols"
 )
 
 func applyGate(r *Report, o Options) {
@@ -21,7 +23,20 @@ func applyGate(r *Report, o Options) {
 	// uses the same evidence as this gate evaluation.
 	r.Checks = append(r.Checks, noBreaking)
 	p := gate.Policy{Version: 1, Name: "supported-integration", Require: []string{"textual_merge", "no_breaking_contracts"}}
+	// Migration order is required only where the branches changed a
+	// recognized migration history; elsewhere there is nothing to check.
+	for _, c := range r.Checks {
+		switch c.ID {
+		case migrations.CheckID, symbols.CheckID, "lockfile_consistency", "unique_keys":
+			p.Require = append(p.Require, c.ID)
+		}
+	}
 	if o.Verify {
+		for _, c := range r.Checks {
+			if c.ID == "generated_drift" {
+				p.Require = append(p.Require, c.ID)
+			}
+		}
 		p.Require = append(p.Require, "integration_execution")
 		if o.Suite != "" {
 			p.Require = append(p.Require, "test_selection")

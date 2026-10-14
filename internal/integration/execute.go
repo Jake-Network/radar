@@ -9,12 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path"
+
 	"strings"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/coverage"
 	"github.com/Jake-Network/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/pathutil"
+	"github.com/Jake-Network/radar/internal/runners"
 	"github.com/Jake-Network/radar/internal/testselection"
 )
 
@@ -25,12 +29,19 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	if explicitCWD == "" {
 		explicitCWD = "."
 	}
+	provider := indexer.NewCommit(temp, r.CandidateCommit)
+	defer provider.Close()
+	profiles, profileErr := runners.Load(ctx, provider)
+	if profileErr != nil {
+		return fmt.Errorf("runner profiles: %w", profileErr)
+	}
 	selections := []testselection.Command{{ID: model.StableID("verification-command", explicitCWD, strings.Join(o.Command, "\x00")), Command: o.Command, CWD: explicitCWD, Tier: testselection.TierRequired}}
 	if o.Suite != "" {
 		selection, err := testselection.Plan(*r.VerificationProposal, r.Changed, o.Suite, o.MaxCommands)
 		if err != nil {
 			return err
 		}
+		testselection.ApplyRunnerProfiles(&selection, profiles)
 		r.Selection = &selection
 		selections = selection.Commands
 	}
@@ -61,14 +72,56 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		}
 		r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: status, Evidence: model.Unknown, Explanation: "Not executed (" + reason + "): " + explanation})
 	}
+	prepared := map[string]evidence.RunnerPreparation{}
+	artifacts := []string{}
 	for i, selection := range selections {
 		if executionCtx.Err() != nil {
 			skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
 			continue
 		}
+		if profile := profiles.Match(selection.CWD); profile != nil && o.Suite != "" && !planSelected(selection) {
+			preparation, seen := prepared[profile.Root]
+			if !seen {
+				identity, err := evidence.RepositoryIdentity(executionCtx, temp)
+				if err != nil {
+					return err
+				}
+				state, err := runtimeState()
+				if err != nil {
+					return err
+				}
+				cacheDir, err := pathutil.StatePath(state, "runner-cache")
+				if err != nil {
+					return err
+				}
+				preparation, err = evidence.PrepareRunnerBudget(executionCtx, temp, identity, *profile, runners.Cache{Dir: cacheDir, MaxBytes: profiles.MaxCacheBytes}, o.Timeout, func() bool { return o.budget == nil || o.budget.take(1) })
+				if err != nil {
+					preparation.Status = model.StatusIncomplete
+					coverageDiagnostic(r, "Declared runner preparation unavailable: "+err.Error())
+				}
+				prepared[profile.Root] = preparation
+				artifacts = append(artifacts, preparation.Artifacts...)
+				cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
+				inspection, inspectErr := evidence.InspectCandidateSource(executionCtx, temp, cp, artifacts)
+				if inspectErr != nil || !inspection.Matches {
+					preparation.Status = model.StatusIncomplete
+					prepared[profile.Root] = preparation
+					coverageDiagnostic(r, "Runner setup changed source or source integrity could not be established; selected tests were not run.")
+				}
+				r.RunnerPreparations = append(r.RunnerPreparations, preparation)
+			}
+			if preparation.Status != model.StatusPassed {
+				skipped(selection, "runner_setup_unavailable", "declared setup did not complete against unchanged candidate source")
+				continue
+			}
+		}
+		if o.budget != nil && !o.budget.take(1) {
+			skipped(selection, "command_budget_exhausted", "generators, declared setup and selected tests share the command budget")
+			continue
+		}
 		// Explicit commands keep their observed execution-error semantics.
 		if why := unavailable(temp, selection); o.Suite != "" && why != "" {
-			skipped(selection, "environment_unavailable", why+"; Radar does not install dependencies. Prepare the environment or declare a reviewed plan test_run rule (with link for untracked dependency directories).")
+			skipped(selection, "environment_unavailable", why+"; No usable declared setup supplied this runner. Prepare the environment, declare .radar/runners.json setup, or use reviewed plan test_run setup; combined candidates do not link host dependency directories.")
 			continue
 		}
 		o.step(Step{Stage: StageTest, Index: i + 1, Total: len(selections), Command: selection.Command})
@@ -76,6 +129,13 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		executionOptions.Command = selection.Command
 		executionOptions.CWD = selection.CWD
 		executionOptions.report = selection.JUnit
+		executionOptions.artifacts = append([]string{}, artifacts...)
+		if o.ObserveCoverage {
+			if profile := profiles.Match(selection.CWD); profile != nil && profile.Coverage != nil {
+				executionOptions.coverageReport = profile.Coverage
+				executionOptions.artifacts = append(executionOptions.artifacts, path.Join(selection.CWD, profile.Coverage.Report))
+			}
+		}
 		if deadline, ok := executionCtx.Deadline(); ok && time.Until(deadline) < executionOptions.Timeout {
 			executionOptions.Timeout = time.Until(deadline)
 		}
@@ -84,19 +144,40 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		// artifacts from the same immutable candidate, not an earlier run.
 		commandRoot := temp
 		var isolated *Candidate
-		if selection.Framework == "maven" || selection.Framework == "gradle" {
+		if selection.Framework == "maven" || selection.Framework == "gradle" || executionOptions.coverageReport != nil {
 			var err error
 			isolated, err = BuildCandidate(executionCtx, temp, r.CandidateCommit, nil)
 			if err != nil {
-				return fmt.Errorf("isolate Java verification: %w", err)
+				return fmt.Errorf("isolate report-producing verification: %w", err)
 			}
 			if isolated.Commit != r.CandidateCommit || isolated.Tree != r.CandidateTree {
 				_ = isolated.Close()
 				return fmt.Errorf("isolated Java verification candidate does not match the selected commit and tree")
 			}
 			commandRoot = isolated.Dir
+			// The fresh JVM copy needs the same declared dependencies; cache
+			// reuse counts as preparation, never observed test evidence.
+			if profile := profiles.Match(selection.CWD); profile != nil && !planSelected(selection) {
+				identity, prepErr := evidence.RepositoryIdentity(executionCtx, commandRoot)
+				state, stateErr := runtimeState()
+				cacheDir, cacheErr := pathutil.StatePath(state, "runner-cache")
+				if prepErr == nil && stateErr == nil && cacheErr == nil {
+					prep, err := evidence.PrepareRunnerBudget(executionCtx, commandRoot, identity, *profile, runners.Cache{Dir: cacheDir, MaxBytes: profiles.MaxCacheBytes}, executionOptions.Timeout, func() bool { return o.budget == nil || o.budget.take(1) })
+					prepErr = err
+					r.RunnerPreparations = append(r.RunnerPreparations, prep)
+					if prep.Status != model.StatusPassed {
+						prepErr = fmt.Errorf("runner setup incomplete in isolated JVM candidate")
+					}
+				}
+				if prepErr != nil || stateErr != nil || cacheErr != nil {
+					_ = isolated.Close()
+					skipped(selection, "runner_setup_unavailable", "declared setup was unavailable in the isolated JVM candidate")
+					continue
+				}
+			}
 		}
 		ev := execute(executionCtx, commandRoot, *r, executionOptions)
+		ev.SelectionID = selection.ID
 		if isolated != nil {
 			_ = isolated.Close()
 		}
@@ -226,7 +307,7 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	} else if declarationErr != nil {
 		observeErr = declarationErr
 	} else if match {
-		runResult, runErr := evidence.RunCandidate(ctx, root, cp, *o.Plan, o.Command, o.CWD, o.Timeout)
+		runResult, runErr := evidence.RunCandidateBudget(ctx, root, cp, *o.Plan, o.Command, o.CWD, o.Timeout, func() bool { return o.budget == nil || o.budget.take(1) })
 		observeErr = runErr
 		if runErr == nil {
 			observation = runResult.Observation
@@ -235,7 +316,18 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 			ev.PlanRecord = &runResult.Record
 		}
 	} else {
-		observation, observeErr = evidence.ObserveCandidateReport(ctx, root, o.CWD, o.Command, o.report, o.Timeout)
+		if o.ObserveCoverage && o.coverageReport != nil {
+			observation, ev.observedFiles, observeErr = evidence.ObserveCandidateDeclaredCoverage(ctx, root, o.CWD, o.Command, o.report, *o.coverageReport, o.Timeout)
+			if observeErr == nil {
+				provider := indexer.NewCommit(root, r.CandidateCommit)
+				ev.observedFiles, observeErr = coverage.ResolveOwned(ctx, o.coverageReport.Format, ev.observedFiles, provider)
+				_ = provider.Close()
+			}
+		} else if o.ObserveCoverage {
+			observation, ev.observedFiles, observeErr = evidence.ObserveCandidateCoverage(ctx, root, o.CWD, o.Command, o.report, o.Timeout)
+		} else {
+			observation, observeErr = evidence.ObserveCandidateReport(ctx, root, o.CWD, o.Command, o.report, o.Timeout)
+		}
 	}
 	ev.Observation = observation
 	ev.Status = observation.Status
@@ -251,7 +343,7 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 	ev.DurationMS = time.Since(started).Milliseconds()
 	sourceCtx, sourceCancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer sourceCancel()
-	artifacts := evidence.CandidateArtifacts(o.Plan)
+	artifacts := append(evidence.CandidateArtifacts(o.Plan), o.artifacts...)
 	if o.report != "" && !match {
 		artifacts = append(artifacts, path.Join(o.CWD, o.report))
 	}
@@ -374,7 +466,7 @@ func executionRemediation(ev ExecutionEvidence) string {
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
 	case d.Environment():
-		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies only committed files and never installs dependencies), then rerun the same gate. The combined source was not tested.", d.Name)
+		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies committed files; dependency installation requires declared setup and execution opt-in), then rerun the same gate. The combined source was not tested.", d.Name)
 	case d != nil:
 		return fmt.Sprintf("If %s is a third-party dependency, install it where you run radar and rerun the same gate; if it is part of this repository, check whether a branch renamed or removed it.", d.Name)
 	case ev.Status == model.StatusTimeout:
@@ -393,4 +485,13 @@ func aggregateExecution(current, next model.Status) model.Status {
 		return next
 	}
 	return current
+}
+
+func planSelected(c testselection.Command) bool {
+	for _, reason := range c.EvidenceReasons {
+		if reason.Code == "declared_plan" || strings.HasPrefix(reason.Code, "plan_") {
+			return true
+		}
+	}
+	return false
 }

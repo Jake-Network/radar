@@ -15,13 +15,14 @@ reported as `unknown` or `incomplete`, never as a pass.
 | Java | declarations, imports | single-type, on-demand (`.*`) and static imports, by each file's declared `package` and file name |
 | C / C++ | declarations, `#include` | in order: the including file's directory (quoted includes); `-I`, `-iquote` and `-isystem` of a committed `compile_commands.json`; ancestors up to the nearest build file (quoted); `include/`, and for quoted includes `src/`, of each enclosing CMake, Meson or Make project |
 
-Parsing is Tree-sitter, built into the binary. There is no type checking, call
-resolution or runtime tracing. Import edges (`DEPENDS_ON`) are labeled
+Parsing is Tree-sitter, built into the binary. There is no compiler type checking.
+Supported literal symbol relationships are inferred; opt-in file observation is
+separate from static analysis. Import edges (`DEPENDS_ON`) are labeled
 `inferred`: they follow each language's path conventions without a compiler.
 
-Not handled: package-based tsconfig `extends`, project references,
-`node_modules`, PYTHONPATH, Go vendoring, Cargo workspace metadata and dynamic
-imports. Two repository packages with the same name are left unresolved.
+Literal workspace/project references for supported manifests are resolved with
+`workspace_member` provenance. Not handled: package-based tsconfig `extends`,
+`node_modules`, arbitrary PYTHONPATH, Go vendoring and dynamic imports. Two repository packages with the same name are left unresolved.
 Imports from outside the repository stay as unresolved `module` nodes.
 TypeScript variance annotations (`interface X<in T>`) are not parsed by the
 bundled grammar; those declarations are skipped with a warning.
@@ -71,7 +72,10 @@ change is a risk.
 Not analyzed: several structured `oneOf` alternatives, `not`, conditionals,
 tuple items and external `$ref`. If they stay the same they are ignored. If they
 change, the binding is reported as unanalyzed and the report is `incomplete`.
-Protobuf, runtime schema generation and network-call tracing are not supported.
+Bounded literal Protobuf and GraphQL schemas are supported; unsupported grammar
+remains unknown. Manifest-declared `generate` argv can produce specs only after
+explicit execution opt-in. Network-call tracing is not supported. See
+[the supported subsets](STATIC_CHECKS.md#contracts-and-generated-outputs).
 
 Consumer `fields` are declarations. Radar does not prove the consumer reads
 them at runtime.
@@ -99,6 +103,45 @@ bind against it, because Radar does not import the application to generate one.
 
 [`examples/fastapi-typescript`](../examples/fastapi-typescript/README.md) is
 the reference fixture.
+
+## Migration order
+
+When the branches change a migration history, `gate` reads the migration files
+at the base, each branch merged alone onto the base (`git merge-tree`, Git
+2.38 or later) and the combined tree, and requires `migration_order`. Nothing
+is run.
+
+| Tool | Location by convention | Failure |
+| --- | --- | --- |
+| Alembic | `*/versions/*.py` next to `env.py` | more than one head on one Alembic branch, or a reused branch label (`revision`, `down_revision`, `branch_labels`) |
+| Django | `*/migrations/*.py` with a `Migration` class | more than one leaf per app (`dependencies`) |
+| Flyway | `V<version>__*.sql` in one directory under `db/migration/` | one version used twice |
+| Versioned SQL (golang-migrate, sqlx) | `<version>_*.up.sql` / `.down.sql` in one directory | one version used twice |
+
+A problem the base already has is a warning, including when a branch only
+renames or removes part of it. Any other problem fails; the report says
+whether one branch merged alone already causes it or whether it appears only
+when the branches are combined. A new Flyway or SQL version below
+the newest base version is a warning: databases already past it skip or reject
+it. A revision with `branch_labels` starts a named branch, so it is not a second
+head. A `migrations/` directory without a Django `Migration` class is not
+judged.
+
+Values must be literals assigned once. A computed or reassigned `revision`,
+`down_revision`, `branch_labels` or `dependencies`, a parent outside the
+history, a nested Alembic version directory, a squashed Django migration whose
+replaced migrations still exist, an ambiguous Django app label, or a file over
+1 MiB makes the check `unknown` when it is in a history the branches changed.
+A Flyway version that a changed directory shares with another directory under
+the same `db/migration/` is `unknown`, because configured locations decide
+whether both load; directories the base already uses in parallel, such as one
+per database vendor, are compared separately. Locations set in `alembic.ini`,
+`MIGRATION_MODULES` or Flyway configuration are not read. Alembic `depends_on`,
+Django `run_before` across apps, Java and other non-SQL migrations, and
+conflicting schema operations in separate migrations are not compared.
+`radar check` compares one head and does not run this check.
+[`examples/migrations/demo.sh`](../examples/migrations/demo.sh) runs the
+two-agent case end to end.
 
 ## Tests
 
@@ -137,3 +180,10 @@ per-test CTest selection; compiler-backed semantics and incremental indexing;
 signed releases and OS-level test isolation. Each needs reproducible positive
 and negative fixtures before it becomes a capability. Agent orchestration,
 dependency installation and automatic remote fetching remain out of scope.
+
+
+See [supported static checks and declared execution](STATIC_CHECKS.md) for workspace
+member imports, symbol scope, migration configuration, dependency locks, unique
+keys, Protobuf/GraphQL contracts, generated outputs, runner profiles and observed
+file relationships. The [roadmap ledger](ROADMAP_IMPLEMENTATION.md) separates
+local implementation from external acceptance and measured performance.
