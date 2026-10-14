@@ -75,7 +75,7 @@ change, the binding is reported as unanalyzed and the report is `incomplete`.
 Bounded literal Protobuf and GraphQL schemas are supported; unsupported grammar
 remains unknown. Manifest-declared `generate` argv can produce specs only after
 explicit execution opt-in. Network-call tracing is not supported. See
-[the supported subsets](STATIC_CHECKS.md#contracts-and-generated-outputs).
+[the supported subsets](USAGE.md#contracts-and-generated-outputs).
 
 Consumer `fields` are declarations. Radar does not prove the consumer reads
 them at runtime.
@@ -182,8 +182,4 @@ and negative fixtures before it becomes a capability. Agent orchestration,
 dependency installation and automatic remote fetching remain out of scope.
 
 
-See [supported static checks and declared execution](STATIC_CHECKS.md) for workspace
-member imports, symbol scope, migration configuration, dependency locks, unique
-keys, Protobuf/GraphQL contracts, generated outputs, runner profiles and observed
-file relationships. The [roadmap ledger](ROADMAP_IMPLEMENTATION.md) separates
-local implementation from external acceptance and measured performance.
+Configuration examples are in [Usage](USAGE.md#advanced-configuration).

@@ -22,9 +22,7 @@ execution. [Install](#install), then try the one-minute example below.
 
 [Full demo transcript](docs/assets/migration-demo.txt). This is a fixture demonstration.
 Real-history replay is available; **human-labeled recall is not yet available**.
-See [benchmark methods](docs/BENCHMARKS.md),
-[the interview kit](docs/ROADMAP_USER_RESEARCH.md) and
-[launch evidence requirements](docs/ROADMAP_LAUNCH.md).
+See [benchmark methods](docs/BENCHMARKS.md) for measurement scope and limitations.
 
 ## Try it in one minute
 

@@ -174,6 +174,16 @@ Follow-ups are a heuristic: they mix causes and miss breaks fixed later or elsew
 a person's label (`symbol`, `migration`, `lockfile`, `generated`, `route`, `runtime`, `other`,
 `none`), so samples stay small. A FAIL on a merge labeled `none` counts as a false failure.
 
+
+A 2026-10-14 local performance sample replayed NetBox merge
+`6121418f5a4d6b0eb4c3a89644a7fd5f425f1aa9` twice in **11.159 s / 7.985 s**.
+Both static verdicts were `pass`, with candidate tree
+`28570610a0cb86e579c009e9fac3c01a43bd1549`; optional unsupported checks remained
+unknown and no runtime tests ran. Binary SHA-256:
+`7575b6f21d27ff3bd851ac8a0a0ba918b3ee3e7b01215fa0086e8293c8d1c30b`.
+Two repeats of one merge do not establish a new 40-merge median, labeled recall,
+or a ten-second target across repositories.
+
 ## Evidence and historical verification
 
 [Summary JSON](../benchmarks/external/results/summary.json),

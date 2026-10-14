@@ -114,10 +114,3 @@ candidate.
 Radar is MIT. Tree-sitter and the bundled grammars are MIT, the modernc SQLite
 driver is BSD-3-Clause and SQLite is public domain. Release packaging collects
 notices for every linked module.
-
-
-See [supported static checks and declared execution](STATIC_CHECKS.md) for workspace
-member imports, symbol scope, migration configuration, dependency locks, unique
-keys, Protobuf/GraphQL contracts, generated outputs, runner profiles and observed
-file relationships. The [roadmap ledger](ROADMAP_IMPLEMENTATION.md) separates
-local implementation from external acceptance and measured performance.

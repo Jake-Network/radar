@@ -270,10 +270,3 @@ combinations passed, `base` means the original failure also exists on base, and
 share its timeout; watch uses a separate diagnostic budget after Fast Gate.
 Each subset runs once; flakiness is possible. Attribution never changes the gate,
 selection or candidate evidence and is a repair lead, not causality proof.
-
-
-See [supported static checks and declared execution](STATIC_CHECKS.md) for workspace
-member imports, symbol scope, migration configuration, dependency locks, unique
-keys, Protobuf/GraphQL contracts, generated outputs, runner profiles and observed
-file relationships. The [roadmap ledger](ROADMAP_IMPLEMENTATION.md) separates
-local implementation from external acceptance and measured performance.

@@ -53,6 +53,5 @@ Avoid fixture-name detection and aggregate counts that lose identity.
 Run the owner package tests, `go test ./...`, `go vet ./...`, build and
 `git diff --check`. Gate changes additionally need the smoke/demo checks; public
 JSON/MCP or evidence changes need schema and agent-asset updates. Use
-[the detector issue template](.github/ISSUE_TEMPLATE/detector.md) and
-[the local backlog](docs/ROADMAP_DETECTOR_BACKLOG.md). These drafts do not claim
-published issues or a guaranteed review SLA.
+[the detector issue template](.github/ISSUE_TEMPLATE/detector.md) to propose a
+bounded rule with positive and negative fixtures.
