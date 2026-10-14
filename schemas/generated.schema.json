@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Jake-Network/radar/schemas/generated.schema.json",
+  "title": "Radar declared generated outputs",
+  "description": "Commands execute only with explicit --run authorization. Static edits alone cannot establish synchronization.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "enum": [
+        0,
+        1
+      ]
+    },
+    "generators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/generator"
+      },
+      "maxItems": 256
+    },
+    "sources": {
+      "$ref": "#/$defs/globs"
+    },
+    "outputs": {
+      "$ref": "#/$defs/globs"
+    },
+    "command": {
+      "$ref": "#/$defs/command"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "generators"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "sources"
+            ]
+          },
+          {
+            "required": [
+              "outputs"
+            ]
+          },
+          {
+            "required": [
+              "command"
+            ]
+          },
+          {
+            "required": [
+              "cwd"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "sources",
+        "outputs"
+      ],
+      "not": {
+        "required": [
+          "generators"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "globs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "maxItems": 64
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sources",
+        "outputs"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "sources": {
+          "$ref": "#/$defs/globs"
+        },
+        "outputs": {
+          "$ref": "#/$defs/globs"
+        },
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

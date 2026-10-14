@@ -74,7 +74,8 @@ func Lint(ctx context.Context, root, ref string) LintReport {
 				}
 			}
 		}
-		if b.Direction == "" {
+		_, isIDL := doc[idlFormat].(idlKind)
+		if b.Direction == "" && !isIDL {
 			c.Notes = append(c.Notes, "direction is unset; incompatible changes are reported as risks, not failures")
 		}
 		for _, link := range []struct{ role, path string }{{"producer", b.Producer}, {"consumer", b.Consumer}} {

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Jake-Network/radar/internal/coverage"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/model"
@@ -83,6 +84,9 @@ type Options struct {
 	Limit int
 	// ToolAvailable overrides PATH probing for deterministic tests or a known environment.
 	ToolAvailable func(string) bool
+	// Observed supplements static impact with immutable, non-stale command
+	// coverage relationships. Aggregate coverage does not prove case coverage.
+	Observed []coverage.Edge
 }
 
 // Discover reads working-tree or immutable commit files without importing code,
@@ -382,6 +386,16 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 	companions := javaCompanions(inv, snapshot, changedSet)
 	for _, test := range inv.Tests {
 		priority, reason, files := testPriority(test, changedSet, changed, affected, reached, contractImpact, owners, roots, directGoRoots, companions)
+		var observations []coverage.Edge
+		for _, edge := range o.Observed {
+			if !edge.Stale && edge.Test == test.Path && changedSet[edge.File] {
+				observations = append(observations, edge)
+				files = append(files, edge.File)
+			}
+		}
+		if len(observations) > 0 && priority < 90 {
+			priority, reason = 90, "observed_coverage"
+		}
 		if priority == 0 {
 			continue
 		}
@@ -425,6 +439,20 @@ func Select(inv Inventory, snapshot model.Snapshot, changed []string, o Options)
 			toolAvailable = false
 		}
 		reasons := []Reason{{Code: reason, Explanation: description, Evidence: model.Inferred, Locations: locations, RelatedFiles: unique(files)}}
+		if len(observations) > 0 {
+			observedFiles := []string{}
+			observedLocations := []model.Provenance{}
+			for _, edge := range observations {
+				observedFiles = append(observedFiles, edge.File)
+				observedLocations = append(observedLocations, model.Provenance{Revision: edge.Commit, Path: edge.File, Method: "observed_command_coverage:" + edge.Command, Evidence: model.ObservedTest})
+			}
+			observedReason := Reason{Code: "observed_coverage", Explanation: "The executed command containing this test observed the changed file at an unchanged baseline; aggregate coverage is a suite relationship.", Evidence: model.ObservedTest, Locations: observedLocations, RelatedFiles: unique(observedFiles)}
+			if reason == "observed_coverage" {
+				reasons[0] = observedReason
+			} else {
+				reasons = append(reasons, observedReason)
+			}
+		}
 		// A changed test still relates the changed sources it imports.
 		if imported := reached[test.Path]; reason == "changed_test" && len(imported) > 0 {
 			reasons = append(reasons, Reason{Code: "dependency_impact", Explanation: reasonDescriptions["dependency_impact"], Evidence: model.Inferred, Locations: []model.Provenance{test.Evidence}, RelatedFiles: unique(imported)})

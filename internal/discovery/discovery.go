@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Jake-Network/radar/internal/contracts"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
@@ -240,13 +241,21 @@ func Discover(ctx context.Context, root, ref string) (Report, error) {
 // Compare reports removed declared fields still accessed by a supported candidate
 // in the new tree. Runtime compatibility remains unknown; findings are warnings.
 func Compare(ctx context.Context, root, base, head string) (Comparison, error) {
-	before, e := Discover(ctx, root, base)
-	if e != nil {
-		return Comparison{}, e
+	// Each immutable tree owns its batch reader and parser instances. Wait for
+	// both before returning, including cancellation, and aggregate in base/head
+	// order so scheduling never changes public diagnostics or findings.
+	var before, after Report
+	var beforeErr, afterErr error
+	var scans sync.WaitGroup
+	scans.Add(2)
+	go func() { defer scans.Done(); before, beforeErr = Discover(ctx, root, base) }()
+	go func() { defer scans.Done(); after, afterErr = Discover(ctx, root, head) }()
+	scans.Wait()
+	if beforeErr != nil {
+		return Comparison{}, beforeErr
 	}
-	after, e := Discover(ctx, root, head)
-	if e != nil {
-		return Comparison{}, e
+	if afterErr != nil {
+		return Comparison{}, afterErr
 	}
 	r := Comparison{Status: model.StatusIncomplete, Base: before.Revision, Head: after.Revision, Findings: []model.Finding{}, Diagnostics: append(before.Diagnostics, after.Diagnostics...), Limitations: append([]string(nil), limitations...)}
 	old := map[string]Schema{}

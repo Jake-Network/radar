@@ -15,6 +15,7 @@ import (
 	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/project"
 )
 
@@ -165,6 +166,11 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 		return respond(agentHookResponse{Decision: "block", Reason: hookText(strings.Join(lines, "\n"))})
 	}
 	if report.Gate.Verdict != gate.Pass {
+		for _, c := range report.Gate.Required {
+			if c.Status != model.StatusPassed {
+				return unavailable(string(report.Gate.Verdict) + ": required check " + c.ID + " is " + string(c.Status) + ": " + c.Explanation)
+			}
+		}
 		return unavailable(string(report.Gate.Verdict) + ": " + report.Gate.Explanation)
 	}
 	if len(report.Changed) == 0 {

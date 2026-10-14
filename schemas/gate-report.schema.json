@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:radar:gate-report:1",
+  "title": "Radar single-repository gate report v1",
+  "description": "Stable verdict and check contract for static and opted-in runs. Additional evidence fields are additive. Workspace reports use workspace-report.schema.json. An exit code is not a substitute for gate.verdict.",
+  "type": "object",
+  "required": ["gate", "status", "base", "inputs", "checks", "coverage", "findings", "diagnostics", "limitations"],
+  "properties": {
+    "gate": {
+      "type": "object",
+      "required": ["verdict", "policy", "required_checks", "explanation"],
+      "properties": {
+        "verdict": {"enum": ["pass", "fail", "blocked", "error"]},
+        "policy": {
+          "type": "object",
+          "required": ["version", "require"],
+          "properties": {
+            "version": {"const": 1},
+            "name": {"type": "string"},
+            "require": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "on_missing": {"enum": ["blocked", "fail"]}
+          }
+        },
+        "required_checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+        "explanation": {"type": "string"}
+      }
+    },
+    "status": {"$ref": "#/$defs/status"},
+    "base": {"type": "string"},
+    "inputs": {"type": "array", "items": {"type": "string"}},
+    "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+    "coverage": {"type": "array", "items": {"type": "object", "required": ["analyzer", "status", "analyzed_scope", "excluded_scope", "unavailable_capabilities", "uncertainty"]}},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "diagnostics": {"type": "array", "items": {"type": "object"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "next": {"type": "string"},
+    "executions": {"type": "array", "items": {"type": "object"}},
+    "generated_executions": {"type": "array", "items": {"type": "object", "required": ["name", "status", "candidate_commit", "candidate_tree"]}},
+    "runner_preparations": {"type": "array", "items": {"type": "object", "required": ["status", "cache_hit", "setup_commands", "artifacts"]}}
+  },
+  "$defs": {
+    "status": {"enum": ["passed", "failed", "unknown", "incomplete", "blocked", "warning", "error", "timeout"]},
+    "check": {
+      "type": "object",
+      "required": ["id", "status", "evidence", "explanation"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "status": {"$ref": "#/$defs/status"},
+        "evidence": {"enum": ["verified_static", "verified_tool", "observed_test", "inferred", "proposed", "unknown"]},
+        "explanation": {"type": "string"}
+      }
+    }
+  }
+}

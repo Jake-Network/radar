@@ -125,6 +125,11 @@ func TestSingleRepoGateGolden(t *testing.T) {
 			"agent-a": {"backend.py": "def price():\n    return 3\n"},
 			"agent-b": {"backend.py": "def price():\n    return 4\n"},
 		}, []string{"gate", "agent-b", "agent-a"}},
+		// Both agents add the same Alembic root, then one revision each on it.
+		{"migration-heads", map[string]map[string]string{
+			"agent-orders":  {"db/env.py": "print('env')\n", "db/versions/r0_init.py": "revision = 'r0'\ndown_revision = None\n", "db/versions/a1_orders.py": "revision = 'a1'\ndown_revision = 'r0'\n"},
+			"agent-refunds": {"db/env.py": "print('env')\n", "db/versions/r0_init.py": "revision = 'r0'\ndown_revision = None\n", "db/versions/b1_refunds.py": "revision = 'b1'\ndown_revision = 'r0'\n"},
+		}, []string{"gate"}},
 		{"no-branches", map[string]map[string]string{}, []string{"gate"}},
 		{"bad-ref", map[string]map[string]string{}, []string{"gate", "orders:agent/api"}},
 	}

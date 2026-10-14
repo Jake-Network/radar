@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+* Workspace manifests now improve inferred imports across uv/Poetry, npm/pnpm,
+  Cargo, go.work, Maven and Gradle members. Supported symbol conflicts, direct
+  lockfile consistency and literal/declared unique keys participate in the gate;
+  unsupported relationships remain visible as unknown.
+* Declared Protobuf and GraphQL contracts use bounded literal compatibility
+  checks. Generated outputs and generated contract specs can be checked with
+  explicit execution opt-in in separate private copies.
+* Runner profiles declare setup and prefixes; dependency caches bind lockfiles,
+  profile, platform and repository. Source-changing setup cannot publish caches.
+  Opt-in file observations supplement test selection only at unchanged, related
+  baselines. Generators, declared setup and selected tests share the command budget.
+* First-run gate can inspect HEAD without parallel worktrees and separates checked
+  facts from unavailable checks. The legacy policy-free static exit code is preserved;
+  automation must inspect `gate.verdict`.
+* Trusted Actions helpers provide an open-PR pair matrix and optional idempotent
+  comments. The CLI itself still never fetches. Local interview/launch/contribution
+  materials and an actual fixture GIF are available; no external acceptance is claimed.
+
+* `gate` finds migration histories that break when branches combine: two
+  Alembic heads on one Alembic branch, a reused Alembic branch label, two
+  Django leaves per app, or one Flyway or versioned-SQL version used twice. It reads migration files at the base, each branch merged
+  alone onto the base and the combined tree, runs nothing, and requires
+  `migration_order` only when a branch changed a recognized history. A problem
+  already on the base is a warning; computed values or unreadable histories
+  are `unknown`, not a pass.
+  The Stop hook, `watch`, workspaces and the GitHub Actions helper apply it too;
+  the Actions helper now uses Radar's built-in policy instead of a fixed list.
+
 ## 0.2.0
 
 * Native Claude Code and Codex Stop hooks installed by default with

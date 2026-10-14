@@ -19,12 +19,16 @@ A passing gate does not imply complete coverage or behavioral correctness.
 | --- | --- | --- |
 | `pass`, static | 0 | Required static checks passed; tests did not run. |
 | `pass` with `--run` | 0 | Required checks passed on the committed combined candidate. |
-| `blocked` | 1 | Required evidence is missing, incomplete or unsupported. Terminal: `NOT VERIFIED`. |
+| `blocked` | 1 with policy/`--run`; legacy static default 0 | Required evidence is missing, incomplete or unsupported. Terminal: `NOT VERIFIED`. Always inspect JSON `gate.verdict`. |
 | `fail` | 1 | A required check failed, or `on_missing: fail` converted missing evidence to failure. |
 | `error` | 2 | Invocation, analysis or execution error, including timeout. |
 
-Default `gate` requires `textual_merge` and `no_breaking_contracts`. `--run`
-adds `integration_execution` and, when a suite is selected, `test_selection`.
+Default `gate` requires `textual_merge` and `no_breaking_contracts`, plus
+`migration_order` when the branches change a recognized migration history
+([capabilities](CAPABILITIES.md#migration-order)). Relevant supported symbol,
+direct lockfile and unique-key checks are also required when applicable. `--run` adds
+`integration_execution` and, when a suite is selected, `test_selection`; declared
+regeneration also requires `generated_drift`.
 Uncovered changes, incomplete inventory and omitted required commands cannot
 be compensated for by a passing test. Inspect the gaps or try `--suite full`.
 Without execution or a policy requiring it, missing test evidence alone does
@@ -53,6 +57,7 @@ radar check --base main --policy .radar/analysis-policy.json
 | --- | --- |
 | `textual_merge` | Branches merge without conflicts. |
 | `no_breaking_contracts` | No supported breaking change against declared or base contracts. |
+| `migration_order` | No migration history conflict new to the combination or a single branch. |
 | `declared_contracts` | Accepted manifest; every binding analyzed. |
 | `discovered_contracts` | No supported break among discovered candidates. |
 | `dependency_impact` | Reverse import analysis completed. |
@@ -63,6 +68,10 @@ radar check --base main --policy .radar/analysis-policy.json
 | `plan_verification` | Whole plan verified on the candidate. |
 | `criterion:ID` | Named plan criterion verified on the candidate. |
 | `test:SELECTION_ID` | Named selected test command passed. |
+
+A `--policy` replaces the default list, including the conditional
+`migration_order`: omit it and migration conflicts stay visible without
+failing; require it and a change without migrations is blocked.
 
 Unknown IDs count as missing evidence. `on_missing` defaults to `blocked`;
 `fail` is also supported. Warnings, `unknown` and `incomplete` never satisfy
@@ -220,17 +229,22 @@ Grouped tests share process state, which may differ from per-file execution.
 
 - `--max-commands` defaults to 16 after grouping; required commands go first.
   Omitted commands are `budget_exceeded`; required omissions also block.
-- `--timeout` covers the entire run: gate defaults to 10 minutes, merge-check
+- `--timeout` covers authorized setup, generation and selected execution: gate defaults to 10 minutes, merge-check
   to 2 minutes, maximum 30 minutes. Unstarted commands are `time_budget_exhausted`.
 - Commands are sequential; Java commands additionally use fresh snapshots.
   Skipped/unavailable required commands make execution incomplete even if other
   commands pass. Confirmed source failures take precedence over skips.
 
 Radar never automatically installs dependencies. Untracked `node_modules` and
-`.venv` are not copied; unavailable runners block verification. Prepare caches
-or declare reviewed setup. Single-revision plan execution can declare dependency
+`.venv` are not copied from the user's checkout; unavailable runners block
+verification. Explicit `.radar/runners.json` setup may install only after execution
+opt-in and safely reuse declared artifacts; a source-changing setup cannot publish
+cache entries. Prepare caches or declare reviewed setup. Single-revision plan execution can declare dependency
 links; combined candidate plan execution rejects them.
-Runs use offline Go/Python/Cargo/npm settings and Maven/Gradle offline flags,
+Regular verification and legacy plan setup use offline Go/Python/Cargo/npm
+settings and Maven/Gradle offline flags. Explicit profile dependency setup may
+download from registries after execution opt-in; inherited secrets/startup settings
+remain scrubbed. Verification runs continue
 while reusing available local caches and supported tool homes. Maven reads the
 account's `~/.m2`; Gradle user-home properties remain visible to builds.
 

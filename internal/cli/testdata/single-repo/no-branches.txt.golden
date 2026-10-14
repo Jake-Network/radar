@@ -1,5 +1,17 @@
-exit 2
+exit 0
 --- stdout
+Radar gate: PASS (static) — static checks passed; tests not run yet
+1 branch onto main @ 84d71f0816ed
+
+  HEAD  84d71f0816ed  0 files changed
+
+Checked 1
+  ✓ Merge      branches merge without conflicts
+Couldn't check 2
+  · Contracts  none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests      combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts
+
+Next: radar gate --run
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
 --- stderr
-radar: no branches to combine: no worktree branch has commits beyond main
-Next: commit work on an agent branch, or name branches: radar gate feature/a feature/b (radar doctor shows what Radar sees)

@@ -48,6 +48,11 @@ var workspaceLabels = map[string][2]string{
 	"no_breaking_contracts": {"no breaking contract change", "breaking contract change"},
 	"integration_execution": {"selected tests pass", "tests on the combined tree did not pass"},
 	"test_selection":        {"test selection complete", "test selection incomplete"},
+	"migration_order":       {"migration order consistent", "migration order conflict"},
+	"no_symbol_conflicts":   {"supported symbol relationships consistent", "symbol conflict"},
+	"lockfile_consistency":  {"direct dependencies recorded in lockfiles", "manifest and lockfile disagree"},
+	"unique_keys":           {"supported unique keys consistent", "duplicate unique key"},
+	"generated_drift":       {"declared generated outputs match", "generated outputs drift"},
 }
 
 // repoLine is the ✓/✗/! summary of one repository.

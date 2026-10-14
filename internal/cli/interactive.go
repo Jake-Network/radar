@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Jake-Network/radar/internal/composition"
+	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/project"
 	"github.com/Jake-Network/radar/internal/termui"
@@ -49,7 +50,9 @@ func Interactive(ctx context.Context, dir string, in io.Reader, out, errout io.W
 	// run dispatches one command, says what its exit code means and waits
 	// for Enter so the report is read before the menu scrolls it away.
 	run := func(args ...string) bool {
-		s.outcome(args, s.dispatch(args...))
+		verdict := &verdictSink{}
+		code := s.dispatch(context.WithValue(s.ctx, verdictKey{}, verdict), args...)
+		s.outcome(args, code, verdict.verdict)
 		_, ok := s.prompt(p.dim("Press Enter to return to the menu "))
 		return ok
 	}
@@ -361,19 +364,33 @@ func (s *session) nothingToCheck() bool {
 	return true
 }
 
-// outcome says in words what a menu command's exit code means.
-func (s *session) outcome(args []string, code int) {
+// verdictSink receives the gate verdict of a menu command, because a static
+// gate that could not check everything still exits 0.
+type verdictSink struct{ verdict gate.Verdict }
+
+type verdictKey struct{}
+
+func recordVerdict(ctx context.Context, v gate.Verdict) {
+	if s, ok := ctx.Value(verdictKey{}).(*verdictSink); ok {
+		s.verdict = v
+	}
+}
+
+// outcome says in words what a menu command's exit code and verdict mean.
+func (s *session) outcome(args []string, code int, verdict gate.Verdict) {
 	p := s.p
-	gate, run := args[0] == "gate", slices.Contains(args, "--run")
+	isGate, run := args[0] == "gate", slices.Contains(args, "--run")
 	var line string
 	switch {
-	case code == 0 && gate && run:
+	case code == 0 && isGate && verdict == gate.Blocked:
+		line = p.mark("?") + " Not everything could be checked — see the items marked ? or ! and Next in the report above."
+	case code == 0 && isGate && run:
 		line = p.mark("✓") + " The required checks passed on the combined code; the report lists which tests ran."
-	case code == 0 && gate:
+	case code == 0 && isGate:
 		line = p.mark("✓") + " No problems found by the static checks. No tests ran — choose 3 to run them."
 	case code == 0:
 		line = p.mark("✓") + " Done."
-	case code == 1 && gate:
+	case code == 1 && isGate:
 		line = p.mark("✗") + " Problems found, or a required check could not be done — see the report above."
 	case code == 1:
 		line = p.mark("!") + " Something needs attention — see above."
@@ -476,9 +493,9 @@ func (s *session) confirmRun(args []string) bool {
 // dispatch echoes the equivalent command so the CLI is learnable, then runs
 // it. An interrupt cancels that command and returns to the menu; at the
 // prompt it exits radar as usual.
-func (s *session) dispatch(args ...string) int {
+func (s *session) dispatch(ctx context.Context, args ...string) int {
 	fmt.Fprintf(s.out, "\n%s\n\n", s.p.command("$ radar "+strings.Join(args, " ")))
-	ctx, stop := signal.NotifyContext(s.ctx, os.Interrupt)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 	return Run(ctx, append(args, "--root", s.root), s.out, s.errout)
 }

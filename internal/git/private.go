@@ -27,11 +27,15 @@ func sanitizedEnv(fixed ...string) []string {
 
 // PrivateCommand prepares Git for building a private candidate repository.
 // Unlike the read-only profile it may write objects, refs and a worktree, so
-// it also disables hooks, attributes, signing and the caller's identity, and
-// pins commit dates so the candidate commit is reproducible. It is used to
-// read from the source repository and write only the private one.
+// it also disables hooks, attributes, signing, automatic maintenance and the
+// caller's identity, and pins commit dates so the candidate is reproducible.
+// It is used to read from the source repository and write only the private one.
 func PrivateCommand(ctx context.Context, root string, args ...string) *exec.Cmd {
-	prefix := []string{"-C", root, "--no-pager", "-c", "core.hooksPath=" + NullPath, "-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + NullPath, "-c", "commit.gpgSign=false", "-c", "protocol.allow=never", "-c", "user.name=Radar preview", "-c", "user.email=preview@radar.invalid"}
+	// No Git process may outlive the command that owns it: detached maintenance
+	// can otherwise race removal of the disposable repository. Disable both the
+	// current maintenance entry point and legacy automatic GC, with detachment
+	// disabled as a fallback for Git versions that use different entry points.
+	prefix := []string{"-C", root, "--no-pager", "-c", "core.hooksPath=" + NullPath, "-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + NullPath, "-c", "commit.gpgSign=false", "-c", "maintenance.auto=false", "-c", "maintenance.autoDetach=false", "-c", "gc.auto=0", "-c", "gc.autoDetach=false", "-c", "protocol.allow=never", "-c", "user.name=Radar preview", "-c", "user.email=preview@radar.invalid"}
 	c := exec.CommandContext(ctx, "git", append(prefix, args...)...)
 	c.Env = sanitizedEnv("GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+NullPath, "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0", "GIT_ATTR_NOSYSTEM=1", "GIT_NO_LAZY_FETCH=1", "GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2000-01-01T00:00:00Z")
 	return c

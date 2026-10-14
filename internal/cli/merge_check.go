@@ -28,6 +28,7 @@ func mergeCheckCommand() command {
 		fs.StringVar(&o.suite, "suite", "", "verification selection mode: targeted, balanced (alias recommended) or full (requires --verify --allow-execution)")
 		fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped commands a --suite run executes; omitted required commands block the gate")
 		fs.StringVar(&o.output, "evidence-output", "", "new path under .radar/evidence/ to save execution metadata (default JSON output only)")
+		fs.BoolVar(&o.observeCoverage, "observe-coverage", false, "with execution opt-in, observe covered files for later test selection")
 		fs.BoolVar(&o.verify, "verify", false, "execute the supplied command against the combined candidate")
 		fs.BoolVar(&o.allow, "allow-execution", false, "authorize candidate code execution with host privileges")
 		fs.BoolVar(&o.strict, "require-complete", false, "exit 1 when any property remains unknown or incomplete")
@@ -76,7 +77,7 @@ func (a *app) mergeCheck(o options) int {
 	for i := range refs {
 		refs[i] = strings.TrimSpace(refs[i])
 	}
-	r, e := integration.Preview(a.ctx, a.root, integration.Options{CWD: o.cwd, SuggestTests: o.suggestTests, Suite: o.suite, Policy: policy, Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest, MaxCommands: o.maxCommands})
+	r, e := integration.Preview(a.ctx, a.root, integration.Options{CWD: o.cwd, SuggestTests: o.suggestTests, Suite: o.suite, Policy: policy, Plan: plan, Base: o.base, Branches: refs, Verify: o.verify, AllowExecution: o.allow, Command: o.args, Timeout: o.timeout, PlanDigest: digest, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage})
 	if e != nil {
 		return a.fail(e)
 	}
@@ -122,7 +123,10 @@ func (a *app) mergeCheck(o options) int {
 			fmt.Fprintf(w, "  Conflict: %s\n", p)
 		}
 		for _, f := range r.Findings {
-			fmt.Fprintf(w, "  %s [%s]: %s\n    Repair: %s\n", f.Code, f.Evidence, f.Explanation, f.Remediation)
+			fmt.Fprintf(w, "  %s [%s]: %s\n", f.Code, f.Evidence, f.Explanation)
+			if f.Remediation != "" {
+				fmt.Fprintf(w, "    Repair: %s\n", f.Remediation)
+			}
 		}
 		fmt.Fprintf(w, "Changed: %d files; affected import dependents: %d\n", len(r.Changed), len(r.Affected))
 	})

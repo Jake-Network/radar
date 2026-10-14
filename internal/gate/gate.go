@@ -202,6 +202,18 @@ func CoverageFor(checks []Check, limitations []string) []Coverage {
 			v.Unavailable = []string{"compiler-resolved and runtime dependency behavior"}
 		case "discovered_contracts":
 			v.Excluded = append(v.Excluded, limitations...)
+		case "no_symbol_conflicts":
+			v.Excluded = []string{"compiler type resolution, dynamic imports, ambiguous namespaces, overloaded calls and unsupported conditional compilation"}
+		case "symbol_resolution":
+			v.Unavailable = []string{"unsupported or ambiguous symbol relationships; inspect per-file diagnostics"}
+		case "lockfile_consistency":
+			v.Excluded = []string{"dependency solving and arbitrary version-range compatibility"}
+		case "unique_keys":
+			v.Excluded = []string{"dynamic application composition and registrations outside supported literal scopes"}
+		case "generated_drift":
+			v.Excluded = []string{"unexecuted regeneration does not establish generated-output correctness"}
+		case "migration_order":
+			v.Excluded = []string{"migration-tool runtime configuration not declared in .radar/migrations.json (alembic.ini version_locations, MIGRATION_MODULES, Flyway locations)", "Flyway versions repeated across directories the base already uses in parallel", "Alembic depends_on and Django run_before ordering across apps", "Java or other non-SQL migrations", "conflicting schema operations between migrations"}
 		case "integration_tests", "integration_execution":
 			if c.Status == model.StatusUnknown {
 				v.Unavailable = []string{"observed test evidence: no successful recognized test execution supplied"}

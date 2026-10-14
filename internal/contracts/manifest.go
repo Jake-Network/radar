@@ -40,6 +40,16 @@ func LoadManifest(ctx context.Context, root, ref string) (Manifest, error) {
 		if binding.Direction != "" && binding.Direction != "request" && binding.Direction != "response" {
 			return m, fmt.Errorf("binding direction must be request or response")
 		}
+		if len(binding.Generate) > 0 {
+			if _, err := pathutil.RepoRelative(binding.Generate[0]); err != nil {
+				return m, fmt.Errorf("binding %s generator executable: %w", binding.ID, err)
+			}
+			for _, arg := range binding.Generate {
+				if strings.ContainsRune(arg, 0) {
+					return m, fmt.Errorf("binding %s generator contains NUL", binding.ID)
+				}
+			}
+		}
 		ids[binding.ID] = true
 	}
 	retired := map[string]bool{}

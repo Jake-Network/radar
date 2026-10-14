@@ -14,6 +14,11 @@ import (
 // Index pins ref once and parses the committed tree with the same rules as the
 // working-tree index; all evidence revisions contain the resolved SHA.
 func Index(ctx context.Context, root, ref string) (model.Snapshot, error) {
+	return IndexWithCache(ctx, root, ref, nil)
+}
+
+// IndexWithCache retains fresh commit provenance while sharing syntax parsing.
+func IndexWithCache(ctx context.Context, root, ref string, cache *indexer.ParseCache) (model.Snapshot, error) {
 	absolute, err := filepath.Abs(root)
 	if err != nil {
 		return model.Snapshot{}, err
@@ -28,7 +33,7 @@ func Index(ctx context.Context, root, ref string) (model.Snapshot, error) {
 	}
 	provider := indexer.NewCommit(absolute, sha)
 	defer provider.Close()
-	result, err := indexer.Build(ctx, absolute, sha, provider)
+	result, err := indexer.BuildWithCache(ctx, absolute, sha, provider, cache)
 	if err != nil {
 		return model.Snapshot{}, err
 	}

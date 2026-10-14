@@ -17,8 +17,10 @@ analysis path.
    disabled. The user's refs, index and worktree are never written. Shallow
    clones share their history boundary with the candidate.
 3. **Analyze** (`integration.Analyze`). Textual merge, declared contracts,
-   discovered candidates, an index of the candidate tree, reverse import
-   impact, then test selection.
+   migration order (`internal/migrations`, only when a migration history
+   changed), direct lockfile/uniqueness rules, discovered candidates and declared
+   generated-output relationships, a workspace-aware candidate index, supported
+   symbol conflicts, reverse import impact, then test selection.
 4. **Run tests** (only with `--run`; `integration/execute.go` and
    `internal/evidence`). Selected commands run in their declared directory
    with a timeout, output limit and reduced environment.
@@ -39,6 +41,9 @@ analysis path.
 | `checkpoint` | indexes commits straight from Git objects |
 | `contracts`, `contractgraph` | schema comparison and declared contract edges |
 | `discovery` | static contract candidates |
+| `migrations` | supported migration graph/version histories and explicit locations across base, single-branch merges and candidate |
+| `symbols`, `lockfiles`, `uniqueness` | supported static conflict scopes, direct dependency locks and literal/declared key uniqueness |
+| `generated`, `runners`, `coverage` | declared output relationships, explicit runner profiles/dependency cache and fresh command-suite file observations |
 | `integration` | private candidate, analysis, execution, gate input |
 | `composition`, `workspace` | multi-repository scope, registry, team file, run records |
 | `testselection` | test inventory, selection modes, grouping, budgets |

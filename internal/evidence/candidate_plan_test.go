@@ -32,6 +32,23 @@ func reviewedPlan(root string, c CandidateCheckpoint, argv []string, cwd string)
 func review(p *planning.Plan) {
 	p.Approval = &planning.Approval{Reviewer: "human-reviewer", ReviewedAt: "2026-10-09T00:00:00Z", Checkpoint: p.BaseRevision, PlanDigest: planning.Digest(*p)}
 }
+
+func TestCandidateReviewedSetupRespectsSharedBudget(t *testing.T) {
+	needPython(t)
+	root := fixture(t, map[string]string{"test_example.py": pythonTest})
+	cp := candidateCheckpoint(t, root)
+	argv := []string{"python3", "-m", "unittest", "test_example"}
+	p := reviewedPlan(root, cp, argv, ".")
+	p.Acceptance[0].Rule.Setup = [][]string{{"python3", "-c", `open('not_allowed','w').write('ran')`}}
+	review(&p)
+	run, err := RunCandidateBudget(context.Background(), root, cp, p, argv, ".", 10*time.Second, func() bool { return false })
+	if err != nil || run.Observation.Status != model.StatusIncomplete || run.Record.Phase != "setup" || run.Record.TestsRun != 0 {
+		t.Fatal(run, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "not_allowed")); !os.IsNotExist(err) {
+		t.Fatal("setup ran without command budget")
+	}
+}
 func TestCandidateReviewedEvidenceAndBindingMismatches(t *testing.T) {
 	needPython(t)
 	root := fixture(t, map[string]string{"test_example.py": pythonTest})

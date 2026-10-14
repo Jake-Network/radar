@@ -171,3 +171,57 @@ func TestAgentHookActualDispatchRootOverride(t *testing.T) {
 		t.Fatal(code, out.String(), errs.String())
 	}
 }
+
+func TestAgentHookBlocksCombinedMigrationHeads(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	shared := map[string]string{"db/env.py": "print('env')\n", "db/versions/r0.py": "revision = 'r0'\ndown_revision = None\n"}
+	for name, revision := range map[string]string{"a": "a1", "b": "b1"} {
+		files := map[string]string{"db/versions/" + revision + ".py": "revision = '" + revision + "'\ndown_revision = 'r0'\n"}
+		for p, c := range shared {
+			files[p] = c
+		}
+		agent(name, files)
+	}
+	if r := hookInvoke(t, root, hookEvent(t, root), "--base", "main", "--branches", "a"); r.Decision != "" {
+		t.Fatalf("one branch alone has one head: %+v", r)
+	}
+	r := hookInvoke(t, root, hookEvent(t, root), "--base", "main", "--branches", "a,b")
+	if r.Decision != "block" || !strings.Contains(r.Reason, "migration_multiple_heads") {
+		t.Fatalf("missing combined migration failure: %+v", r)
+	}
+}
+
+// An unreadable migration history is a static gap: the next step names it
+// instead of suggesting --run, and the hook names the blocking check.
+func TestUnknownMigrationOrderNamesTheGap(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("a", map[string]string{"db/env.py": "print('env')\n", "db/versions/r0.py": "revision = 'r0'\ndown_revision = None\n", "db/versions/a1.py": "revision = 'a1'\ndown_revision = 'r' + '0'\n"})
+	code, out, _ := run(t, root, "gate", "a")
+	if !strings.Contains(out, "NOT VERIFIED") || !strings.Contains(out, "Next: Migrations could not be checked") || strings.Contains(out, "Next: radar gate --run") {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if _, out, _ = run(t, root, "gate", "a", "--run"); !strings.Contains(out, "Next: Migrations could not be checked") {
+		t.Fatalf("--run next step must name the migration gap:\n%s", out)
+	}
+	r := hookInvoke(t, root, hookEvent(t, root), "--base", "main", "--branches", "a")
+	if r.Decision != "" || !strings.Contains(r.Message, "required check migration_order is unknown") {
+		t.Fatalf("hook %+v", r)
+	}
+}
+
+// A policy that requires test evidence is not a static gap: the next step
+// still runs the tests.
+func TestStaticGateWithTestPolicySuggestsRun(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("a", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	for _, id := range []string{"test:x", "criterion:c1", "integration_tests"} {
+		policy := filepath.Join(t.TempDir(), "policy.json")
+		if err := os.WriteFile(policy, []byte(`{"version":1,"require":["textual_merge","`+id+`"]}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, out, _ := run(t, root, "gate", "a", "--policy", policy)
+		if !strings.Contains(out, "Next: radar gate --run") {
+			t.Fatalf("%s: next step should run tests:\n%s", id, out)
+		}
+	}
+}

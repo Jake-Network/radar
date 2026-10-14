@@ -28,6 +28,7 @@ func watchCommand() command {
 		fs.BoolVar(&o.includeDirty, "include-dirty", false, "preview saved staged, unstaged and nonignored untracked changes")
 		fs.BoolVar(&o.jsonl, "jsonl", false, "emit one structured event per line")
 		fs.IntVar(&o.attributionRuns, "attribution-runs", 0, "with --run, separately observe up to N diagnostic subset executions after Fast Gate")
+		fs.BoolVar(&o.observeCoverage, "observe-coverage", false, "with execution opt-in, observe covered files for later test selection")
 		fs.BoolVar(&o.verify, "run", false, "authorize repeated repository test execution for this session with host permissions")
 		fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "execution time budget per check")
 		fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum commands per check")
@@ -241,7 +242,7 @@ func (a *app) watch(o options) int {
 			c.Close()
 			return watch.Result{}, e
 		}
-		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands}
+		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage}
 		r, e := integration.Analyze(ctx, c, opts)
 		if e != nil {
 			c.Close()

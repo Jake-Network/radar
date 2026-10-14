@@ -179,3 +179,14 @@ func TestInteractiveRunAbortsWhenScopeChangesAfterConsent(t *testing.T) {
 		t.Fatal(text)
 	}
 }
+
+// A static gate that could not check everything exits 0, but the menu must
+// not call it "no problems found".
+func TestInteractiveStaticGateNotVerifiedIsNotAPass(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("a", map[string]string{"db/env.py": "print('env')\n", "db/versions/r0.py": "revision = 'r0'\ndown_revision = None\n", "db/versions/a1.py": "revision = 'a1'\ndown_revision = 'r' + '0'\n"})
+	out := interact(t, root, "1\n\nq\n")
+	if !strings.Contains(out, "Radar gate: NOT VERIFIED") || !strings.Contains(out, "Not everything could be checked") || strings.Contains(out, "No problems found by the static checks") {
+		t.Fatalf("menu outcome:\n%s", out)
+	}
+}

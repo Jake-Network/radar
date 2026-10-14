@@ -6,7 +6,9 @@ Radar gate: FAIL — branches conflict in backend.py
   agent-b  63707b6694a0  1 file changed
   agent-a  e55503739389  1 file changed
 
+Checked 1
   ✗ Merge      branches conflict in backend.py
+Couldn't check 1
   ? Contracts  not verified (unknown) — Declared contract obligations are unverified: combined candidate could not be built because of textual conflicts
   policy supported-integration requires textual_merge, no_breaking_contracts
 

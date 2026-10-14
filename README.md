@@ -2,15 +2,27 @@
 
 # Radar
 
-**Two agents. Two green branches. One broken merge. Radar catches it before you merge.**
+**When an agent says “done”, see what was checked and what still needs checking.**
 
-You run coding agents in parallel, each in its own worktree (cmux, Orca, Claude
-Code, Codex, or plain `git worktree`). Each branch passes its own tests. Merged
-together, they break. Radar combines the branches in private Git state, checks
-the combination, runs selected tests when authorized, and provides repair leads.
+Radar checks committed agent branches together before you merge. Two green
+branches can still break when combined. It builds their combination privately,
+checks it without running repository code, and explains missing evidence.
+Tests run only when you request them. No API key, telemetry, or changes to your
+branches.
 
-It is a local CLI. It needs no API key, sends no telemetry, and never touches
-your branches.
+```sh
+radar gate
+```
+
+The result shows checks that passed, conflicts with source locations, and checks
+that could not finish. `radar gate --run` adds related tests when you authorize
+execution. [Install](#install), then try the one-minute example below.
+
+<p><img src="docs/assets/migration-demo.gif" width="960" alt="30-second static migration fixture: separate branches pass, combined branches fail, corrected migration chain passes. No repository tests run."></p>
+
+[Full demo transcript](docs/assets/migration-demo.txt). This is a fixture demonstration.
+Real-history replay is available; **human-labeled recall is not yet available**.
+See [benchmark methods](docs/BENCHMARKS.md) for measurement scope and limitations.
 
 ## Try it in one minute
 
@@ -153,9 +165,9 @@ while agents commit; see [watch](docs/USAGE.md#watch).
 
 | Verdict | Exit | Meaning |
 | --- | --- | --- |
-| `PASS (static)` | 0 | Branches merge and declared contracts hold. No test ran |
+| `PASS (static)` | 0 | Required supported static checks passed. Undeclared or unsupported checks establish no evidence. No test ran |
 | `PASS (selected policy; bounded verification)` | 0 | The selected tests also ran and passed on the combined tree. Not full coverage |
-| `FAIL` | 1 | A conflict, a breaking declared contract, or a failing test on the combined tree |
+| `FAIL` | 1 | A supported static conflict, a breaking declared contract, or a failing test on the combined tree |
 | `NOT VERIFIED` | 1 | Required evidence is missing. Each gap has a `fix:` line |
 | `ERROR` | 2 | A check errored or timed out. If Radar cannot start (bad ref, unsupported layout), it prints `radar: …` and `Next:` instead, also exit 2 |
 
@@ -205,7 +217,7 @@ Agents never run `--run` on their own: it executes repository code, so a
 person authorizes it. `radar help agents` prints the agent contract, and
 [AGENT_GUIDE](docs/AGENT_GUIDE.md) walks through the whole workflow.
 
-## What a PASS means
+## Advanced: what a PASS means
 
 Radar reports evidence. It doesn't certify correctness.
 

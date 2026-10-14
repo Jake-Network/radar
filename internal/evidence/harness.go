@@ -76,6 +76,10 @@ func buildTool(argv []string) string {
 }
 
 func isUnittest(argv []string) bool {
+	argv = runnerArgv(argv)
+	if len(argv) == 0 {
+		return false
+	}
 	name := filepath.Base(argv[0])
 	return (name == "python" || name == "python3") && len(argv) > 2 && argv[1] == "-m" && argv[2] == "unittest"
 }
@@ -93,9 +97,10 @@ func uses(argv []string, tool string) bool {
 // arbitrary success output. dir is the command's working directory, used to
 // read absolute compiler paths; empty accepts only relative ones.
 func harnessCounts(argv []string, data []byte, dir string) harnessResult {
+	argv = runnerArgv(argv)
 	// Build programs and CTest can run bare; other runners need a
 	// subcommand or arguments to be recognized.
-	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) && filepath.Base(argv[0]) != "ctest" {
+	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) && filepath.Base(argv[0]) != "ctest" && !uses(argv, "pytest") && !uses(argv, "py.test") {
 		return harnessResult{}
 	}
 	text := ansi.ReplaceAllString(string(data), "")
@@ -134,6 +139,25 @@ func harnessCounts(argv []string, data []byte, dir string) harnessResult {
 		return gtest(text)
 	}
 	return harnessResult{}
+}
+
+// runnerArgv unwraps only known literal execution prefixes. It never changes
+// the executed command and does not guess arbitrary script semantics.
+func runnerArgv(argv []string) []string {
+	if len(argv) > 2 && filepath.Base(argv[0]) == "uv" && argv[1] == "run" {
+		for i := 2; i < len(argv); i++ {
+			switch argv[i] {
+			case "--frozen", "--locked", "--offline", "--no-sync":
+				continue
+			default:
+				if strings.HasPrefix(argv[i], "-") {
+					return argv
+				}
+				return argv[i:]
+			}
+		}
+	}
+	return argv
 }
 
 func ctest(text string) harnessResult {

@@ -35,19 +35,17 @@ go build -trimpath -o /tmp/radar ./cmd/radar
 /tmp/radar setup --agent both --dry-run
 ```
 
-The integration helper generates policy in the runner's temporary directory, so
-PR code cannot weaken required checks by changing a policy file:
-
-```json
-{"version":1,"require":["textual_merge","no_breaking_contracts"],"on_missing":"blocked"}
-```
-
-For local read-only candidate inspection, save that JSON as `/tmp/radar-policy.json`:
+The integration helper passes no policy file, so PR code cannot weaken required
+checks by changing one. Radar's built-in policy requires `textual_merge` and
+`no_breaking_contracts`, plus `migration_order` when a migration history changed.
+For local read-only candidate inspection:
 
 ```sh
-radar merge-check --base main --branches feature/api --suggest-tests \
-  --policy /tmp/radar-policy.json --json
+radar merge-check --base main --branches feature/api --suggest-tests --json
 ```
+
+Read `gate.verdict`, as the helper does. Without `--policy`, `merge-check` keeps
+its legacy exit status, which can be 0 for a blocked verdict.
 
 ## Inputs and execution authorization
 
@@ -111,7 +109,7 @@ self-hosted runners for this example.
 
 Branch metadata, paths, report strings and repository configurations are untrusted.
 The helpers use subprocess argument arrays, validate PR numbers and commit SHAs,
-produce their own policy, and escape annotation control characters. They do not
+read no policy file, and escape annotation control characters. They do not
 approve, merge, push, install target packages or modify contributor branches.
 
 Codex and Claude Code can run Radar's read-only MCP/skills alongside this workflow.
@@ -122,3 +120,30 @@ Local helper tests and YAML checks are reproducible. Hosted Actions execution an
 release availability must be validated separately; local checks are not hosted CI
 results. See [security](../../docs/SECURITY.md) and
 [verification policy](../../docs/VERIFICATION.md).
+
+## Open PR pair matrix (static only)
+
+Copy `radar-pr-matrix.yml` to `.github/workflows/` and the reviewed
+`pr_matrix.py` and `publish_matrix.py` to `.github/radar/` on the trusted base. Configure the pinned
+`RADAR_REVISION` as above. The wrapper lists open PRs with the same base via
+GitHub's API, fetches validated PR refs, verifies their pinned heads, collapses
+ancestor chains to tips, and checks pairs involving the updated PR (including
+its descendants). Radar itself neither accesses the network nor fetches.
+No PR script, dependency install, or repository test runs.
+
+`radar-matrix.json` contains pinned heads, chain members, failed checks, complete
+reports and reproduction argv. With over 50 open PRs, only pairs with overlapping
+changed files run. Omitted pairs and the 1,000-pair budget are explicit incomplete
+evidence; cross-file interactions may be missed. No pairs is also incomplete.
+The example saves an artifact by default. To publish comments, explicitly set
+`RADAR_PUBLISH_COMMENTS=true`; the guarded publisher runs only for same-repository
+PRs with a write token. It creates one stable marked comment per pair on each
+chain member, updates previous bot comments when the pair changes or passes,
+and leaves unchanged comments untouched. Matching attacker comments are ignored.
+New passing pairs create no comment. No live comment publication was performed
+while developing this wrapper. Fork tokens
+may not read or fetch private refs; these failures remain errors.
+
+Local tests: `RADAR_TEST_BIN=/tmp/radar python3 integrations/github-actions/test_pr_matrix.py`
+and `python3 integrations/github-actions/test_publish_matrix.py`.
+Hosted GitHub execution and comment publication require separate verification.

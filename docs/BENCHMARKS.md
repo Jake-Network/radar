@@ -155,6 +155,35 @@ candidates. Concurrent workloads limit timing comparisons. RSS is per process, n
 container memory; selected durations exclude attribution reruns, leaving total execution/residual
 phase time unavailable. File reduction is not runtime savings.
 
+## History replay
+
+[`benchmarks/history/replay.py`](../benchmarks/history/replay.py) replays real merges from a
+local clone through the static gate. For a merge with parents P1 (base line) and P2 (merged work)
+it gates `[P1, P2]` onto `merge-base(P1, P2)`, so whatever landed on the base meanwhile is one
+branch. Squash merges need a fetched `refs/pull/N/head`. Commits within a window (default 48 h)
+that touch files from both sides are recorded as follow-ups, and Alembic or Django merge
+migrations as signals. Nothing is fetched and no repository code runs.
+
+```sh
+python3 benchmarks/history/replay.py mine CLONE --base main --out /tmp/candidates.json
+python3 benchmarks/history/replay.py replay /tmp/candidates.json --radar /tmp/radar --out /tmp/results.json
+python3 benchmarks/history/replay.py report /tmp/results.json --labels labels.csv
+```
+
+Follow-ups are a heuristic: they mix causes and miss breaks fixed later or elsewhere. Causes need
+a person's label (`symbol`, `migration`, `lockfile`, `generated`, `route`, `runtime`, `other`,
+`none`), so samples stay small. A FAIL on a merge labeled `none` counts as a false failure.
+
+
+A 2026-10-14 local performance sample replayed NetBox merge
+`6121418f5a4d6b0eb4c3a89644a7fd5f425f1aa9` twice in **11.159 s / 7.985 s**.
+Both static verdicts were `pass`, with candidate tree
+`28570610a0cb86e579c009e9fac3c01a43bd1549`; optional unsupported checks remained
+unknown and no runtime tests ran. Binary SHA-256:
+`7575b6f21d27ff3bd851ac8a0a0ba918b3ee3e7b01215fa0086e8293c8d1c30b`.
+Two repeats of one merge do not establish a new 40-merge median, labeled recall,
+or a ten-second target across repositories.
+
 ## Evidence and historical verification
 
 [Summary JSON](../benchmarks/external/results/summary.json),

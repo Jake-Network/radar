@@ -7,10 +7,13 @@ Radar gate: PASS (static) — static checks passed; tests not run yet
   agent-frontend  2ca59cad7425  1 file changed
   · skipped: agent-idle (no commits beyond main)
 
+Checked 2
   ✓ Merge      branches merge without conflicts
+  ✓ Symbols    supported declarations and named references stay consistent
+Couldn't check 2
   · Contracts  none declared, so no contract was checked (radar discover proposes candidates)
   ? Tests      combined tree not tested yet (add --run)
-  policy supported-integration requires textual_merge, no_breaking_contracts
+  policy supported-integration requires textual_merge, no_breaking_contracts, no_symbol_conflicts
 
 Suggested tests (static relationships; not run)
   python3 -m unittest discover -s . -p test_checkout.py  (in .)

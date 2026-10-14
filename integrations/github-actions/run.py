@@ -5,7 +5,6 @@ import os
 import pathlib
 import re
 import subprocess
-import tempfile
 
 
 def blocked(message):
@@ -50,30 +49,29 @@ def run(env):
                 if not re.fullmatch(r"[0-9a-f]{40,64}", sha):
                     raise ValueError("Invalid selected PR commit.")
                 branches.append(sha)
-            with tempfile.TemporaryDirectory(prefix="radar-policy-") as tmp:
-                required = ["textual_merge", "no_breaking_contracts"]
-                if execute == "true":
-                    required += ["test_selection", "integration_execution"]
-                policy = pathlib.Path(tmp) / "policy.json"
-                policy.write_text(json.dumps({"version": 1, "require": required}), encoding="utf-8")
-                argv = [env["RADAR_BIN"], "merge-check", "--base", base, "--branches", ",".join(branches), "--suggest-tests", "--policy", str(policy), "--json"]
-                if execute == "true":
-                    argv += ["--verify", "--allow-execution", "--suite", "full", "--timeout", "10m"]
-                # No workflow credentials, secrets or attacker-supplied shell.
-                clean_env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "TMPDIR", "SYSTEMROOT", "GOCACHE", "GOMODCACHE")}
-                proc = subprocess.run(argv, cwd=root, env=clean_env, capture_output=True, text=True, timeout=720)
-                try:
-                    report = json.loads(proc.stdout)
-                except json.JSONDecodeError:
-                    report = blocked("Radar did not produce a structured report; inspect installation and input configuration.")
-                    report["gate"]["verdict"] = "error"
-                code = {"pass": 0, "fail": 1, "blocked": 1, "error": 2}.get(report.get("gate", {}).get("verdict"), 2)
-                if proc.returncode != 0 and code == 0:
-                    code = 2
-                    report["gate"]["verdict"] = "error"
-                report["workflow"] = {"execution_authorized": execute == "true", "selected_additional_prs": numbers, "base": base, "head": head}
-                if execute != "true":
-                    report.setdefault("limitations", []).append("Repository tests were not executed. Enable reviewed execution on an ephemeral runner to establish runtime evidence.")
+            # Radar's built-in policy, not a file the pull request could change,
+            # decides the requirements: merge and contracts, migration order
+            # when a migration history changed, and with execution, selected tests.
+            argv = [env["RADAR_BIN"], "merge-check", "--base", base, "--branches", ",".join(branches), "--suggest-tests", "--json"]
+            if execute == "true":
+                argv += ["--verify", "--allow-execution", "--suite", "full", "--timeout", "10m"]
+            # No workflow credentials, secrets or attacker-supplied shell.
+            clean_env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "TMPDIR", "SYSTEMROOT", "GOCACHE", "GOMODCACHE")}
+            proc = subprocess.run(argv, cwd=root, env=clean_env, capture_output=True, text=True, timeout=720)
+            try:
+                report = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                report = blocked("Radar did not produce a structured report; inspect installation and input configuration.")
+                report["gate"]["verdict"] = "error"
+            code = {"pass": 0, "fail": 1, "blocked": 1, "error": 2}.get(report.get("gate", {}).get("verdict"), 2)
+            # Without --policy, merge-check exits 1 when any check failed, even
+            # one the gate does not require; only exit 2 is an analysis error.
+            if proc.returncode not in (0, 1) and code == 0:
+                code = 2
+                report["gate"]["verdict"] = "error"
+            report["workflow"] = {"execution_authorized": execute == "true", "selected_additional_prs": numbers, "base": base, "head": head}
+            if execute != "true":
+                report.setdefault("limitations", []).append("Repository tests were not executed. Enable reviewed execution on an ephemeral runner to establish runtime evidence.")
         except (ValueError, OSError, subprocess.SubprocessError) as err:
             report, code = blocked("Workflow input or environment error: " + str(err)), 2
             report["gate"]["verdict"] = "error"

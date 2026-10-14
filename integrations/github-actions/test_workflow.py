@@ -95,6 +95,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(any(c["id"] == "integration_execution" and c["status"] == "failed" for c in r["checks"]))
         self.assertTrue(any(c["id"] == "textual_merge" and c["status"] == "passed" for c in r["checks"]))
 
+    def test_migration_order_is_required(self):
+        # The base gains revision x after the PR branched; the PR adds y on
+        # the same parent. Each passes alone; the combination has two heads.
+        self.env["RADAR_EXECUTE"] = "false"
+        self.put("db/env.py", "print('env')\n")
+        self.put("db/versions/r0.py", "revision = 'r0'\ndown_revision = None\n")
+        self.commit()
+        fork = self.env["RADAR_HEAD"]
+        self.put("db/versions/x.py", "revision = 'x'\ndown_revision = 'r0'\n")
+        self.commit()
+        self.env["RADAR_BASE"] = self.env["RADAR_HEAD"]
+        self.git("checkout", "-q", fork)
+        self.put("db/versions/y.py", "revision = 'y'\ndown_revision = 'r0'\n")
+        self.commit()
+        r = self.observe(1, "fail")
+        self.assertIn("migration_order", r["gate"]["policy"]["require"])
+        self.assertTrue(any(f["code"] == "migration_multiple_heads" for f in r["findings"]))
+
     def test_missing_runner(self):
         self.put("node/package.json", '{}')
         self.put("node/a.test.js", "const test = require('node:test'); test('ok', () => {});\n")

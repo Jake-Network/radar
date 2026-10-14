@@ -1,0 +1,76 @@
+SCENE:agent-orders
+Radar gate: PASS (static) — static checks passed; tests not run yet
+1 branch onto main @ 871e208128fc
+
+  agent-orders  a157361165f4  1 file changed
+
+Checked 3
+  ✓ Merge       branches merge without conflicts
+  ✓ Migrations  migration history stays in order on the combined tree
+  ✓ Symbols     supported declarations and named references stay consistent
+Couldn't check 2
+  · Contracts   none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests       combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts, migration_order, no_symbol_conflicts
+
+Next: radar gate --run agent-orders
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+SCENE:agent-refunds
+Radar gate: PASS (static) — static checks passed; tests not run yet
+1 branch onto main @ 871e208128fc
+
+  agent-refunds  42453f05f276  1 file changed
+
+Checked 3
+  ✓ Merge       branches merge without conflicts
+  ✓ Migrations  migration history stays in order on the combined tree
+  ✓ Symbols     supported declarations and named references stay consistent
+Couldn't check 2
+  · Contracts   none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests       combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts, migration_order, no_symbol_conflicts
+
+Next: radar gate --run agent-refunds
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+SCENE:combined branches
+Radar gate: FAIL — migration order conflict on the combined tree
+2 branches onto main @ 871e208128fc
+
+  agent-orders   a157361165f4  1 file changed
+  agent-refunds  42453f05f276  1 file changed
+
+Checked 3
+  ✓ Merge       branches merge without conflicts
+  ✗ Migrations  migration order conflict on the combined tree
+  ✓ Symbols     supported declarations and named references stay consistent
+Couldn't check 2
+  · Contracts   none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests       combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts, migration_order, no_symbol_conflicts
+
+Problems
+  ✗ migration_multiple_heads
+    Alembic history db/versions has more than one head: revisions "a1" (db/versions/a1_orders.py), "b1" (db/versions/b1_refunds.py) all revise "r0". `alembic upgrade head` refuses multiple heads. Neither the base nor any branch merged alone onto it has this; it appears only when the branches are combined.
+    look at: agent-orders (db/versions/a1_orders.py); agent-refunds (db/versions/b1_refunds.py)
+    fix: In db/versions/b1_refunds.py, set down_revision = "a1" so it follows the other line, or add a merge revision with `alembic merge heads`.
+
+Next: repair on the branches above, commit, then rerun: radar gate
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.
+SCENE:corrected migration chain
+Radar gate: PASS (static) — static checks passed; tests not run yet
+2 branches onto main @ 871e208128fc
+
+  agent-orders   a157361165f4  1 file changed
+  agent-refunds  9895dbcdb35a  1 file changed
+
+Checked 3
+  ✓ Merge       branches merge without conflicts
+  ✓ Migrations  migration history stays in order on the combined tree
+  ✓ Symbols     supported declarations and named references stay consistent
+Couldn't check 2
+  · Contracts   none declared, so no contract was checked (radar discover proposes candidates)
+  ? Tests       combined tree not tested yet (add --run)
+  policy supported-integration requires textual_merge, no_breaking_contracts, migration_order, no_symbol_conflicts
+
+Next: radar gate --run
+Details: add --json. Radar never touches your branches; the combination is built in private Git state.

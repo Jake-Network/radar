@@ -12,13 +12,16 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Jake-Network/radar/internal/checkpoint"
 	"github.com/Jake-Network/radar/internal/contracts"
 	"github.com/Jake-Network/radar/internal/evidence"
 	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/generated"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
+	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/planning"
+	"github.com/Jake-Network/radar/internal/runners"
+	"github.com/Jake-Network/radar/internal/symbols"
 	"github.com/Jake-Network/radar/internal/testselection"
 )
 
@@ -31,6 +34,7 @@ type Options struct {
 	Base                   string
 	Branches               []string
 	Verify, AllowExecution bool
+	ObserveCoverage        bool
 	Command                []string
 	Timeout                time.Duration
 	PlanDigest             string
@@ -45,7 +49,10 @@ type Options struct {
 	// show it live. It is presentation only and never affects the report.
 	Progress func(Step)
 	// report is the selected command's runner-written JUnit path.
-	report string
+	report         string
+	artifacts      []string
+	budget         *commandBudget
+	coverageReport *runners.Coverage
 }
 
 // Step is one progress notification.
@@ -94,25 +101,28 @@ type ExecutionEvidence struct {
 	StartedAt            string                        `json:"started_at"`
 	DurationMS           int64                         `json:"duration_ms"`
 	SourceAfterExecution string                        `json:"source_after_execution"`
+	observedFiles        []string
 }
 type Report struct {
-	VerificationProposal *testselection.Proposal `json:"verification_proposal,omitempty"`
+	RunnerPreparations   []evidence.RunnerPreparation `json:"runner_preparations,omitempty"`
+	VerificationProposal *testselection.Proposal      `json:"verification_proposal,omitempty"`
 	// Selection is the bounded execution plan for a --suite mode, including
 	// omitted commands and the reasons a required command did not run.
-	Selection       *testselection.Selection `json:"selection,omitempty"`
-	Selected        []string                 `json:"selected_tests,omitempty"`
-	Executions      []ExecutionEvidence      `json:"executions,omitempty"`
-	Gate            gate.Result              `json:"gate"`
-	Coverage        []gate.Coverage          `json:"coverage"`
-	Plan            *planning.Report         `json:"plan,omitempty"`
-	Status          model.Status             `json:"status"`
-	Base            string                   `json:"base"`
-	Inputs          []string                 `json:"inputs"`
-	CandidateCommit string                   `json:"candidate_commit,omitempty"`
-	CandidateTree   string                   `json:"candidate_tree,omitempty"`
-	Conflicts       []string                 `json:"conflicts"`
-	Changed         []string                 `json:"changed"`
-	Affected        []string                 `json:"affected"`
+	Selection           *testselection.Selection `json:"selection,omitempty"`
+	Selected            []string                 `json:"selected_tests,omitempty"`
+	GeneratedExecutions []generated.Execution    `json:"generated_executions,omitempty"`
+	Executions          []ExecutionEvidence      `json:"executions,omitempty"`
+	Gate                gate.Result              `json:"gate"`
+	Coverage            []gate.Coverage          `json:"coverage"`
+	Plan                *planning.Report         `json:"plan,omitempty"`
+	Status              model.Status             `json:"status"`
+	Base                string                   `json:"base"`
+	Inputs              []string                 `json:"inputs"`
+	CandidateCommit     string                   `json:"candidate_commit,omitempty"`
+	CandidateTree       string                   `json:"candidate_tree,omitempty"`
+	Conflicts           []string                 `json:"conflicts"`
+	Changed             []string                 `json:"changed"`
+	Affected            []string                 `json:"affected"`
 	// AffectedBy maps each affected file to the changed files it reaches
 	// through inferred import dependencies.
 	AffectedBy  map[string][]string `json:"affected_by,omitempty"`
@@ -152,6 +162,9 @@ func validate(o Options) (Options, error) {
 	}
 	if o.AttributionRuns < 0 || o.AttributionRuns > 64 {
 		return o, errors.New("attribution runs must be between 0 and 64")
+	}
+	if o.ObserveCoverage && !o.Verify {
+		return o, errors.New("--observe-coverage requires explicit execution authorization")
 	}
 	if o.AttributionRuns > 0 && !o.Verify {
 		return o, errors.New("attribution reruns failed commands and requires --verify")
@@ -209,6 +222,14 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 		return r, errors.New("candidate is not available")
 	}
 	temp := c.Dir
+	if o.Verify && o.budget == nil {
+		max := o.MaxCommands
+		if max == 0 {
+			max = testselection.DefaultMaxCommands
+		}
+		o.budget = &commandBudget{left: max, parent: ctx, timeout: o.Timeout}
+		defer o.budget.close()
+	}
 	r.Base = c.Base
 	r.Inputs = append(r.Inputs, c.Inputs...)
 	if len(c.Conflicts) > 0 {
@@ -226,27 +247,50 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	if e = analyzeContracts(ctx, temp, &r, o); e != nil {
 		return r, e
 	}
-	if e = analyzeDiscovered(ctx, temp, &r); e != nil {
+	if e = analyzeGenerated(ctx, temp, &r, o); e != nil {
 		return r, e
 	}
-	snapshot, e := checkpoint.Index(ctx, temp, r.CandidateCommit)
+	if e = analyzeMigrations(ctx, temp, &r); e != nil {
+		return r, e
+	}
+	if e = analyzeTreeRules(ctx, temp, &r); e != nil {
+		return r, e
+	}
+	parseCache := indexer.NewParseCache()
+	snapshot, e := indexAndDiscover(ctx, temp, &r, parseCache)
 	if e != nil {
 		return r, e
 	}
 	r.Diagnostics = append(r.Diagnostics, snapshot.Diagnostics...)
+	symbolResult, symbolErr := symbols.AnalyzeWithCache(ctx, temp, r.Base, r.CandidateCommit, r.Changed, &snapshot, parseCache)
+	if symbolErr != nil {
+		return r, symbolErr
+	}
+	if symbolResult.Applicable {
+		r.Findings = append(r.Findings, symbolResult.Findings...)
+		r.Diagnostics = append(r.Diagnostics, symbolResult.Diagnostics...)
+		r.Checks = append(r.Checks, Check{ID: symbols.CheckID, Status: symbolResult.SupportedStatus, Evidence: symbolResult.SupportedEvidence, Explanation: symbolResult.Explanation})
+	}
+	if symbolResult.UnknownCount > 0 {
+		if !symbolResult.Applicable {
+			r.Diagnostics = append(r.Diagnostics, symbolResult.Diagnostics...)
+		}
+		r.Checks = append(r.Checks, Check{ID: "symbol_resolution", Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: "Some symbol relationships are unsupported or ambiguous; inspect diagnostics. These are excluded from the supported symbol-conflict scope."})
+	}
 	if e = analyzeImpact(&r, snapshot); e != nil {
 		return r, e
 	}
 	if o.SuggestTests || o.Suite != "" {
-		proposal, err := testselection.Recommend(ctx, temp, r.CandidateCommit, snapshot, r.Changed, o.Plan)
+		observed := loadCoverage(ctx, c.Source, temp, &r)
+		proposal, err := testselection.RecommendObserved(ctx, temp, r.CandidateCommit, snapshot, r.Changed, o.Plan, observed)
 		if err != nil {
 			return r, err
 		}
 		r.VerificationProposal = &proposal
 	}
-	executionCtx, cancelExecution := context.WithTimeout(ctx, o.Timeout)
-	defer cancelExecution()
+	executionCtx := ctx
 	if o.Verify {
+		executionCtx = o.budget.context()
 		if e = runVerification(executionCtx, temp, &r, o); e != nil {
 			return r, e
 		}
@@ -256,6 +300,16 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	records, sourceUnchanged := executionRecords(r.Executions)
 	if !sourceUnchanged {
 		invalidateExecutions(&r, o)
+	}
+	if o.ObserveCoverage && sourceUnchanged && r.Selection != nil {
+		for _, ev := range r.Executions {
+			for _, selected := range r.Selection.Commands {
+				if selected.ID == ev.SelectionID {
+					saveCoverage(ctx, temp, &r, ev, selected.TestFiles, ev.observedFiles)
+					break
+				}
+			}
+		}
 	}
 	if o.Plan != nil {
 		if e = verifyPlan(ctx, temp, &r, *o.Plan, snapshot, records, sourceUnchanged); e != nil {

@@ -14,6 +14,8 @@ type Binding struct {
 	Consumer  string   `json:"consumer"`
 	Fields    []string `json:"fields"`
 	Direction string   `json:"direction,omitempty"`
+	// Generate is argv producing Schema inside an explicitly authorized private snapshot.
+	Generate []string `json:"generate,omitempty"`
 }
 type Manifest struct {
 	Version  int          `json:"version"`
