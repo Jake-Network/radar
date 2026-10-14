@@ -198,3 +198,56 @@ func TestUVMetadataNestedExtrasAndCommentNames(t *testing.T) {
 		t.Fatalf("comment must not satisfy dependencies: %+v", r)
 	}
 }
+
+func TestGoRequireCommentsAndBlankLines(t *testing.T) {
+	before := map[string]string{"go.mod": "module app\nrequire example.com/dep v1.0.0\n", "go.sum": "example.com/dep v1.0.0 h1:x\n"}
+	after := map[string]string{"go.mod": "module app\nrequire (\n// direct dependencies\n\nexample.com/dep v1.0.0 // keep this dependency\n)\n", "go.sum": before["go.sum"]}
+	r := compareFixture(t, before, after, []string{"go.mod"})
+	if !r.Applicable || r.Status != model.StatusPassed || len(r.Findings) != 0 {
+		t.Fatalf("valid require comments must remain supported: %+v", r)
+	}
+}
+
+func TestGoReplacementChecksumObligations(t *testing.T) {
+	before := map[string]string{"go.mod": "module app\nrequire example.com/old v1.0.0\n", "go.sum": "example.com/old v1.0.0 h1:x\n"}
+	for _, c := range []struct {
+		name, replacement, sums string
+		status                  model.Status
+	}{
+		{"local", "replace example.com/added => ./local\n", "", model.StatusPassed},
+		{"local-version-specific", "replace (\n// local dependency\nexample.com/added v1.0.0 => ../local\n)\n", "", model.StatusPassed},
+		{"remote", "replace example.com/added => example.com/fork v2.0.0\n", "example.com/fork v2.0.0 h1:x\n", model.StatusPassed},
+		{"remote-missing", "replace example.com/added => example.com/fork v2.0.0\n", "example.com/added v1.0.0 h1:x\n", model.StatusFailed},
+		{"other-version", "replace example.com/added v2.0.0 => ./local\n", "", model.StatusFailed},
+		{"version-specific-precedence", "replace (\nexample.com/added => ./local\nexample.com/added v1.0.0 => example.com/fork v2.0.0\n)\n", "", model.StatusFailed},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			after := map[string]string{"go.mod": before["go.mod"] + "require example.com/added v1.0.0\n" + c.replacement, "go.sum": before["go.sum"] + c.sums}
+			r := compareFixture(t, before, after, []string{"go.mod"})
+			if !r.Applicable || r.Status != c.status {
+				t.Fatalf("replacement obligations: %+v", r)
+			}
+		})
+	}
+}
+
+func TestGoLocalReplacementAllowsRemovedSums(t *testing.T) {
+	before := map[string]string{"go.mod": "module app\nrequire example.com/dep v1.0.0\n", "go.sum": "example.com/dep v1.0.0 h1:x\n"}
+	after := map[string]string{"go.mod": before["go.mod"] + "replace example.com/dep => ./dep\n"}
+	r := compareFixture(t, before, after, []string{"go.mod", "go.sum"})
+	if r.Status != model.StatusPassed || len(r.Findings) != 0 {
+		t.Fatalf("local dependencies have no checksum obligation: %+v", r)
+	}
+}
+
+func TestGoLocalOnlyModuleNeedsNoSumFile(t *testing.T) {
+	manifest := []byte("module app\nrequire example.com/local v0.0.0\nreplace example.com/local => ./local\n")
+	deps, locked, err := dependencies(pair{manifest: "go.mod", lock: "go.sum", tool: "go"}, manifest, nil)
+	if err != nil || len(deps) != 0 || len(locked) != 0 {
+		t.Fatalf("local-only module must not require a go.sum file: deps=%v locked=%v err=%v", deps, locked, err)
+	}
+	r := compareFixture(t, map[string]string{"go.mod": "module app\n"}, map[string]string{"go.mod": string(manifest), "local/go.mod": "module example.com/local\n"}, []string{"go.mod", "local/go.mod"})
+	if r.Applicable || len(r.Findings) != 0 {
+		t.Fatalf("absent lockfile pair must not invent a checksum check: %+v", r)
+	}
+}

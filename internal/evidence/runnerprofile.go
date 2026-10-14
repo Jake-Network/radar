@@ -76,16 +76,15 @@ func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners
 			lockfiles[f] = b
 		}
 		cacheIdentity := repository
-		for _, artifact := range p.Artifacts {
-			if path.Base(artifact) == "target" {
-				tree, treeErr := gitrepo.Tree(ctx, root, head)
-				if treeErr != nil {
-					return r, treeErr
-				}
-				cacheIdentity += "\x00compiled-source-tree:" + tree
-				break
-			}
+		// Setup can install a copy of local source into any dependency artifact,
+		// including non-editable Python packages and local Node dependencies.
+		// Without proof that an artifact contains dependencies alone, reuse must
+		// stay bound to the exact candidate source tree.
+		tree, treeErr := gitrepo.Tree(ctx, root, head)
+		if treeErr != nil {
+			return r, treeErr
 		}
+		cacheIdentity += "\x00candidate-source-tree:" + tree
 		r.CacheKey, err = runners.CacheKey(p, cacheIdentity, lockfiles)
 		if err != nil {
 			return r, err

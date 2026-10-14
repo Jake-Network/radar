@@ -145,6 +145,42 @@ func TestCompiledTargetCacheBindsSourceTree(t *testing.T) {
 	}
 }
 
+func TestInstalledProjectCacheBindsSourceTree(t *testing.T) {
+	needPython(t)
+	for _, artifact := range []string{".venv", "node_modules"} {
+		t.Run(artifact, func(t *testing.T) {
+			root := t.TempDir()
+			os.WriteFile(filepath.Join(root, "uv.lock"), []byte("same lock"), 0600)
+			os.WriteFile(filepath.Join(root, "app.py"), []byte("VALUE=1\n"), 0600)
+			os.Mkdir(filepath.Join(root, "tests"), 0700)
+			os.WriteFile(filepath.Join(root, "tests", "test_installed.py"), []byte("import unittest,installed_app\nclass Installed(unittest.TestCase):\n def test_value(self): self.assertEqual(installed_app.VALUE,1)\n"), 0600)
+			commitRunnerFixture(t, root)
+			// Copying a local module into a dependency artifact models a
+			// non-editable package installation without downloading dependencies.
+			setup := `import os,shutil; os.mkdir('` + artifact + `'); shutil.copy('app.py','` + artifact + `/installed_app.py')`
+			p := runners.Profile{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", setup}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{artifact}}
+			cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 1 << 20}
+			first, err := PrepareRunner(context.Background(), root, "repo", p, cache, time.Minute)
+			if err != nil || first.CacheWarning != "" || first.Status != model.StatusPassed {
+				t.Fatal(first, err)
+			}
+			os.RemoveAll(filepath.Join(root, artifact))
+			os.WriteFile(filepath.Join(root, "app.py"), []byte("VALUE=2\n"), 0600)
+			commitRunnerFixture(t, root)
+			second, err := PrepareRunner(context.Background(), root, "repo", p, cache, time.Minute)
+			if err != nil || second.CacheHit || second.CacheKey == first.CacheKey || second.SetupCommands != 1 {
+				t.Fatal("installed project reused across source trees", first, second, err)
+			}
+			// Run from the artifact so its installed copy is imported. The
+			// previous candidate passes this assertion; the new source must fail.
+			observation, err := ObserveCandidateAt(context.Background(), root, artifact, []string{"python3", "-m", "unittest", "discover", "-s", "../tests"}, time.Minute)
+			if err != nil || observation.Status != model.StatusFailed || observation.TestsRun != 1 || observation.TestsFailed != 1 {
+				t.Fatal("verification did not observe the new installed source", observation, err)
+			}
+		})
+	}
+}
+
 func TestExplicitProfileSetupCanInstallWithoutInheritingSecrets(t *testing.T) {
 	needPython(t)
 	for _, name := range []string{"RADAR_SETUP_SECRET", "NPM_TOKEN", "PYTHONPATH", "PYTHONSTARTUP", "NODE_OPTIONS", "GIT_SSH_COMMAND", "PIP_NO_INDEX", "CARGO_NET_OFFLINE", "npm_config_offline", "GOPROXY", "GOSUMDB"} {

@@ -285,3 +285,65 @@ func TestProtoNumericBoundariesRemainSupported(t *testing.T) {
 		}
 	}
 }
+
+func TestIDLReferencedProtocolChangesReachConsumers(t *testing.T) {
+	cases := []struct{ name, path, before, after, pointer, field, kind string }{
+		{"renumber", "x.proto", `message X { string name = 1; } message Y { X value = 1; }`, `message X { string name = 2; } message Y { X value = 1; }`, "/properties/Y", "value.name", "protobuf_number_changed"},
+		{"wire type", "x.proto", `message X { string name = 1; } message Y { X value = 1; }`, `message X { int32 name = 1; } message Y { X value = 1; }`, "/properties/Y", "value.name", "protobuf_type_changed"},
+		{"same normalized type", "x.proto", `message X { int32 name = 1; } message Y { X value = 1; }`, `message X { sint32 name = 1; } message Y { X value = 1; }`, "/properties/Y", "value.name", "protobuf_type_changed"},
+		{"output nullability", "x.graphql", `type Item { name: String! } type Query { item: Item }`, `type Item { name: String } type Query { item: Item }`, "/properties/Query", "item.name", "graphql_output_weakened"},
+		{"required argument", "x.graphql", `type Item { name: String } type Query { item: Item }`, `type Item { name(id: ID!): String } type Query { item: Item }`, "/properties/Query", "item.name", "graphql_argument_required"},
+		{"repeated named type", "x.proto", `message X { string name = 1; } message Y { repeated X value = 1; }`, `message X { string name = 2; } message Y { repeated X value = 1; }`, "/properties/Y", "value[].name", "protobuf_number_changed"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, e := DecodeDocumentAt(c.path, []byte(c.before))
+			if e != nil {
+				t.Fatal(e)
+			}
+			b, e := DecodeDocumentAt(c.path, []byte(c.after))
+			if e != nil {
+				t.Fatal(e)
+			}
+			changes, e := Compare(a, b, c.pointer)
+			if e != nil {
+				t.Fatal(e)
+			}
+			found := false
+			for _, change := range changes {
+				found = found || change.Kind == c.kind && change.Field == c.field
+			}
+			if !found {
+				t.Fatalf("missing referenced protocol change: %+v", changes)
+			}
+			r := CheckLink(LinkInput{ID: "nested", ProducerBase: a, ProducerCandidate: b, Pointer: c.pointer, ConsumerBase: []string{c.field}, ConsumerCandidate: []string{c.field}, ConsumerBaseState: "present", ConsumerCandidateState: "present"})
+			if string(r.Status) != "failed" {
+				t.Fatalf("breaking referenced contract: %+v", r)
+			}
+		})
+	}
+}
+
+func TestIDLReferencedCompatibleChange(t *testing.T) {
+	a, e := DecodeDocumentAt("x.graphql", []byte(`type Item { name: String } type Query { item: Item }`))
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, e := DecodeDocumentAt("x.graphql", []byte(`type Item { name: String! } type Query { item: Item }`))
+	if e != nil {
+		t.Fatal(e)
+	}
+	changes, e := Compare(a, b, "/properties/Query")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range changes {
+		if classify(c, "") != "compatible" {
+			t.Fatalf("compatible nested change: %+v", changes)
+		}
+	}
+	r := CheckLink(LinkInput{ID: "nested", ProducerBase: a, ProducerCandidate: b, Pointer: "/properties/Query", ConsumerBase: []string{"item.name"}, ConsumerCandidate: []string{"item.name"}, ConsumerBaseState: "present", ConsumerCandidateState: "present"})
+	if string(r.Status) != "passed" {
+		t.Fatalf("compatible referenced contract: %+v", r)
+	}
+}

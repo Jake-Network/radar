@@ -103,8 +103,24 @@ func goCalls(content []byte, file string, targets map[string][]string, packages 
 		if !ok {
 			return true
 		}
+		unknown := ""
+		if len(c.Args) == 1 {
+			argument := c.Args[0]
+			for {
+				paren, ok := argument.(*ast.ParenExpr)
+				if !ok {
+					break
+				}
+				argument = paren.X
+			}
+			if _, ok := argument.(*ast.CallExpr); ok {
+				// A sole call argument may expand multiple return values. Syntax
+				// alone cannot establish its argument count.
+				unknown = "Go call argument return count requires type resolution"
+			}
+		}
 		for _, target := range binding.targets {
-			calls = append(calls, Call{Reference: Reference{file, binding.module, target, sel.Sel.Name, positions.Position(c.Pos()).Line}, Arguments: len(c.Args)})
+			calls = append(calls, Call{Reference: Reference{file, binding.module, target, sel.Sel.Name, positions.Position(c.Pos()).Line}, Arguments: len(c.Args), Unknown: unknown})
 		}
 		return true
 	})

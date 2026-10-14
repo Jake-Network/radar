@@ -358,8 +358,8 @@ operations block the gate. Reviewed plan setup also consumes this budget. A
 source-changing setup cannot publish reusable artifacts. Setup and cache hits
 never count as passing tests.
 
-Dependency cache entries bind repository, profile, platform and lockfile bytes;
-compiled `target` artifacts additionally bind the source tree. Supported artifacts
+Dependency cache entries bind repository, profile, platform, lockfile bytes and
+the candidate source tree, including local code installed by setup. Supported artifacts
 are `.venv`, `node_modules`, `target`. The default cache limit is 512 MiB, with LRU
 eviction and a configurable maximum of 10 GiB. Unsafe symlinks, sensitive files
 and over-budget artifacts are rejected. Virtualenv console/editable paths are

@@ -76,3 +76,11 @@ func TestSpringLiteralRequestMapping(t *testing.T) {
 		t.Fatalf("%+v %+v %v", rs, ds, e)
 	}
 }
+
+func TestIndependentAxumRouterConstructions(t *testing.T) {
+	source := "use axum::{Router,routing::get};\nfn public_app(){\nlet app = Router::new().route(\"/health\",get(public_health));\n}\nfn admin_app(){\nlet app = Router::new().route(\"/health\",get(admin_health));\n}"
+	rs, ds, e := Routes(context.Background(), map[string]string{"app.rs": source}, "tree")
+	if e != nil || len(rs) != 2 || len(ds) != 0 || rs[0].Scope == rs[1].Scope {
+		t.Fatalf("independent routers: %+v %+v %v", rs, ds, e)
+	}
+}

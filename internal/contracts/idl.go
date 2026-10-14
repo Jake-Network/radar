@@ -535,6 +535,8 @@ func compareIDL(before, after map[string]any, pointer string) ([]Change, error) 
 	}
 	var out []Change
 	walkIDL(a, b, "", string(before[idlFormat].(idlKind)), &out)
+	scope := strings.ReplaceAll(strings.TrimPrefix(pointer, "/properties/"), "/properties/", ".")
+	walkIDLReferences(before, after, a, b, "", scope, scope, map[string]bool{}, &out)
 	// Local named references carry nested fields and enum obligations into
 	// the consumer's selected schema, rather than treating names as scalars.
 	normalizedBefore, err := Analyzable(before, pointer)
@@ -588,6 +590,91 @@ func compareIDL(before, after map[string]any, pointer string) ([]Change, error) 
 		return a.Explanation < b.Explanation
 	})
 	return out, nil
+}
+
+// Follow local named types with their protocol metadata intact. The JSON Schema
+// normalizer expands their shape, but cannot preserve field numbers, wire types,
+// GraphQL arguments or the direction of nullability changes.
+func walkIDLReferences(before, after, a, b map[string]any, field, beforeScope, afterScope string, active map[string]bool, out *[]Change) {
+	format := string(before[idlFormat].(idlKind))
+	ap, _ := a["properties"].(map[string]any)
+	bp, _ := b["properties"].(map[string]any)
+	for name, raw := range ap {
+		av := raw.(map[string]any)
+		bv, ok := bp[name].(map[string]any)
+		if !ok {
+			continue
+		}
+		f := child(field, name)
+		if av["x-radar-idl-kind"] != nil && bv["x-radar-idl-kind"] != nil {
+			walkIDLReferences(before, after, av, bv, f, child(beforeScope, name), child(afterScope, name), active, out)
+			continue
+		}
+		key := "x-radar-wire-type"
+		if format == "graphql" {
+			key = "x-radar-graphql-type"
+		}
+		at, _ := av[key].(string)
+		bt, _ := bv[key].(string)
+		ad, as := localIDLDeclaration(before, at, beforeScope)
+		bd, bs := localIDLDeclaration(after, bt, afterScope)
+		if ad == nil || bd == nil {
+			continue
+		}
+		pair := as + "\x00" + bs
+		if active[pair] || len(active) >= maxDepth {
+			continue
+		}
+		if av["x-radar-cardinality"] == "repeated" {
+			f += "[]"
+		}
+		if format == "graphql" {
+			f += strings.Repeat("[]", strings.Count(at, "["))
+		}
+		active[pair] = true
+		walkIDL(ad, bd, f, format, out)
+		walkIDLReferences(before, after, ad, bd, f, as, bs, active, out)
+		delete(active, pair)
+	}
+}
+
+func localIDLDeclaration(doc map[string]any, typ, scope string) (map[string]any, string) {
+	lookup := func(name string) map[string]any {
+		cur := doc
+		for _, part := range strings.Split(name, ".") {
+			p, _ := cur["properties"].(map[string]any)
+			v, ok := p[part].(map[string]any)
+			if !ok {
+				return nil
+			}
+			cur = v
+		}
+		if cur["x-radar-idl-kind"] == nil {
+			return nil
+		}
+		return cur
+	}
+	if doc[idlFormat] == idlKind("graphql") {
+		typ = strings.Trim(typ, "[]!")
+		return lookup(typ), typ
+	}
+	pkg, _ := doc["x-radar-package"].(string)
+	if pkg != "" && strings.HasPrefix(typ, pkg+".") {
+		typ = strings.TrimPrefix(typ, pkg+".")
+		return lookup(typ), typ
+	}
+	for scope != "" {
+		name := child(scope, typ)
+		if d := lookup(name); d != nil {
+			return d, name
+		}
+		i := strings.LastIndex(scope, ".")
+		if i < 0 {
+			break
+		}
+		scope = scope[:i]
+	}
+	return lookup(typ), typ
 }
 func walkIDL(a, b map[string]any, field, format string, out *[]Change) {
 	add := func(kind, f, why string) { *out = append(*out, Change{Kind: kind, Field: f, Explanation: why}) }

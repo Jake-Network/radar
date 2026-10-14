@@ -235,7 +235,7 @@ func names(m map[string]any, sections ...string) (map[string]bool, error) {
 }
 func dependencies(p pair, manifest, lock []byte, workspace ...[]byte) (map[string]bool, map[string]bool, error) {
 	deps, locked := map[string]bool{}, map[string]bool{}
-	if len(lock) == 0 {
+	if len(lock) == 0 && p.tool != "go" {
 		return nil, nil, fmt.Errorf("committed lockfile is missing or empty")
 	}
 	switch p.tool {
@@ -301,9 +301,16 @@ func dependencies(p pair, manifest, lock []byte, workspace ...[]byte) (map[strin
 			}
 		}
 	case "go":
+		replacements, e := goReplacements(string(manifest))
+		if e != nil {
+			return nil, nil, e
+		}
 		require := false
 		for _, line := range strings.Split(string(manifest), "\n") {
 			line = strings.TrimSpace(strings.SplitN(line, "//", 2)[0])
+			if line == "" {
+				continue
+			}
 			if line == "require (" {
 				require = true
 				continue
@@ -321,7 +328,19 @@ func dependencies(p pair, manifest, lock []byte, workspace ...[]byte) (map[strin
 			if len(fields) != 2 {
 				return nil, nil, fmt.Errorf("nonliteral go require")
 			}
-			deps[fields[0]+"@"+fields[1]] = true
+			name, version := fields[0], fields[1]
+			replacement, replaced := replacements[name+"@"+version]
+			if !replaced {
+				replacement, replaced = replacements[name]
+			}
+			if replaced {
+				if replacement == "" { // Local replacements have no module checksums.
+					continue
+				}
+				deps[replacement] = true
+			} else {
+				deps[name+"@"+version] = true
+			}
 		}
 		for _, line := range strings.Split(string(lock), "\n") {
 			f := strings.Fields(line)
@@ -411,6 +430,68 @@ func dependencies(p pair, manifest, lock []byte, workspace ...[]byte) (map[strin
 
 	}
 	return deps, locked, nil
+}
+
+// goReplacements reads literal replace directives without resolving modules.
+// A blank target denotes a local directory; remote targets retain their exact
+// module/version checksum obligation. Version-specific replacements take
+// precedence over replacements applying to every version of a module.
+func goReplacements(source string) (map[string]string, error) {
+	out := map[string]string{}
+	block := false
+	for _, line := range strings.Split(source, "\n") {
+		line = strings.TrimSpace(strings.SplitN(line, "//", 2)[0])
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if !block {
+			if fields[0] != "replace" {
+				continue
+			}
+			fields = fields[1:]
+			if len(fields) == 1 && fields[0] == "(" {
+				block = true
+				continue
+			}
+		} else if line == ")" {
+			block = false
+			continue
+		}
+		arrow := -1
+		for i, field := range fields {
+			if field == "=>" {
+				arrow = i
+			}
+		}
+		if arrow < 1 || arrow > 2 || len(fields)-arrow < 2 || len(fields)-arrow > 3 {
+			return nil, fmt.Errorf("nonliteral Go replacement")
+		}
+		unquote := func(value string) string {
+			if decoded, err := strconv.Unquote(value); err == nil {
+				return decoded
+			}
+			return value
+		}
+		key := unquote(fields[0])
+		if arrow == 2 {
+			key += "@" + unquote(fields[1])
+		}
+		target := ""
+		if len(fields)-arrow == 3 {
+			target = unquote(fields[arrow+1]) + "@" + unquote(fields[arrow+2])
+		} else {
+			local := unquote(fields[arrow+1])
+			if !strings.HasPrefix(local, "./") && !strings.HasPrefix(local, "../") && !path.IsAbs(local) && !strings.Contains(local, "\\") {
+				return nil, fmt.Errorf("Go replacement without a version must be a local path")
+			}
+		}
+		out[key] = target
+	}
+	if block {
+		return nil, fmt.Errorf("unterminated Go replacement block")
+	}
+	return out, nil
 }
 
 var packageName = regexp.MustCompile(`package\s*=\s*["']([^"']+)["']`)

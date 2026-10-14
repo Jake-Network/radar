@@ -173,3 +173,24 @@ func TestObservedDuplicateFailureWinsOverRuleBudgetExhaustion(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestIndependentAxumApplicationsDoNotConflict(t *testing.T) {
+	before := map[string]string{"app.rs": "use axum::{Router,routing::get};\nfn public_app(){\nlet app = Router::new().route(\"/health\",get(public_health));\n}\n"}
+	after := map[string]string{"app.rs": before["app.rs"] + "fn admin_app(){\nlet app = Router::new().route(\"/health\",get(admin_health));\n}\n"}
+	r := evaluateFixture(t, before, after, []string{"app.rs"})
+	if r.Status != model.StatusPassed || len(r.Findings) != 0 {
+		t.Fatalf("independent routers: %+v", r)
+	}
+}
+
+func TestEarlierIndependentAxumApplicationPreservesBaseDuplicate(t *testing.T) {
+	imports := "use axum::{Router,routing::get};\n"
+	public := "fn public_app() -> Router {\nlet app = Router::new().route(\"/health\",get(public_health)).route(\"/health\",get(other_health));\napp\n}\n"
+	admin := "fn admin_app() -> Router {\nlet app = Router::new().route(\"/health\",get(admin_health));\napp\n}\n"
+	before := map[string]string{"app.rs": imports + public}
+	after := map[string]string{"app.rs": imports + admin + public}
+	r := evaluateFixture(t, before, after, []string{"app.rs"})
+	if r.Status != model.StatusPassed || len(r.Findings) != 1 || r.Findings[0].Code != "duplicate_route_on_base" {
+		t.Fatalf("existing duplicate must remain on base: %+v", r)
+	}
+}

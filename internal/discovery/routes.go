@@ -299,11 +299,15 @@ func axumRoutes(file, source, revision string) ([]Route, []model.Diagnostic) {
 	if strings.Contains(source, ".nest(") || strings.Contains(source, ".merge(") {
 		return nil, []model.Diagnostic{{Path: file, Message: "Axum nested/merged Router composition remains unresolved.", Severity: model.SeverityWarning}}
 	}
+	constructions := map[string]int{}
 	for _, b := range builders {
 		if strings.TrimSpace(mask[b[2]:b[3]]) == "" {
 			continue
 		}
 		name := source[b[2]:b[3]]
+		owner := name + "@" + routeScope(mask, b[2])
+		ordinal := constructions[owner]
+		constructions[owner]++
 		body := source[b[4]:b[5]]
 		matches := axumRoute.FindAllStringSubmatchIndex(body, -1)
 		if strings.Count(body, ".route(") != len(matches) {
@@ -313,7 +317,10 @@ func axumRoutes(file, source, revision string) ([]Route, []model.Diagnostic) {
 			if mask[b[4]+m[0]] != '.' {
 				continue
 			}
-			out = append(out, Route{file + "#" + name, strings.ToUpper(body[m[4]:m[5]]), body[m[2]:m[3]], provenance(revision, file, "axum-literal-route", lineAt(source, b[4]+m[0]))})
+			// Scope separates same-named locals in independent functions. A
+			// local ordinal also distinguishes separate constructions there.
+			scope := fmt.Sprintf("%s#%s@%d", file, owner, ordinal)
+			out = append(out, Route{scope, strings.ToUpper(body[m[4]:m[5]]), body[m[2]:m[3]], provenance(revision, file, "axum-literal-route", lineAt(source, b[4]+m[0]))})
 		}
 	}
 	if len(builders) == 0 && strings.Contains(source, ".route(") {
@@ -406,7 +413,7 @@ func routeCodeMask(s string) string {
 	return string(b)
 }
 
-var routeFunction = regexp.MustCompile(`(?s)(?:function|func)\s+(\w+)\s*\([^{};]*\)\s*$`)
+var routeFunction = regexp.MustCompile(`(?s)(?:function|func|fn)\s+(\w+)\s*\([^{};]*\)\s*(?:->\s*[^{};]+)?$`)
 
 func routeScope(mask string, end int) string {
 	stack := []string{}

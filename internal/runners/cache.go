@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -261,11 +262,7 @@ func copyArtifact(ctx context.Context, src, dst, relocate, sourceRoot string, to
 			internal := err == nil && inside != ".." && !strings.HasPrefix(inside, ".."+string(filepath.Separator))
 			// Virtual environments commonly point their interpreter at a system
 			// binary. Preserve that link only for the current-platform executable.
-			interpreter := strings.HasPrefix(filepath.Base(p), "python") && (strings.HasPrefix(resolved, "/usr/bin/python") || strings.HasPrefix(resolved, "/usr/local/bin/python"))
-			if interpreter {
-				st, e := os.Stat(resolved)
-				interpreter = e == nil && st.Mode().IsRegular() && st.Mode()&0111 != 0
-			}
+			interpreter := filepath.Base(src) == ".venv" && filepath.Dir(rel) == "bin" && strings.HasPrefix(filepath.Base(p), "python") && currentPythonInterpreter(resolved)
 			if !internal && !interpreter {
 				return fmt.Errorf("dependency symlink escapes artifact")
 			}
@@ -354,4 +351,25 @@ func copyArtifact(ctx context.Context, src, dst, relocate, sourceRoot string, to
 		}
 		return closeErr
 	})
+}
+
+// The executable selected by the current PATH may live in a hosted toolcache,
+// pyenv installation or system directory. Match file identity rather than
+// trusting a directory prefix or a Python-shaped filename.
+func currentPythonInterpreter(filename string) bool {
+	info, err := os.Stat(filename)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+		return false
+	}
+	for _, name := range []string{"python", "python3"} {
+		selected, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		selectedInfo, err := os.Stat(selected)
+		if err == nil && os.SameFile(info, selectedInfo) {
+			return true
+		}
+	}
+	return false
 }

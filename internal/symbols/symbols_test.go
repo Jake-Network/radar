@@ -182,3 +182,33 @@ func TestDefaultsAndOverloadsHaveNoArityVerdict(t *testing.T) {
 		}
 	}
 }
+
+func TestGoSoleCallArgumentRetainsUnknownReturnCount(t *testing.T) {
+	before := []byte("package lib\nfunc Foo(x int) {}\nfunc Pair() int { return 1 }\n")
+	after := []byte("package lib\nfunc Foo(x,y int) {}\nfunc Pair() (int,int) { return 1,2 }\n")
+	oldSignatures, _ := goCalls(before, "lib/f.go", nil, nil)
+	newSignatures, _ := goCalls(after, "lib/f.go", nil, nil)
+	base := Tree{Snapshot: parsed(t, map[string]string{"lib/f.go": string(before)}), Signatures: oldSignatures}
+	for _, c := range []struct {
+		argument string
+		fails    bool
+	}{
+		{"lib.Pair()", false},
+		{"(lib.Pair())", false},
+		{"1", true},
+	} {
+		t.Run(c.argument, func(t *testing.T) {
+			source := "package main\nimport \"example/lib\"\nfunc main() { lib.Foo(" + c.argument + ") }\n"
+			_, calls := goCalls([]byte(source), "main.go", map[string][]string{"main.go:2": {"lib/f.go"}}, nil)
+			candidate := Tree{Snapshot: parsed(t, map[string]string{"lib/f.go": string(after), "main.go": source}), Signatures: newSignatures, Calls: calls}
+			r := Evaluate(base, candidate, []string{"lib/f.go", "main.go"})
+			if c.fails {
+				if r.SupportedStatus != model.StatusFailed || len(r.Findings) != 1 {
+					t.Fatalf("literal mismatch must still fail: %+v", r)
+				}
+			} else if r.Status != model.StatusUnknown || r.UnknownCount != 1 || len(r.Findings) != 0 || r.SupportedStatus != model.StatusPassed {
+				t.Fatalf("unresolved return count must stay separate from supported conflicts: %+v", r)
+			}
+		})
+	}
+}
