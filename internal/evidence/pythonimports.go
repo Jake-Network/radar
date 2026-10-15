@@ -82,7 +82,8 @@ func pythonImportDiagnosis(name string, outside bool) *Diagnosis {
 }
 
 // Discover conventional flat and src layouts at every pyproject boundary,
-// including uv workspace members. Namespace packages under src are included.
+// including uv workspace members. Conventional flat and src namespace packages
+// are included; tooling directories and nested project containers are not packages.
 func firstPartyPython(root string) ([]string, error) {
 	names := map[string]bool{}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -119,7 +120,7 @@ func firstPartyPython(root string) ([]string, error) {
 						return initErr
 					}
 					isPackage := initErr == nil
-					if !isPackage && layout != project {
+					if !isPackage && (layout != project || flatNamespaceDirectory(name)) {
 						var err error
 						isPackage, err = containsPython(filepath.Join(layout, name))
 						if err != nil {
@@ -146,11 +147,36 @@ func firstPartyPython(root string) ([]string, error) {
 	sort.Strings(result)
 	return result, err
 }
+
+// These conventional flat-layout directories contain tooling rather than package
+// roots. An explicit __init__.py still identifies a regular package above.
+func flatNamespaceDirectory(name string) bool {
+	switch name {
+	case "src", "test", "tests", "doc", "docs", "script", "scripts", "build", "dist", "venv", "node_modules", "__pycache__":
+		return false
+	}
+	return true
+}
+
 func containsPython(root string) (bool, error) {
 	found := false
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
+		}
+		if d.IsDir() {
+			// A nested pyproject is inspected independently. Its ancestors (for
+			// example uv workspace apps/ and libs/) are not importable package roots.
+			_, projectErr := os.Stat(filepath.Join(p, "pyproject.toml"))
+			if projectErr == nil {
+				return filepath.SkipDir
+			}
+			if !os.IsNotExist(projectErr) {
+				return projectErr
+			}
+			if p != root && !flatNamespaceDirectory(d.Name()) {
+				return filepath.SkipDir
+			}
 		}
 		if !d.IsDir() && strings.HasSuffix(d.Name(), ".py") {
 			found = true

@@ -100,3 +100,57 @@ func TestPythonImportProbeRejectsExternalNamespacePortions(t *testing.T) {
 		t.Fatalf("namespace escaped check: %+v", diagnosis)
 	}
 }
+
+func TestPythonImportProbeFlatNamespaces(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 unavailable")
+	}
+	root, external := t.TempDir(), t.TempDir()
+	write := func(base, path, data string) {
+		t.Helper()
+		name := filepath.Join(base, path)
+		if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(root, "pyproject.toml", "[project]\nname='flat'\n")
+	write(root, "app/module.py", "VALUE = 'candidate'\n")
+	write(external, "app/module.py", "VALUE = 'external'\n")
+	// Tooling and workspace containers must not introduce namespace probes.
+	for _, directory := range []string{"tests", "docs", "scripts", "build"} {
+		write(root, directory+"/helper.py", "")
+	}
+	write(root, "apps/member/pyproject.toml", "[project]\nname='member'\n")
+	write(root, "apps/member/member/__init__.py", "")
+	names, err := firstPartyPython(root)
+	if err != nil || strings.Join(names, ",") != "app,member" {
+		t.Fatalf("flat namespace discovery: %v %v", names, err)
+	}
+	write(root, "test_flat.py", "import unittest\nfrom app.module import VALUE\nclass Flat(unittest.TestCase):\n def test_candidate(self): self.assertEqual(VALUE, 'candidate')\n")
+	argv := []string{"python3", "-m", "unittest", "test_flat"}
+	got, err := ObserveCandidate(context.Background(), root, argv, time.Minute)
+	if err != nil || got.Status != model.StatusPassed || got.TestsRun != 1 {
+		t.Fatalf("candidate-local flat namespace: %+v %v", got, err)
+	}
+	// An external editable namespace can add search locations even when the
+	// candidate contributes its own namespace portion.
+	venv := t.TempDir()
+	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", venv).CombinedOutput(); err != nil {
+		t.Fatalf("venv: %s %v", out, err)
+	}
+	site, err := exec.Command(filepath.Join(venv, "bin/python"), "-c", "import site; print(site.getsitepackages()[0])").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(strings.TrimSpace(string(site)), "editable.pth"), []byte(external+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	got, err = ObserveCandidate(context.Background(), root, argv, time.Minute)
+	if err != nil || got.Status != model.StatusError || got.TestsRun != 0 || got.Diagnosis == nil || got.Diagnosis.Name != "app" || !got.Diagnosis.Environment() {
+		t.Fatalf("external editable flat namespace accepted: %+v %v", got, err)
+	}
+}
