@@ -26,8 +26,11 @@ var (
 // cTestFile recognizes C/C++ test sources by directory or file name and a
 // framework macro or a main function outside comments.
 func cTestFile(file, content string) bool {
+	if !cTestPath(file) {
+		return false
+	}
 	text := withoutComments(content)
-	return cTestPath(file) && (cppTestMarker.MatchString(text) || cMain.MatchString(text))
+	return cppTestMarker.MatchString(text) || cMain.MatchString(text)
 }
 
 func cTestPath(file string) bool {
