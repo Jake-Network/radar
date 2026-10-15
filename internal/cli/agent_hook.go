@@ -16,6 +16,7 @@ import (
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/overlap"
 	"github.com/Jake-Network/radar/internal/project"
 )
 
@@ -125,27 +126,61 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 		}
 	}
 	o := options{base: base, args: refs, includeDirty: true}
-	state, err := b.observeWatch(ctx, o)
+	state, err := b.observeHook(ctx, o)
 	if err != nil {
 		return unavailable(err.Error())
 	}
 	in := state.Value.(watchInput)
 	cacheKey := hookCacheKey(ctx, root, state.Key)
 	if cached, ok := loadHookCache(root, cacheKey); ok {
-		latest, err := b.observeWatch(ctx, o)
+		latest, err := b.observeHook(ctx, o)
 		if err == nil && latest.Key == state.Key && ctx.Err() == nil {
 			cached.Message = strings.TrimSpace(cached.Message + " Radar reused the unchanged static preview cache; tests were not run.")
 			return respond(cached)
 		}
 		return unavailable("inputs changed while reading cached preview")
 	}
+	parseCache, saveParseCache := savedSyntaxCache(root)
+	defer saveParseCache()
+	drift, err := overlap.Analyze(ctx, root, in.Base, in.OverlapInputs, parseCache)
+	if err != nil {
+		return unavailable("cross-worktree inspection: " + err.Error())
+	}
+	current, err := gitrepo.InspectWorktree(ctx, root)
+	if err != nil {
+		return unavailable(err.Error())
+	}
+	newDrift, err := overlap.NewWithDirty(ctx, root, in.Base, current.Branch, in.OverlapInputs, drift, parseCache)
+	if err != nil {
+		return unavailable("dirty drift comparison: " + err.Error())
+	}
 	finish := func(r agentHookResponse) int {
-		latest, err := b.observeWatch(ctx, o)
+		latest, err := b.observeHook(ctx, o)
 		if err != nil || latest.Key != state.Key {
 			return unavailable("inputs changed during analysis; rerun after saving changes")
 		}
 		if ctx.Err() != nil {
 			return unavailable("static analysis deadline exceeded")
+		}
+		if len(newDrift) > 0 {
+			lines := []string{"Radar found cross-worktree drift introduced by your saved changes. Reconcile these changes before completing; static inference only."}
+			for _, f := range newDrift {
+				lines = append(lines, f.Code+": "+f.Explanation+" ["+strings.Join(f.Branches, ", ")+"]")
+				for _, p := range f.Locations {
+					lines = append(lines, fmt.Sprintf("%s:%d", p.Path, p.Line))
+				}
+			}
+			r.Decision = "block"
+			r.Reason = hookText(strings.Join(lines, "\n"))
+		} else if len(drift.Findings) > 0 {
+			lines := []string{r.Message, "Radar peer worktree drift (informational; your saved changes did not introduce it):"}
+			for _, f := range drift.Findings {
+				lines = append(lines, f.Code+": "+f.Explanation+" ["+strings.Join(f.Branches, ", ")+"]")
+				for _, p := range f.Locations {
+					lines = append(lines, fmt.Sprintf("%s:%d", p.Path, p.Line))
+				}
+			}
+			r.Message = hookText(strings.Join(lines, "\n"))
 		}
 		saveHookCache(root, cacheKey, r)
 		return respond(r)
@@ -162,7 +197,7 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	if err != nil {
 		return unavailable(err.Error())
 	}
-	report, err := integration.Analyze(ctx, candidate, integration.Options{Base: in.Base, Branches: in.SHAs, Policy: in.config.Policy})
+	report, err := integration.Analyze(ctx, candidate, integration.Options{Base: in.Base, Branches: in.SHAs, Policy: in.config.Policy, ParseCache: parseCache})
 	if err != nil {
 		return unavailable(err.Error())
 	}

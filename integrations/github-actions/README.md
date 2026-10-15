@@ -147,3 +147,37 @@ may not read or fetch private refs; these failures remain errors.
 Local tests: `RADAR_TEST_BIN=/tmp/radar python3 integrations/github-actions/test_pr_matrix.py`
 and `python3 integrations/github-actions/test_publish_matrix.py`.
 Hosted GitHub execution and comment publication require separate verification.
+
+### Optional PR check runs
+
+Copy `publish_checks.py`, `publish_matrix.py` and `report.py` alongside the
+reviewed base helpers. Enable `RADAR_PUBLISH_CHECKS=true` in repository variables
+and grant `checks: write` in the copied workflow. Remove that permission when
+check publication is disabled. Comment publication remains a separate opt-in.
+No GitHub write is made by the default-disabled publisher.
+
+The check title includes the verdict; its summary separates checked requirements
+from missing evidence, selected execution and limitations. Findings with valid
+repository-relative paths and positive lines become annotations (at most 50).
+Blocked results produce a **neutral** check; analysis errors require action.
+Only `success` represents a passing selected gate. A required-check policy should
+require the check name `Radar integration gate`, and consumers must still inspect
+its conclusion and scope; neutral does not establish verification.
+
+Before posting, the publisher re-reads each PR and requires its head and base to
+match the artifact's pinned commits. Closed, changed and fork heads are rejected.
+Matrix checks are posted on the two evaluated chain-tip heads; ancestor stack
+members receive no check evidence from a different candidate. These checks
+they have pair-specific names and supplement the stable single-PR gate check.
+Checks include static limitations even when passing. Cross-repository workspace
+summaries preserve declared-link status separately from per-repository execution;
+they do not establish runtime interoperability. Artifacts and JSON remain the
+complete evidence; check annotations are only a bounded summary.
+
+A workspace check gets a success conclusion only when its nonempty repository
+scope has matching pinned bases, selected commits and candidate identities,
+each repository's policy requirements passed, and declared cross-repository
+links were checked successfully. Restricted, missing, excluded or malformed
+scope and incomplete pair coverage withhold success. A legitimate per-repository
+workspace `pass` with no declared cross-repository links remains visible in the
+summary but receives `action_required` from this integration publisher.

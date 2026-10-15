@@ -17,6 +17,8 @@ def cell(value):
 
 
 def render(report):
+    if "repos" in report and "cross_repo" in report:
+        return render_workspace(report)
     gate = report.get("gate", {})
     verdict = gate.get("verdict", "error")
     annotations = []
@@ -60,6 +62,42 @@ def render(report):
     rows += ["", "Next: repair failures or prepare missing runners, then rerun the same selected candidate and policy. Review discovered bindings before accepting them.", "", "Full JSON is available as the workflow artifact."]
     if verdict != "pass" and not annotations:
         annotations.append("::error title=Radar gate::Required gate " + escape(verdict) + "; see job summary and JSON for missing evidence.")
+    return "\n".join(annotations), "\n".join(rows) + "\n"
+
+
+def render_workspace(report):
+    """Preserve static link scope separately from per-repository execution."""
+    verdict = report.get("verdict", "error")
+    rows = ["## Radar workspace gate: " + cell(verdict), "", cell(report.get("scope_summary", "Scope unavailable.")),
+            "", "Cross-repository evidence covers declared supported static links only; runtime interoperability remains unverified."]
+    annotations = []
+    for repo in report.get("repos", [])[:32]:
+        rows += ["", "### Repository: " + cell(repo.get("id", repo.get("name", "unknown")))]
+        nested = repo.get("report")
+        if isinstance(nested, dict):
+            _, summary = render(nested)
+            rows.append(summary)
+        else:
+            rows.append(cell(repo.get("verdict", repo.get("status", "unknown"))))
+    cross = report.get("cross_repo") or {}
+    rows += ["", "### Declared cross-repository links", "", "Status: " + cell(cross.get("status", "unknown"))]
+    rows.append(cell(cross.get("reason", "")))
+    for link in report.get("links", [])[:32]:
+        rows.append("- " + cell(link.get("id", "link")) + ": " + cell(link.get("status", "unknown")))
+        for link_cell in link.get("cells", [])[:4]:
+            rows.append("  - " + cell(link_cell.get("producer", "")) + " / " + cell(link_cell.get("consumer", "")) + ": " + cell(link_cell.get("status", "unknown")))
+            for finding in link_cell.get("findings", [])[:8]:
+                rows.append("    - " + cell(finding.get("code", "finding")) + ": " + cell(finding.get("explanation", "")))
+    pair_report = report.get("cross_repo_pairs") or {}
+    if pair_report:
+        rows += ["", "### Cross-repository branch pairs", "", "Status: " + cell(pair_report.get("status", "unknown"))]
+        for pair in pair_report.get("pairs", [])[:32]:
+            labels = [str(value.get("repo", "unknown")) + ":" + str(value.get("ref", "")) for value in pair.get("inputs", [])]
+            rows.append("- " + cell(" + ".join(labels)) + ": " + cell(pair.get("status", "unknown")) + " — " + cell(pair.get("reason", "")))
+        if pair_report.get("omitted"):
+            rows.append("- Not verified: " + cell(len(pair_report["omitted"])) + " omitted pairs.")
+    if verdict != "pass":
+        annotations.append("::error title=Radar workspace gate::" + escape(verdict) + "; inspect static link and per-repository scope in the JSON artifact.")
     return "\n".join(annotations), "\n".join(rows) + "\n"
 
 

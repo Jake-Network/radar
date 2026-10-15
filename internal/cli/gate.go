@@ -13,6 +13,7 @@ import (
 	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/landing"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -45,6 +46,10 @@ type gateAttribution struct {
 // gateReport is merge-check's report plus branch attribution and the single
 // next command a person or agent should run.
 type gateReport struct {
+	Landing                 *landing.Report            `json:"landing,omitempty"`
+	ConflictBrief           *landing.ConflictBrief     `json:"conflict_brief,omitempty"`
+	IntegrationRef          *landing.Applied           `json:"integration_ref,omitempty"`
+	RunID                   string                     `json:"run_id,omitempty"`
 	WorktreeInspectionError string                     `json:"worktree_inspection_error,omitempty"`
 	Worktrees               []gitrepo.WorktreeStatus   `json:"worktrees"`
 	Configuration           []ConfigurationInput       `json:"configuration_inputs,omitempty"`
@@ -66,6 +71,12 @@ func gateCommand() command {
 		summary:       "Combine branches (default: every worktree branch) and tell whether they integrate; --run also tests the combined tree.",
 		advancedFlags: []string{"only", "replay", "attribution-runs"},
 		flags: func(fs *flag.FlagSet, o *options) {
+			fs.BoolVar(&o.landing, "landing", false, "compute the static pair matrix and landing order")
+			fs.BoolVar(&o.conflictBrief, "conflict-brief", false, "return a static conflict brief for exactly two branches")
+			fs.BoolVar(&o.overlap, "overlap", false, "inspect saved changes across worktrees for supported drift")
+			fs.StringVar(&o.symbol, "symbol", "", "filter --overlap by symbol name")
+			fs.StringVar(&o.file, "file", "", "filter --overlap by repository-relative file")
+			fs.BoolVar(&o.trailer, "trailer", false, "persist a passing gate and emit its Radar-Verified commit trailer")
 			fs.Var(baseFlag{o}, "base", "integration `REF` (default: origin/HEAD's branch, main, master or trunk)")
 			fs.Var(listFlag{&o.with}, "with", "also check the repository at `PATH` in this run (repeatable; relative to the repository root)")
 			fs.BoolVar(&o.again, "again", false, "repeat the previous workspace run's selection on the latest commits")
@@ -83,6 +94,28 @@ func gateCommand() command {
 }
 
 func (a *app) gate(o options) int {
+	if o.overlap {
+		if o.verify || o.trailer || o.landing || o.conflictBrief || o.plan != "" || o.policy != "" || o.suite != "" || o.observeCoverage {
+			return a.fail(errors.New("--overlap is a static query and cannot be combined with execution, plan, policy, trailer or landing options"))
+		}
+		inv, err := a.workspaceInvocation(o)
+		if err != nil {
+			return a.fail(err)
+		}
+		if inv != nil {
+			return a.workspaceOverlap(o, inv)
+		}
+		return a.overlap(o)
+	}
+	if o.landing || o.conflictBrief {
+		return a.land(o)
+	}
+	if o.symbol != "" || o.file != "" {
+		return a.fail(errors.New("--symbol and --file require --overlap"))
+	}
+	if o.trailer && a.machine {
+		return a.fail(errors.New("--trailer emits commit text; omit --json"))
+	}
 	if o.observeCoverage && !o.verify {
 		return a.fail(errors.New("--observe-coverage requires --run"))
 	}
@@ -183,6 +216,9 @@ func (a *app) gate(o options) int {
 		g.Next = strings.TrimSpace("radar gate --run " + rerun)
 	}
 	recordVerdict(a.ctx, r.Gate.Verdict)
+	if o.trailer {
+		return a.emitGateTrailer(g, o.verify)
+	}
 	a.report(g, func(w io.Writer) { renderGate(w, g, o.verify) })
 	if policy != nil || o.verify || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)

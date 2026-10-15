@@ -52,6 +52,14 @@ class PluginPackages(unittest.TestCase):
                 self.assertGreater(handler["timeout"], 20)
                 self.assertNotIn("async", handler)
 
+    def test_packages_bundle_the_reviewed_integration_skills(self):
+        sources = {"claude": ROOT.parent / "claude-code/skills/radar/SKILL.md",
+                   "codex": ROOT.parent / "codex/SKILL.md"}
+        for agent, source in sources.items():
+            self.assertEqual((ROOT / agent / "skills/radar/SKILL.md").read_text(), source.read_text())
+        manifest = read("codex/plugin.json")
+        self.assertEqual(manifest["extensions"]["com.openai"]["skills"], "./skills")
+
     def test_package_versions_match(self):
         claude = read("claude/.claude-plugin/plugin.json")
         codex = read("codex/plugin.json")

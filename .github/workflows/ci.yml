@@ -30,6 +30,13 @@ jobs:
         run: python3 scripts/agent-hooks-test.py /tmp/radar
       - name: Native plugin package wiring
         run: python3 -m unittest discover -s integrations/plugins -p 'test_*.py'
+      - name: Detector issue draft consistency
+        run: python3 -m unittest discover -s integrations/contributors -p 'test_*.py'
+      - name: Typed report consumer
+        run: |
+          node --test integrations/report/test.mjs
+          npm install --prefix "$RUNNER_TEMP/radar-types" --no-save --ignore-scripts --package-lock=false typescript@5.9.3
+          "$RUNNER_TEMP/radar-types/node_modules/.bin/tsc" --strict --noEmit --target ES2022 --lib ES2022,DOM --module ESNext --moduleResolution Bundler integrations/report/test-types.ts
       - name: GitHub Actions PR driver regression
         env:
           RADAR_TEST_BIN: /tmp/radar
@@ -37,6 +44,7 @@ jobs:
           python3 integrations/github-actions/test_workflow.py
           python3 integrations/github-actions/test_pr_matrix.py
           python3 integrations/github-actions/test_publish_matrix.py
+          python3 integrations/github-actions/test_publish_checks.py
       - name: Release archive metadata regression
         run: python3 scripts/release-test.py
       - name: Benchmark harness and executable trusted fixture
@@ -62,6 +70,10 @@ jobs:
         run: bash examples/static-rules/demo.sh /tmp/radar
       - name: Continuous worktree watch demo
         run: bash examples/watch/demo.sh /tmp/radar
+      - name: Saved worktree drift demo
+        run: bash examples/drift/demo.sh /tmp/radar
+      - name: Landing and retained proof demo
+        run: bash examples/landing/demo.sh /tmp/radar
       - name: Intelligent verification demo
         run: bash examples/intelligent-verification/demo.sh /tmp/radar
       - name: Gate safety and bounded selection demo
@@ -108,3 +120,52 @@ jobs:
       - name: Native Windows installer regression
         shell: pwsh
         run: ./scripts/install-release-test.ps1
+
+  macos-default-tmpdir:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version-file: go.mod
+      - name: Build and smoke with the unmodified macOS TMPDIR
+        run: |
+          go test -count=1 ./internal/git ./internal/integration -run 'Test.*(Symlink|Canonical|Candidate)'
+          go build -o "$RUNNER_TEMP/radar" ./cmd/radar
+          bash scripts/smoke.sh "$RUNNER_TEMP/radar"
+
+  windows-native:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version-file: go.mod
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        id: msys
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc
+          update: true
+      - name: Expose native compiler
+        shell: pwsh
+        env:
+          MSYS_ROOT: ${{ steps.msys.outputs.msys2-location }}
+        run: |
+          "$env:MSYS_ROOT\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          'CC=gcc' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Native Windows tests including private candidate byte preservation
+        shell: bash
+        run: |
+          git config core.autocrlf true
+          go test -count=1 ./... -timeout 45m
+          python scripts/release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci
+          python scripts/validate-release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci

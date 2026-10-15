@@ -12,6 +12,8 @@ import (
 )
 
 type options struct {
+	landing, conflictBrief, apply, trailer, overlap                                                                        bool
+	driver, symbol, file, scip, scipBinding                                                                                string
 	interval, debounce                                                                                                     time.Duration
 	jsonl, includeDirty                                                                                                    bool
 	plan, ref, format, kind, name, from, edge, base, head, branches, output, reviewer, evidence, agent, policy, suite, cwd string
@@ -66,6 +68,8 @@ var commands []command
 func init() {
 	commands = []command{
 		gateCommand(),
+		landCommand(),
+		showCommand(),
 		watchCommand(),
 		hookCommand(),
 		workspaceCommand(),
@@ -88,6 +92,8 @@ func init() {
 		{name: "index", usage: "radar index [--ref REF] [--summary]", summary: "Index source structure, import dependencies and explicit contracts.", state: true,
 			flags: func(fs *flag.FlagSet, o *options) {
 				refFlag(fs, o, refUsage)
+				fs.StringVar(&o.scip, "scip", "", "explicit SCIP protobuf index path (requires --scip-binding)")
+				fs.StringVar(&o.scipBinding, "scip-binding", "", "SCIP source and revision binding JSON path")
 				fs.BoolVar(&o.summary, "summary", false, "with --json, print counts and diagnostics instead of the full snapshot")
 			}, run: (*app).index},
 		{name: "graph", usage: "radar graph [--ref REF] [--plan PATH [--projected]] [--kind K] [--name S] [--from ID [--edge KIND] [--reverse] [--depth N]] [--format text|json|mermaid]", summary: "Query the indexed graph or a plan's intent overlay.", state: true,

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+* Landing plans report bounded branch-pair checks, ancestry chains, deterministic
+  order and conflict briefs. Explicit `land --apply` creates only a private
+  integration ref after a passing combined-tree gate. Optional external merge
+  drivers require execution consent and run only on private candidates.
+* Saved worktree drift feeds watch, Stop hooks and MCP. Existing committed
+  textual conflicts warn instead of repeatedly blocking; newly introduced dirty
+  conflicts still block. Content-keyed syntax caches preserve current manifest
+  resolution. Doctor warns about literal shared resources and external editable
+  Python installations without executing configuration.
+* Passing gates can emit a retained `Radar-Verified` trailer; `show` reads the
+  repository-bound historical report. Trusted Actions helpers can publish check
+  runs, and a local typed report consumer supports orchestrator integrations.
+  Workspace pair checks reuse declared cross-repository contracts.
+* Explicit SCIP imports validate source and index digests before adding graph
+  references. Native macOS/Windows qualification jobs are configured; local Linux
+  checks do not establish results on those platforms. The 60-candidate public
+  history corpus has detector observations but no human accuracy labels yet.
+
 * Workspace manifests now improve inferred imports across uv/Poetry, npm/pnpm,
   Cargo, go.work, Maven and Gradle members. Supported symbol conflicts, direct
   lockfile consistency and literal/declared unique keys participate in the gate;

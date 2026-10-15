@@ -157,6 +157,27 @@ during execution invalidate passing evidence.
 
 ## Test selection
 
+`gate --landing` adds a pair matrix and deterministic landing estimate; it keeps
+the gate v1 verdict contract. A pair result cannot replace the separately built
+N-way candidate. `land --apply` publishes an immutable private integration ref
+only after its required static checks pass; it grants no test execution or branch
+update. Structural merge drivers require their own explicit execution opt-in and
+record which files they resolved. Conflict-brief symbol/test links are inferred.
+
+`gate --overlap` and watch/hook drift reuse supported detectors on saved snapshots.
+No findings does not establish complete compatibility. Hook blocking is limited
+to current dirty additions; inherited peer conflicts remain informational.
+Workspace pair reports bind every repository's own base and candidate separately;
+dirty contracts and static link cells do not prove runtime interoperability.
+
+`gate --trailer` emits a trailer only for a passing selected policy. Its local
+content-addressed record binds the full candidate report (and every workspace
+candidate when applicable); omitted optional commands and no-test execution remain
+explicit. `show` replays historical evidence, not a new result for today's HEAD.
+Record digests detect changes, not owner authentication. Actions check publication
+is opt-in and tied to the evaluated PR heads; it does not transfer tip evidence to
+an unevaluated ancestor. The v1 JSON additions are optional, not new success rules.
+
 Selection establishes a static relationship, not behavioral coverage. Inventory
 reads configuration as data, without evaluating scripts, importing Python or
 running collection hooks. Limits: 10,000 files, 1 MiB per file, 32 MiB total;

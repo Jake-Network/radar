@@ -97,6 +97,13 @@ the continuation does not automatically validate the fix. For saved previews,
 use `radar watch --include-dirty` with the same base and branch scope;
 after committing, use `radar gate` with that scope.
 
+Cross-worktree drift is computed from peer saved snapshots. Only drift newly
+introduced by the current worktree's saved changes blocks Stop; pre-existing
+peer drift produces an informational `systemMessage`. The cache also binds peer
+state, so another agent's saved changes invalidate the preview. A bounded syntax
+cache reuses unchanged parses while import resolution and manifests are checked
+again; cache hits never become test evidence.
+
 Unknown or incomplete results remain informational. A successful static check
 does not prove runtime compatibility; final reports must list remaining gaps.
 Tests require the user's authorization for `--run`, even when a hook is installed.
@@ -108,6 +115,8 @@ Use one branch/worktree per agent, then check the exact branches to combine:
 ```sh
 radar doctor
 radar gate api client --base main
+radar land api client --base main
+radar gate --base main --overlap --json
 radar gate api client --base main --run
 ```
 
@@ -123,6 +132,18 @@ blame. Failed commands automatically receive one budgeted base comparison; base-
 failures leave verification incomplete and have no branch lead. Optional subset
 diagnostic reruns default to zero; opt in with `--run --attribution-runs 8`.
 Never remove tests, contracts or plan criteria to make a result pass.
+
+Use `radar land A B --conflict-brief --json` or MCP
+`radar_conflict_brief` to hand committed conflict excerpts and inferred test
+links to the repairing agent. A brief does not prove coverage. The CLI alone
+can explicitly authorize a named installed driver or publish a private
+integration ref with `--apply`; MCP does neither. Review the printed
+fast-forward command before changing the intended base.
+
+A passing `radar gate --trailer` records an immutable historical report and
+prints a commit trailer; `radar show RUN-ID` reads it from local state.
+The trailer is a digest-bound declaration, not authentication or verification
+of the commit that later contains it. See [Usage](USAGE.md#recording-a-verified-run).
 
 ## Reading results and agent access
 

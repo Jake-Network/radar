@@ -31,3 +31,11 @@ The stable single-repository verdict/check contract is
 reports use [`workspace-report.schema.json`](../../schemas/workspace-report.schema.json).
 Consume JSON `gate.verdict`; additional evidence fields are additive and should
 not be discarded when they describe missing or stale verification.
+
+[`merge-callback.mjs`](merge-callback.mjs) is an executable Node adapter for an
+orchestrator's pre-merge callback. It sends refs as argv, bounds time/output and
+uses [`@radar/report`](../report/) to fail closed on unavailable JSON. The result
+is a merge recommendation; the adapter does not mutate branches or execute tests.
+The host can render `createSummary` and link the raw report beside its merge
+button. A host integration must retain its own user confirmation and ref freshness
+checks before mutation.

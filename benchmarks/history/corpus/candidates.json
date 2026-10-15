@@ -1,0 +1,2084 @@
+{
+  "cases": [
+    {
+      "base": "1f92281ffcbb77ef388d3c461178b5a385604f9a",
+      "branches": [
+        "1ba88c48dd888c212df39b928bf6bb05c0efe83a",
+        "c2d19e9c4338e36a2f2176537a4f67b3ee59f4e7"
+      ],
+      "followups": [],
+      "id": "c8a45c5356f8e5d47cb954a73395e63d0219785871f2eb6e5f3c02d2f08572c0",
+      "input_digest": "c8a45c5356f8e5d47cb954a73395e63d0219785871f2eb6e5f3c02d2f08572c0",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 1,
+      "merge_commit": "16b4170663d1ada7611276bd3f91baf3bc320d4b",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #138 from eparis/cleanup-helpfunc",
+      "suspect": false,
+      "time": 1441313600,
+      "touched": 1,
+      "trees": {
+        "1ba88c48dd888c212df39b928bf6bb05c0efe83a": "1506c8940fd8cf67331fcf2ae1de067d33648201",
+        "1f92281ffcbb77ef388d3c461178b5a385604f9a": "df1bfb23f92ba61c579a3d8b20b2ed04984b0f55",
+        "c2d19e9c4338e36a2f2176537a4f67b3ee59f4e7": "d48024f903612f48a8d598ed42668ccd0a9fda6d"
+      }
+    },
+    {
+      "base": "68f5a81a722d56241bd70faf6860ceb05eb27d64",
+      "branches": [
+        "b625a4db24d80918333ad64e0cd263292be4886c",
+        "edcf765d9fb36cbc5382ea5bf7e33f1ad931588c"
+      ],
+      "followups": [
+        {
+          "files": [
+            "command.go",
+            "man_docs.go",
+            "md_docs.go"
+          ],
+          "fix_words": false,
+          "hours": 20.01,
+          "sha": "4b86c66ef25470e678a4d6a372711d7050344ccc",
+          "signals": [],
+          "subject": "Merge pull request #146 from eparis/is-available-rework"
+        }
+      ],
+      "id": "55aa38dc2ef6f2ff3850e280034d946a3c1dbe956597777f728e7ae408bf232e",
+      "input_digest": "55aa38dc2ef6f2ff3850e280034d946a3c1dbe956597777f728e7ae408bf232e",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 3,
+      "merge_commit": "75d96d75c323f2db91f8c7182c857ded3fb81af4",
+      "merged_changed": 6,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #145 from eparis/man-cleanups",
+      "suspect": false,
+      "time": 1441754367,
+      "touched": 8,
+      "trees": {
+        "68f5a81a722d56241bd70faf6860ceb05eb27d64": "17c6b728a4fe9ecac5b49e45897a68f9987bfa0d",
+        "b625a4db24d80918333ad64e0cd263292be4886c": "64526989b130dc1cbeb25028eed7eae5228cc498",
+        "edcf765d9fb36cbc5382ea5bf7e33f1ad931588c": "72b3671823209591e5680955bd18e33f727697dc"
+      }
+    },
+    {
+      "base": "42498ec77717b5ac00fd992fdf68bc4038fed085",
+      "branches": [
+        "0d9b07baf97232470ac53d5388032947254a823b",
+        "717619095e8b7040a67bfd27766679e7f45ea8aa"
+      ],
+      "followups": [
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": false,
+          "hours": 0.24,
+          "sha": "d96b4f774107471d908634762f4cfacbc5214cbc",
+          "signals": [],
+          "subject": "Merge pull request #152 from eparis/no-newline-after-flags"
+        },
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": false,
+          "hours": 0.24,
+          "sha": "eeec8e3ce34ba470bf1603e7461dc66b98c2bf22",
+          "signals": [],
+          "subject": "Merge pull request #153 from eparis/remove-useless-assignment"
+        },
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": true,
+          "hours": 5.69,
+          "sha": "b28774dd6857dce1298bce9d192d1fe448f3b458",
+          "signals": [],
+          "subject": "Merge pull request #154 from eparis/fix-trailing-newline"
+        }
+      ],
+      "id": "05b1514193715cd46ac0530fb6ae7be536ed234eef70d574bd8be7f6183fac71",
+      "input_digest": "05b1514193715cd46ac0530fb6ae7be536ed234eef70d574bd8be7f6183fac71",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 1,
+      "merge_commit": "85bb343e9ce60a57b22cb52b1bcb0dc96b30a23b",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #151 from eparis/no-newline-without-short",
+      "suspect": true,
+      "time": 1442011597,
+      "touched": 1,
+      "trees": {
+        "0d9b07baf97232470ac53d5388032947254a823b": "ead773e1fe4423d1aaf6a3d7c4c47b6dc580b2af",
+        "42498ec77717b5ac00fd992fdf68bc4038fed085": "6193efa1b388492a7d9a28328e0fa90ab07b4a87",
+        "717619095e8b7040a67bfd27766679e7f45ea8aa": "41535f34e10bffacff35ea598fe6b5b118d00e59"
+      }
+    },
+    {
+      "base": "42498ec77717b5ac00fd992fdf68bc4038fed085",
+      "branches": [
+        "85bb343e9ce60a57b22cb52b1bcb0dc96b30a23b",
+        "8af2b2b89f5c7ef7997851f267cd4195b8c78255"
+      ],
+      "followups": [
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": false,
+          "hours": 0.0,
+          "sha": "eeec8e3ce34ba470bf1603e7461dc66b98c2bf22",
+          "signals": [],
+          "subject": "Merge pull request #153 from eparis/remove-useless-assignment"
+        },
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": true,
+          "hours": 5.45,
+          "sha": "b28774dd6857dce1298bce9d192d1fe448f3b458",
+          "signals": [],
+          "subject": "Merge pull request #154 from eparis/fix-trailing-newline"
+        }
+      ],
+      "id": "af121fc6a707012aee8879d2c590bb42b5328a7a64463d2c7b959a48dea22536",
+      "input_digest": "af121fc6a707012aee8879d2c590bb42b5328a7a64463d2c7b959a48dea22536",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 1,
+      "merge_commit": "d96b4f774107471d908634762f4cfacbc5214cbc",
+      "merged_changed": 2,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #152 from eparis/no-newline-after-flags",
+      "suspect": true,
+      "time": 1442012450,
+      "touched": 2,
+      "trees": {
+        "42498ec77717b5ac00fd992fdf68bc4038fed085": "6193efa1b388492a7d9a28328e0fa90ab07b4a87",
+        "85bb343e9ce60a57b22cb52b1bcb0dc96b30a23b": "c786123937b6a7c336f555d3634a57e630309a24",
+        "8af2b2b89f5c7ef7997851f267cd4195b8c78255": "79480a832a05f41f9a37016fa4e17e58592ca961"
+      }
+    },
+    {
+      "base": "85bb343e9ce60a57b22cb52b1bcb0dc96b30a23b",
+      "branches": [
+        "d96b4f774107471d908634762f4cfacbc5214cbc",
+        "1ac08d9d948807b0a457aaa59f696f5243059990"
+      ],
+      "followups": [
+        {
+          "files": [
+            "command.go"
+          ],
+          "fix_words": true,
+          "hours": 5.45,
+          "sha": "b28774dd6857dce1298bce9d192d1fe448f3b458",
+          "signals": [],
+          "subject": "Merge pull request #154 from eparis/fix-trailing-newline"
+        }
+      ],
+      "id": "a224ce4f17a3d08604227c76cc7ab9ac0b0089022c5afe4bcc2a679f42ed7879",
+      "input_digest": "a224ce4f17a3d08604227c76cc7ab9ac0b0089022c5afe4bcc2a679f42ed7879",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 2,
+      "merge_commit": "eeec8e3ce34ba470bf1603e7461dc66b98c2bf22",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #153 from eparis/remove-useless-assignment",
+      "suspect": true,
+      "time": 1442012459,
+      "touched": 2,
+      "trees": {
+        "1ac08d9d948807b0a457aaa59f696f5243059990": "aeba4b0a4f49f519386820b22379ccd54ffcc8a3",
+        "85bb343e9ce60a57b22cb52b1bcb0dc96b30a23b": "c786123937b6a7c336f555d3634a57e630309a24",
+        "d96b4f774107471d908634762f4cfacbc5214cbc": "3abda92a8c5d7f50551f8105e8ac018825d59092"
+      }
+    },
+    {
+      "base": "4b86c66ef25470e678a4d6a372711d7050344ccc",
+      "branches": [
+        "b28774dd6857dce1298bce9d192d1fe448f3b458",
+        "b4087da7eb1bf3822d8413008dbd4c3c6c3c5f2d"
+      ],
+      "followups": [],
+      "id": "a2cf9c54c5db6e79b9a25b58ec99ff70dbe199848c02cca320b033bea0efb158",
+      "input_digest": "a2cf9c54c5db6e79b9a25b58ec99ff70dbe199848c02cca320b033bea0efb158",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 2,
+      "merge_commit": "6d7031177028ad8c5b4b428ac9a2288fbc1c0649",
+      "merged_changed": 4,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #149 from fabianofranz/siblings",
+      "suspect": false,
+      "time": 1442202286,
+      "touched": 4,
+      "trees": {
+        "4b86c66ef25470e678a4d6a372711d7050344ccc": "e5a32f99d011defbc58535f689e8e60a4e0f124c",
+        "b28774dd6857dce1298bce9d192d1fe448f3b458": "48bade6aa4a503e8827fe60425b1994831c4b20f",
+        "b4087da7eb1bf3822d8413008dbd4c3c6c3c5f2d": "7ad3435b823d6674a5b97965450d4b73afd6df37"
+      }
+    },
+    {
+      "base": "6d7031177028ad8c5b4b428ac9a2288fbc1c0649",
+      "branches": [
+        "664a3ab4a3dc8149d4465e43002cd0bcb016eb81",
+        "6e4e76655db5df5edd7c381bc8b7d224284d361b"
+      ],
+      "followups": [],
+      "id": "2af47fbf752887bfc63aa88ee96e4318932586465526115ef158ca23c69b7200",
+      "input_digest": "2af47fbf752887bfc63aa88ee96e4318932586465526115ef158ca23c69b7200",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 1,
+      "merge_commit": "4b76e97cd632fcfeb2709662344ca1b34da468a3",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #158 from eparis/more-errors-in-test",
+      "suspect": false,
+      "time": 1442375861,
+      "touched": 2,
+      "trees": {
+        "664a3ab4a3dc8149d4465e43002cd0bcb016eb81": "50055320a7cb139301717de9529ffe57c34ed3ac",
+        "6d7031177028ad8c5b4b428ac9a2288fbc1c0649": "8e07246b2e2275d54429fa0fa557b88e84b1c632",
+        "6e4e76655db5df5edd7c381bc8b7d224284d361b": "388f05a5be033210dd9a0b7687332d38779b1f3d"
+      }
+    },
+    {
+      "base": "24562666ea67e4db3b9907725a91ce2ceb566091",
+      "branches": [
+        "4f44cb7a6233d460069999343c7e0c6fab16908f",
+        "871b0edae228a6714c4e3dbc71071464b564dfba"
+      ],
+      "followups": [],
+      "id": "a10aa662caa41657f742edb3c6c9319afd151a684908860f85730b47f343a78f",
+      "input_digest": "a10aa662caa41657f742edb3c6c9319afd151a684908860f85730b47f343a78f",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 2,
+      "merge_commit": "a082ce41f3c84f2deeab1aeab3eea29105b038a0",
+      "merged_changed": 2,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #174 from jbowes/fix-duplicate-usage",
+      "suspect": false,
+      "time": 1446492472,
+      "touched": 4,
+      "trees": {
+        "24562666ea67e4db3b9907725a91ce2ceb566091": "6e9206bcf5243e38ff6bb4daaff3fa7b89711655",
+        "4f44cb7a6233d460069999343c7e0c6fab16908f": "f6a0cdfa6d022a309c96038c38a90a1ccfab9f66",
+        "871b0edae228a6714c4e3dbc71071464b564dfba": "e1f822d0d07677dc591ddd39f9945f6087212471"
+      }
+    },
+    {
+      "base": "24562666ea67e4db3b9907725a91ce2ceb566091",
+      "branches": [
+        "9199ed1e527284513bef96b630b26ee9ec493e8d",
+        "5fa86d5a210e0019c31ba835e069968cd9dec2c2"
+      ],
+      "followups": [],
+      "id": "d79d9e3a741df3a0505123c4c29d28a6254ef8222b26bbdd557a372529365394",
+      "input_digest": "d79d9e3a741df3a0505123c4c29d28a6254ef8222b26bbdd557a372529365394",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 5,
+      "merge_commit": "57c62d318007dc3fb1dcf578b9667b6bdef764d8",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #173 from jojomi/master",
+      "suspect": false,
+      "time": 1446582573,
+      "touched": 5,
+      "trees": {
+        "24562666ea67e4db3b9907725a91ce2ceb566091": "6e9206bcf5243e38ff6bb4daaff3fa7b89711655",
+        "5fa86d5a210e0019c31ba835e069968cd9dec2c2": "27c9f07489c6fd806eb45e3c68eb326c27f44d2e",
+        "9199ed1e527284513bef96b630b26ee9ec493e8d": "6f9c37eaa2d0ca493718e2b2151f1b038099b05a"
+      }
+    },
+    {
+      "base": "a22f2128326b8008c641d82715487faa6cc25711",
+      "branches": [
+        "57c62d318007dc3fb1dcf578b9667b6bdef764d8",
+        "58e38f95da0f549280085c99a0df322007c6375f"
+      ],
+      "followups": [],
+      "id": "274c93d39151a1dc45b904b01fc30bb5105c793841fc1de52f163a346d9a0bb5",
+      "input_digest": "274c93d39151a1dc45b904b01fc30bb5105c793841fc1de52f163a346d9a0bb5",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 2,
+      "merge_commit": "2e6a42892123dda608922f8af8ce85c3bff19575",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #179 from eparis/init_comp",
+      "suspect": false,
+      "time": 1446583300,
+      "touched": 2,
+      "trees": {
+        "57c62d318007dc3fb1dcf578b9667b6bdef764d8": "cfc8dbe7785cb5856d0446a16f082e4f4779c115",
+        "58e38f95da0f549280085c99a0df322007c6375f": "4dcdfc0451765c1f9d04eeeaf7cd8d82d21d200b",
+        "a22f2128326b8008c641d82715487faa6cc25711": "05bca5b23e88eb708f95a032a1f215fe7549338b"
+      }
+    },
+    {
+      "base": "29cddf65b2e18b9c2339f8b659f38fbefe8b98ea",
+      "branches": [
+        "ea3bf167cfabfe0332d9f7840983448555c6baee",
+        "fe79245d1acb162ed91e21d2c2389b3c973f469f"
+      ],
+      "followups": [],
+      "id": "2912e79f1b6e95865510fa06a8b18c0f59992e3c99bb2be93547c296082b73ea",
+      "input_digest": "2912e79f1b6e95865510fa06a8b18c0f59992e3c99bb2be93547c296082b73ea",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 3,
+      "merge_commit": "11265d64db129af914b50db747275d0c6e8a4bf6",
+      "merged_changed": 3,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #210 from boz/colon-completion",
+      "suspect": false,
+      "time": 1450303965,
+      "touched": 6,
+      "trees": {
+        "29cddf65b2e18b9c2339f8b659f38fbefe8b98ea": "ff80b5c1bbe8bc719b72070d846124c412ff0c95",
+        "ea3bf167cfabfe0332d9f7840983448555c6baee": "a24d616ea3f091e1b7305adce2c4d8a5a99c9ebd",
+        "fe79245d1acb162ed91e21d2c2389b3c973f469f": "b7862848287cf909fe9ec61f4394343c1b2b4762"
+      }
+    },
+    {
+      "base": "b167d9beaa463cfb33a22bda30e8aa043b77eb5c",
+      "branches": [
+        "11265d64db129af914b50db747275d0c6e8a4bf6",
+        "193b182195dad17ec904d4851f33e3ee3696bf07"
+      ],
+      "followups": [],
+      "id": "8fbfd09b02d0290bb20aa96c3c1336188317c25b905a44c663aef713e1b4a3cf",
+      "input_digest": "8fbfd09b02d0290bb20aa96c3c1336188317c25b905a44c663aef713e1b4a3cf",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 8,
+      "merge_commit": "73665614cb7fd60a66444c4c9f41a2a4e8a26ad7",
+      "merged_changed": 4,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #197 from magiconair/issue-195-mousetrap-win-only",
+      "suspect": false,
+      "time": 1450310645,
+      "touched": 11,
+      "trees": {
+        "11265d64db129af914b50db747275d0c6e8a4bf6": "76b3f92be4a0e63d539c3014af2b34be87e7ea67",
+        "193b182195dad17ec904d4851f33e3ee3696bf07": "93d8c6876996dc62ef833e1904d7d5507852009f",
+        "b167d9beaa463cfb33a22bda30e8aa043b77eb5c": "81dd0d95c305e08919c984c1f9bed14e8732f81a"
+      }
+    },
+    {
+      "base": "65a708cee0a4424f4e353d031ce440643e312f92",
+      "branches": [
+        "d6b481239e5e991b424bb96106cab4aa10713921",
+        "e21e5f0b09663cc7b9c45e02b56b8f8c75591e38"
+      ],
+      "followups": [],
+      "id": "9cda20dc3700680e1fe3d388ce616caa66b3bc7f677f8b1ee568519797038270",
+      "input_digest": "9cda20dc3700680e1fe3d388ce616caa66b3bc7f677f8b1ee568519797038270",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 6,
+      "merge_commit": "57021c6b4d7c35cc4cc402acd8370a2a9955c8cf",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #244 from apriendeau/silence-errors-readme",
+      "suspect": false,
+      "time": 1458606164,
+      "touched": 7,
+      "trees": {
+        "65a708cee0a4424f4e353d031ce440643e312f92": "9c5894c1689f8fbeaba0067295763d8f302da0bc",
+        "d6b481239e5e991b424bb96106cab4aa10713921": "affe4048ec20f26ce6000d2b62e601f1ff93d4b0",
+        "e21e5f0b09663cc7b9c45e02b56b8f8c75591e38": "5fbf4afd50efd5cc99029fbb451095056a650863"
+      }
+    },
+    {
+      "base": "8e91712f174ced10270cf66615e0a9127e7c4de5",
+      "branches": [
+        "57021c6b4d7c35cc4cc402acd8370a2a9955c8cf",
+        "57f473263ef491b4b3693e8a5df7af0bd4a28094"
+      ],
+      "followups": [],
+      "id": "cb59e57aadbabc97caedcf7302ff01486d32971df0e12edc13aaaf22fff81ec5",
+      "input_digest": "cb59e57aadbabc97caedcf7302ff01486d32971df0e12edc13aaaf22fff81ec5",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 7,
+      "merge_commit": "966e6048eb43ccf9f240a078557b37f0a407f1df",
+      "merged_changed": 2,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #230 from garthk/fix-man-see-also",
+      "suspect": false,
+      "time": 1458606235,
+      "touched": 9,
+      "trees": {
+        "57021c6b4d7c35cc4cc402acd8370a2a9955c8cf": "8729f148d762e99dc6750804e31a0e056004da80",
+        "57f473263ef491b4b3693e8a5df7af0bd4a28094": "4bf153a97a2d8d0120e974ec2d36f59f7107166f",
+        "8e91712f174ced10270cf66615e0a9127e7c4de5": "51cd54e7e4ce52e744e47b40f1d5ff138400f516"
+      }
+    },
+    {
+      "base": "c678ff029ee250b65714e518f4f5c5cb934955de",
+      "branches": [
+        "ee150b4fa235f90bd58abe1fc0d1dcef7e390356",
+        "a0bd6c17b3d370421866b51e650bf2801e6bd1f4"
+      ],
+      "followups": [],
+      "id": "e356adc8c9db38791d17c2e7fcaea1c2980537f5a3da126983df38a70c249e89",
+      "input_digest": "e356adc8c9db38791d17c2e7fcaea1c2980537f5a3da126983df38a70c249e89",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 1,
+      "merge_commit": "b0d571e7d5f7c0dca407fa86567e6297c4776564",
+      "merged_changed": 8,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #260 from ianwalter/code-cleanup",
+      "suspect": false,
+      "time": 1459434730,
+      "touched": 8,
+      "trees": {
+        "a0bd6c17b3d370421866b51e650bf2801e6bd1f4": "7554965375d0e0ab8501a5a9a5f21c96b2004b91",
+        "c678ff029ee250b65714e518f4f5c5cb934955de": "20bcfb62fc1112d92d62c288c336d6e21b04244b",
+        "ee150b4fa235f90bd58abe1fc0d1dcef7e390356": "377e66d1813d58c530ebb2b6a6ccd5797509f767"
+      }
+    },
+    {
+      "base": "c678ff029ee250b65714e518f4f5c5cb934955de",
+      "branches": [
+        "2ccf9e982a3e3eb21eba9c9ad8e546529fd74c71",
+        "1a0a490d76230062326ad0202a419a61e56b659c"
+      ],
+      "followups": [
+        {
+          "files": [
+            "bash_completions.go",
+            "bash_completions_test.go"
+          ],
+          "fix_words": false,
+          "hours": 23.65,
+          "sha": "4c05eb1145f16d0e6bb4a3e1b6d769f4713cb41f",
+          "signals": [],
+          "subject": "Merge pull request #265 from sttts/sttts-shellcheck"
+        }
+      ],
+      "id": "fa7c98d64178b975882757002038842088c9a49803b8b9cdabf6284116cc53a0",
+      "input_digest": "fa7c98d64178b975882757002038842088c9a49803b8b9cdabf6284116cc53a0",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 9,
+      "merge_commit": "60267ae24da666f4412d590c6848f4c63333f2e7",
+      "merged_changed": 4,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #257 from sttts/sttts-noun-aliases",
+      "suspect": false,
+      "time": 1459607374,
+      "touched": 11,
+      "trees": {
+        "1a0a490d76230062326ad0202a419a61e56b659c": "6ba89e5c04bee61d9c2ea0dfa40deefd52812e7b",
+        "2ccf9e982a3e3eb21eba9c9ad8e546529fd74c71": "76cd8b87d02220cbcce79d9ee075c0c3894cbb8f",
+        "c678ff029ee250b65714e518f4f5c5cb934955de": "20bcfb62fc1112d92d62c288c336d6e21b04244b"
+      }
+    },
+    {
+      "base": "f368244301305f414206f889b1735a54cfc8bde8",
+      "branches": [
+        "f447048345b64b3247b29a679a14bd0da12c7f2f",
+        "7bf964e5b6deee154b3a038dc83fc7cbaa3cb724"
+      ],
+      "followups": [],
+      "id": "d7125219727caea95639b76071bc2260ad1ece2a0b9c1cca7b9dc73f5e5817a4",
+      "input_digest": "d7125219727caea95639b76071bc2260ad1ece2a0b9c1cca7b9dc73f5e5817a4",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 2,
+      "merge_commit": "c21ee9da526d728fb09dff48e8d3371220fc7d12",
+      "merged_changed": 3,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #288 from eparis/flags-vs-commands",
+      "suspect": false,
+      "time": 1465303020,
+      "touched": 4,
+      "trees": {
+        "7bf964e5b6deee154b3a038dc83fc7cbaa3cb724": "45a5ec0c3f5477b78e51c9e165569f61be52341f",
+        "f368244301305f414206f889b1735a54cfc8bde8": "143c42202a9d3888639b366e95c997e2c0f43d1e",
+        "f447048345b64b3247b29a679a14bd0da12c7f2f": "04db20099eaf6aea4c8a123e91b32bfa5a707fe7"
+      }
+    },
+    {
+      "base": "f447048345b64b3247b29a679a14bd0da12c7f2f",
+      "branches": [
+        "c21ee9da526d728fb09dff48e8d3371220fc7d12",
+        "719241171df696aeca66a02412a33cefac8c9a5c"
+      ],
+      "followups": [],
+      "id": "5d484037a5327ef36b6f726dc3f45ca91df571a312c465defaa999dd6049a7a0",
+      "input_digest": "5d484037a5327ef36b6f726dc3f45ca91df571a312c465defaa999dd6049a7a0",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 3,
+      "merge_commit": "1238ba19d24b0b9ceee2094e1cb31947d45c3e86",
+      "merged_changed": 2,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #290 from joe2far/patch-1",
+      "suspect": false,
+      "time": 1465303426,
+      "touched": 5,
+      "trees": {
+        "719241171df696aeca66a02412a33cefac8c9a5c": "ca8127112e1df8279b49a83563f6c027aa54f316",
+        "c21ee9da526d728fb09dff48e8d3371220fc7d12": "4768eb8fb8c7a9889d61beb51e4fc2ec2fefe469",
+        "f447048345b64b3247b29a679a14bd0da12c7f2f": "04db20099eaf6aea4c8a123e91b32bfa5a707fe7"
+      }
+    },
+    {
+      "base": "6a8bd97bdb1fc0d08a83459940498ea49d3e8c93",
+      "branches": [
+        "dbb7c2d02e284aa24423e3e6e105969dffe6e4d6",
+        "cb51c97a4e2e17b9fe3514050baf1b2773d071f2"
+      ],
+      "followups": [],
+      "id": "fb017f6d4bbdd73702cc2555b4dad2be4130a7f8aa6d35568842f59e03b25df2",
+      "input_digest": "fb017f6d4bbdd73702cc2555b4dad2be4130a7f8aa6d35568842f59e03b25df2",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 3,
+      "merge_commit": "f62e98d28ab7ad31d707ba837a966378465c7b57",
+      "merged_changed": 1,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #300 from cshung/master",
+      "suspect": false,
+      "time": 1469175347,
+      "touched": 4,
+      "trees": {
+        "6a8bd97bdb1fc0d08a83459940498ea49d3e8c93": "cc1e7b18707d712254bbbbbec77cd21ef6f916d5",
+        "cb51c97a4e2e17b9fe3514050baf1b2773d071f2": "b71d1ff1f8dea8a497885d85a2b9004e831af5c1",
+        "dbb7c2d02e284aa24423e3e6e105969dffe6e4d6": "239065dde633ca0f105d781ace69c59c71293e82"
+      }
+    },
+    {
+      "base": "bc81c21bd0d8be5ba2d6630a505d79d4467566e7",
+      "branches": [
+        "b620a7591d08f55e771557eb711d92ee6f4bc5f9",
+        "7faa7fcdd20c7484bc89fdd48acb67ed44b8ba2e"
+      ],
+      "followups": [],
+      "id": "7cd359ad783c0cb61da2ac093b1b26c59833e260d4f9d50eaac908f3b79a983c",
+      "input_digest": "7cd359ad783c0cb61da2ac093b1b26c59833e260d4f9d50eaac908f3b79a983c",
+      "kind": "merge",
+      "language": "go",
+      "line_changed": 11,
+      "merge_commit": "ec2fe7859914a5106dcab4e7901633d959bfc2f4",
+      "merged_changed": 2,
+      "repository": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "signals": [],
+      "subject": "Merge pull request #286 from dnephin/merge_flags_before_adding_help",
+      "suspect": false,
+      "time": 1476112458,
+      "touched": 11,
+      "trees": {
+        "7faa7fcdd20c7484bc89fdd48acb67ed44b8ba2e": "8ac9499438b6c13104a923a1b695d5379e56a467",
+        "b620a7591d08f55e771557eb711d92ee6f4bc5f9": "d4d0c4bdae5977ab62ddb74d97f775d384457c16",
+        "bc81c21bd0d8be5ba2d6630a505d79d4467566e7": "570eb8465187dd5a4ee53c9bf7417ab12f0dfa3f"
+      }
+    },
+    {
+      "base": "8bd8b4a074c55c03b6eb5666edc44a9c43df38a2",
+      "branches": [
+        "0cd28d6548f92e46396e0ffdd19ec5ea75b4b5e4",
+        "cf0c36d33734af1de9ecd5d3305970eb26ebba7f"
+      ],
+      "followups": [],
+      "id": "0f310bf8af0731830acf49b7d1d9231f303f82360c8443023fc9acea79838907",
+      "input_digest": "0f310bf8af0731830acf49b7d1d9231f303f82360c8443023fc9acea79838907",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 16,
+      "merge_commit": "25edc1e31360efba4f64c8c3c540bbbcfb7876da",
+      "merged_changed": 1,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Add parametrized tests for `should_strip_ansi` (#2731)",
+      "suspect": false,
+      "time": 1777446469,
+      "touched": 17,
+      "trees": {
+        "0cd28d6548f92e46396e0ffdd19ec5ea75b4b5e4": "10382ce3172f6ec58804b680a2a6f6264b2fb8fa",
+        "8bd8b4a074c55c03b6eb5666edc44a9c43df38a2": "20a14265d6e785f4deb65e607c8282f8f5e95531",
+        "cf0c36d33734af1de9ecd5d3305970eb26ebba7f": "96177649920edfa26921984791b52d27e98058b7"
+      }
+    },
+    {
+      "base": "7c99ebe23b931f27562d926814423cce85fd9766",
+      "branches": [
+        "63274a79d08fdc5c19220696144489f7144a8547",
+        "0551bf53588ae87f462d336f24f853a156fefe3a"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.rst"
+          ],
+          "fix_words": false,
+          "hours": 13.37,
+          "sha": "c938ac0a9602350463bcac02a075900f45400cf8",
+          "signals": [],
+          "subject": "Release 8.4.0 (#3436)"
+        },
+        {
+          "files": [
+            "CHANGES.rst"
+          ],
+          "fix_words": true,
+          "hours": 28.44,
+          "sha": "c9e94136b39b1fad4a47ac0d4478fa372bd07ff8",
+          "signals": [],
+          "subject": "Fix dev version 8.4.1 (#3446)"
+        }
+      ],
+      "id": "816ae410d575a9c682d87b6f4f48f6cd3168c0b8ceece5a487e7a044eb4f348c",
+      "input_digest": "816ae410d575a9c682d87b6f4f48f6cd3168c0b8ceece5a487e7a044eb4f348c",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 3,
+      "merge_commit": "3bb230dcd5d751f8605b46e9df5a541639d5fd4e",
+      "merged_changed": 3,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "WIP: Fix `HelpFormatter.write_usage` producing spurious characters (#3434)",
+      "suspect": true,
+      "time": 1778946819,
+      "touched": 5,
+      "trees": {
+        "0551bf53588ae87f462d336f24f853a156fefe3a": "b29c675b0fc4b42a23b4a228670f348f885439ae",
+        "63274a79d08fdc5c19220696144489f7144a8547": "f24fd2af850843437ff3142a32d0575da9433b76",
+        "7c99ebe23b931f27562d926814423cce85fd9766": "27cc0efc93bb3b6b4dad11e61f27052de0eb76cb"
+      }
+    },
+    {
+      "base": "fc6c7c47edd6110b6bd5a1a5297b2035214b0cd1",
+      "branches": [
+        "3bb230dcd5d751f8605b46e9df5a541639d5fd4e",
+        "fc41aa1d0b62494eb93e92ff3929601221e3abf4"
+      ],
+      "followups": [],
+      "id": "266f431e08a69963c80f3820c2dadbb1eeb437b5d09d35b786a8c8c0fb089c07",
+      "input_digest": "266f431e08a69963c80f3820c2dadbb1eeb437b5d09d35b786a8c8c0fb089c07",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 15,
+      "merge_commit": "e3e69e3bf8d749ac1a632f2ece4d38ec7f6588f5",
+      "merged_changed": 1,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Add type annotations for instance attributes in `utils` (#3422)",
+      "suspect": false,
+      "time": 1778946946,
+      "touched": 16,
+      "trees": {
+        "3bb230dcd5d751f8605b46e9df5a541639d5fd4e": "f2fdebca736aeee68fd37e8ae3479294a79b95f6",
+        "fc41aa1d0b62494eb93e92ff3929601221e3abf4": "b3482c088afc5e1e4a0e240c6ef70fa05bb7b960",
+        "fc6c7c47edd6110b6bd5a1a5297b2035214b0cd1": "d7582b882574439d0bdbbd91c990b935db361f37"
+      }
+    },
+    {
+      "base": "613cb9a0c0b7ecf7455b3eefe7004c7839f2f231",
+      "branches": [
+        "c9e94136b39b1fad4a47ac0d4478fa372bd07ff8",
+        "b8b9ffeb5d012f5d041685c81152636bf596cf72"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.rst",
+            "pyproject.toml",
+            "uv.lock"
+          ],
+          "fix_words": false,
+          "hours": 0.01,
+          "sha": "4e869f3a172a58df077932dc80b130cdf4ba9774",
+          "signals": [],
+          "subject": "start version 8.5.0"
+        },
+        {
+          "files": [
+            "CHANGES.rst"
+          ],
+          "fix_words": false,
+          "hours": 23.6,
+          "sha": "dbf4d14c712750c31e15916b659925683150533b",
+          "signals": [],
+          "subject": "Merge stable into main (#3479)"
+        }
+      ],
+      "id": "19d08e41834e1d51f0f057ffd3291bbc22adb3922b0fe006e52e4d1c08b4ebd4",
+      "input_digest": "19d08e41834e1d51f0f057ffd3291bbc22adb3922b0fe006e52e4d1c08b4ebd4",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 3,
+      "merge_commit": "a9a218cd523dfc41743eeae7a94d1ba763b64b1e",
+      "merged_changed": 9,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge branch 'stable'",
+      "suspect": false,
+      "time": 1779131588,
+      "touched": 9,
+      "trees": {
+        "613cb9a0c0b7ecf7455b3eefe7004c7839f2f231": "e5e5185c7653c97128d6998dc1ab3efe968ec086",
+        "b8b9ffeb5d012f5d041685c81152636bf596cf72": "e4a42cb5525fa528ed6658c71f80cc56746edb0e",
+        "c9e94136b39b1fad4a47ac0d4478fa372bd07ff8": "24884d8439adb38403d95222bde4e22d010fc17c"
+      }
+    },
+    {
+      "base": "b8b9ffeb5d012f5d041685c81152636bf596cf72",
+      "branches": [
+        "4e869f3a172a58df077932dc80b130cdf4ba9774",
+        "9b327da8275bb63bd7bbd43ad8ff9862480da267"
+      ],
+      "followups": [],
+      "id": "c23619953cdec1d232bfa524fd3fdb3743c376440e317a8b241c8bad2e4078ee",
+      "input_digest": "c23619953cdec1d232bfa524fd3fdb3743c376440e317a8b241c8bad2e4078ee",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 3,
+      "merge_commit": "dbf4d14c712750c31e15916b659925683150533b",
+      "merged_changed": 7,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge stable into main (#3479)",
+      "suspect": false,
+      "time": 1779216546,
+      "touched": 9,
+      "trees": {
+        "4e869f3a172a58df077932dc80b130cdf4ba9774": "2a2936b60e8aa291ecf9d446f54f42dc2941d06c",
+        "9b327da8275bb63bd7bbd43ad8ff9862480da267": "2eb8e078c138896da60206dd721a39dbb8ebd310",
+        "b8b9ffeb5d012f5d041685c81152636bf596cf72": "e4a42cb5525fa528ed6658c71f80cc56746edb0e"
+      }
+    },
+    {
+      "base": "9b327da8275bb63bd7bbd43ad8ff9862480da267",
+      "branches": [
+        "dbf4d14c712750c31e15916b659925683150533b",
+        "a42300ab9eb032c986ad030fae65f1eb58518dae"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.rst",
+            "src/click/shell_completion.py"
+          ],
+          "fix_words": false,
+          "hours": 28.43,
+          "sha": "3a40e43e8f61761cb7bd4f3e27ae3060690a84eb",
+          "signals": [],
+          "subject": "Merge branch 'stable'"
+        }
+      ],
+      "id": "55119893d0646accc96a8231b93ede4ae78f04957f4f037475e51e7680a440c9",
+      "input_digest": "55119893d0646accc96a8231b93ede4ae78f04957f4f037475e51e7680a440c9",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 3,
+      "merge_commit": "bc36cd1a2b3bc18f401a98476154dbc5a2d212c9",
+      "merged_changed": 19,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge branch 'stable'",
+      "suspect": false,
+      "time": 1779423069,
+      "touched": 19,
+      "trees": {
+        "9b327da8275bb63bd7bbd43ad8ff9862480da267": "2eb8e078c138896da60206dd721a39dbb8ebd310",
+        "a42300ab9eb032c986ad030fae65f1eb58518dae": "cdb8d17250018356f734f93bbdedde3a250102d3",
+        "dbf4d14c712750c31e15916b659925683150533b": "d8c539fba76976faad357290969f294ab69d9597"
+      }
+    },
+    {
+      "base": "a42300ab9eb032c986ad030fae65f1eb58518dae",
+      "branches": [
+        "c3535905c77a29afc84861b29d3ad366ce5451bd",
+        "648d7c403829013ade629d63ddbfe808f6b2b770"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.rst",
+            "pyproject.toml",
+            "uv.lock"
+          ],
+          "fix_words": false,
+          "hours": 29.89,
+          "sha": "6a141c3681027e8124ce5a3c70e608dbbebffafb",
+          "signals": [],
+          "subject": "remove colorama (#3505)"
+        }
+      ],
+      "id": "f576111bc06728e3d60110c184ac33775a85b8d910e320e41bcef4469c1ddf4f",
+      "input_digest": "f576111bc06728e3d60110c184ac33775a85b8d910e320e41bcef4469c1ddf4f",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 5,
+      "merge_commit": "3a40e43e8f61761cb7bd4f3e27ae3060690a84eb",
+      "merged_changed": 5,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge branch 'stable'",
+      "suspect": false,
+      "time": 1779525409,
+      "touched": 7,
+      "trees": {
+        "648d7c403829013ade629d63ddbfe808f6b2b770": "bbf8555a428419e1c2a8eece954afa6a10e13183",
+        "a42300ab9eb032c986ad030fae65f1eb58518dae": "cdb8d17250018356f734f93bbdedde3a250102d3",
+        "c3535905c77a29afc84861b29d3ad366ce5451bd": "b6197ba739f29bdd816b7a6deff2b83629cdd412"
+      }
+    },
+    {
+      "base": "bc36cd1a2b3bc18f401a98476154dbc5a2d212c9",
+      "branches": [
+        "3a40e43e8f61761cb7bd4f3e27ae3060690a84eb",
+        "745464765a3fc9ddd5f9e445e5a2ca37efd63237"
+      ],
+      "followups": [],
+      "id": "70e1792a190e470f8eeb1b1e3b4a8e57f4fdd1c97c646e505027b569b00ec4a0",
+      "input_digest": "70e1792a190e470f8eeb1b1e3b4a8e57f4fdd1c97c646e505027b569b00ec4a0",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 5,
+      "merge_commit": "6a141c3681027e8124ce5a3c70e608dbbebffafb",
+      "merged_changed": 10,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "remove colorama (#3505)",
+      "suspect": false,
+      "time": 1779633005,
+      "touched": 14,
+      "trees": {
+        "3a40e43e8f61761cb7bd4f3e27ae3060690a84eb": "278e9052357dcd7bf894c56a1170cc7cef42d93d",
+        "745464765a3fc9ddd5f9e445e5a2ca37efd63237": "aa67ddad8de8aa83245243020c3900115fd91fe5",
+        "bc36cd1a2b3bc18f401a98476154dbc5a2d212c9": "f5b8f1eb0d41f161b52b9c8752e3968c790e199a"
+      }
+    },
+    {
+      "base": "648d7c403829013ade629d63ddbfe808f6b2b770",
+      "branches": [
+        "6a141c3681027e8124ce5a3c70e608dbbebffafb",
+        "97210f24eb22399eb6db87d01bfef14f78862d01"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.rst",
+            "docs/documentation.md",
+            "src/click/core.py",
+            "tests/test_arguments.py"
+          ],
+          "fix_words": false,
+          "hours": 3.59,
+          "sha": "c48021040a50c659b74e24ac2b11c9c9c6620a21",
+          "signals": [],
+          "subject": "Add help parameter to arguments (#3473)"
+        }
+      ],
+      "id": "0a896e79953a7864196bfa05b6475eb9cc7e067e327de86a34f02799720bb3fd",
+      "input_digest": "0a896e79953a7864196bfa05b6475eb9cc7e067e327de86a34f02799720bb3fd",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 10,
+      "merge_commit": "1a994adbb114d402275a614942e2f838a654e648",
+      "merged_changed": 12,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge stable into main (#3521)",
+      "suspect": false,
+      "time": 1779940517,
+      "touched": 21,
+      "trees": {
+        "648d7c403829013ade629d63ddbfe808f6b2b770": "bbf8555a428419e1c2a8eece954afa6a10e13183",
+        "6a141c3681027e8124ce5a3c70e608dbbebffafb": "621533db306efee0aaccbf641d63b8db80f007d1",
+        "97210f24eb22399eb6db87d01bfef14f78862d01": "1b5b412c9c4ae4ce957b738b2bcd44af1914f72a"
+      }
+    },
+    {
+      "base": "8929d392781c8113bc569f388c15c47b94f86581",
+      "branches": [
+        "679a7a0eccbdded7a6e85680bdaaf08003765e01",
+        "df2e5ed8c4e89f51ff4eddb9600d913083613e62"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.md",
+            "tests/test_basic.py"
+          ],
+          "fix_words": false,
+          "hours": 6.14,
+          "sha": "6ec99f89261b32f8a50848786eca055e1967659f",
+          "signals": [],
+          "subject": "Don't parameterize tests using non-Collection iterables (#3656)"
+        },
+        {
+          "files": [
+            "CHANGES.md",
+            "src/click/termui.py"
+          ],
+          "fix_words": false,
+          "hours": 43.58,
+          "sha": "fe3ad76e5807e7a401ed7520f051071c6ae1fa6e",
+          "signals": [],
+          "subject": "Strip ANSI from `confirm()` and `prompt()` (#3653)"
+        }
+      ],
+      "id": "06d251d9536f3de51b1e1327a8f787560f5fc00c4dec842595498a20fa6b5847",
+      "input_digest": "06d251d9536f3de51b1e1327a8f787560f5fc00c4dec842595498a20fa6b5847",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 17,
+      "merge_commit": "240603f240a9ff179d834fede836060d897c6980",
+      "merged_changed": 8,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge remote-tracking branch 'upstream/stable' into merge-stable-into-main",
+      "suspect": false,
+      "time": 1782878664,
+      "touched": 20,
+      "trees": {
+        "679a7a0eccbdded7a6e85680bdaaf08003765e01": "cfc7f6f76aeecd9021e6c61f92fac0084d757887",
+        "8929d392781c8113bc569f388c15c47b94f86581": "8cc348c00b48fb2598b6db504596b7268728cdac",
+        "df2e5ed8c4e89f51ff4eddb9600d913083613e62": "206e6a28c8fbb22131308d573572a08d69a26381"
+      }
+    },
+    {
+      "base": "240603f240a9ff179d834fede836060d897c6980",
+      "branches": [
+        "fe3ad76e5807e7a401ed7520f051071c6ae1fa6e",
+        "dbfb10aba610605dc646bf9374e888905366c545"
+      ],
+      "followups": [],
+      "id": "9515be58ae528db522e81857ebff520de87a7aa69427b982259c5a0fc7877c93",
+      "input_digest": "9515be58ae528db522e81857ebff520de87a7aa69427b982259c5a0fc7877c93",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 4,
+      "merge_commit": "16fc00e2f4a2717a521084f193709a6058afc693",
+      "merged_changed": 2,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Do not trigger a `BytesWarning` under `python -bb` (#3642)",
+      "suspect": false,
+      "time": 1783041107,
+      "touched": 6,
+      "trees": {
+        "240603f240a9ff179d834fede836060d897c6980": "579399c9e653ea528f647cdb1e930ce8dee37ba1",
+        "dbfb10aba610605dc646bf9374e888905366c545": "0ef5a6f9a3e9b18c49e1e22128e554ca7118129f",
+        "fe3ad76e5807e7a401ed7520f051071c6ae1fa6e": "6d49eb22d253e5c9ab65bf47ec32deb4a6b87d5a"
+      }
+    },
+    {
+      "base": "7925a3410d7098c28cfca3b2baa6c852666bbd14",
+      "branches": [
+        "8dd4d60eb5ad4532abdd9b2809a7d9e2aa679b87",
+        "07c909f23f0f83b5ca137c167b9a134d66201f67"
+      ],
+      "followups": [],
+      "id": "839493f7b86b76db4a80e0556aa5cc473a2bde5d78dba6293e2c02e08c8e28ac",
+      "input_digest": "839493f7b86b76db4a80e0556aa5cc473a2bde5d78dba6293e2c02e08c8e28ac",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 1,
+      "merge_commit": "8a4ce842564ae94ab050062db8525196ad476c19",
+      "merged_changed": 3,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Validate `style()` color arguments (#3677)",
+      "suspect": false,
+      "time": 1783526723,
+      "touched": 4,
+      "trees": {
+        "07c909f23f0f83b5ca137c167b9a134d66201f67": "364194eb016121ea6ab434847767ad04e3e6f5eb",
+        "7925a3410d7098c28cfca3b2baa6c852666bbd14": "a4abfebd4c858d5c188f13192f2e910d90f85d54",
+        "8dd4d60eb5ad4532abdd9b2809a7d9e2aa679b87": "0564054a3ac9695f8c3d22f10a91b721cc9de493"
+      }
+    },
+    {
+      "base": "240603f240a9ff179d834fede836060d897c6980",
+      "branches": [
+        "b551fe85714c906565303fae98136d7c72b252ea",
+        "cbc676549ec50e391c75560a8e560f37aa3ab524"
+      ],
+      "followups": [
+        {
+          "files": [
+            "CHANGES.md",
+            "docs/utils.md",
+            "src/click/__init__.py",
+            "src/click/core.py",
+            "src/click/termui.py",
+            "src/click/types.py",
+            "src/click/utils.py",
+            "tests/test_utils/test_KeepOpenFile.py",
+            "tests/test_utils/test_LazyFile.py",
+            "tests/test_utils/test_make_default_short_help.py"
+          ],
+          "fix_words": false,
+          "hours": 19.47,
+          "sha": "333c28d79cd982990ee98eef61ec20ab1a4f38ba",
+          "signals": [],
+          "subject": "Mark clearly functions private status. Deprecated Python 2 utilities. (#3695)"
+        }
+      ],
+      "id": "bbf4050fc389b9e8366037de490d956686c12225095c94fd84673682da82e3ea",
+      "input_digest": "bbf4050fc389b9e8366037de490d956686c12225095c94fd84673682da82e3ea",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 33,
+      "merge_commit": "7df2f82305f20f1611a9668b38d26933b648d807",
+      "merged_changed": 4,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Add built-in PowerShell shell completion support (#3637)",
+      "suspect": false,
+      "time": 1784246203,
+      "touched": 36,
+      "trees": {
+        "240603f240a9ff179d834fede836060d897c6980": "579399c9e653ea528f647cdb1e930ce8dee37ba1",
+        "b551fe85714c906565303fae98136d7c72b252ea": "fd93ec0365050ec1bd43fec63db7ef53f3261916",
+        "cbc676549ec50e391c75560a8e560f37aa3ab524": "300a13807887b4774f920a783bc210be70752270"
+      }
+    },
+    {
+      "base": "b551fe85714c906565303fae98136d7c72b252ea",
+      "branches": [
+        "7df2f82305f20f1611a9668b38d26933b648d807",
+        "051725fa7e0c69effc9107066d8791c5b99242c3"
+      ],
+      "followups": [],
+      "id": "ccd702737ee260f5138388c6bcc0e6eb3591306004e73f2e94134c5251fb9534",
+      "input_digest": "ccd702737ee260f5138388c6bcc0e6eb3591306004e73f2e94134c5251fb9534",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 4,
+      "merge_commit": "333c28d79cd982990ee98eef61ec20ab1a4f38ba",
+      "merged_changed": 14,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Mark clearly functions private status. Deprecated Python 2 utilities. (#3695)",
+      "suspect": false,
+      "time": 1784316298,
+      "touched": 17,
+      "trees": {
+        "051725fa7e0c69effc9107066d8791c5b99242c3": "d05c38228807d7ac7678e08b86ad953563f10b61",
+        "7df2f82305f20f1611a9668b38d26933b648d807": "9b604adf632d7fc540114da5da2cd15144ab3c5f",
+        "b551fe85714c906565303fae98136d7c72b252ea": "fd93ec0365050ec1bd43fec63db7ef53f3261916"
+      }
+    },
+    {
+      "base": "cfa01eeb7894a408af70b29d28c0b24f8680f9fb",
+      "branches": [
+        "5e906a8afb67242dffdd91404dbf31f469054b15",
+        "10b43c211b825181cb81ef383e8091fd41750150"
+      ],
+      "followups": [],
+      "id": "1fe80045be4a16369862cf2f653fc81fe562fc95af7a038aa5b4438670f178c4",
+      "input_digest": "1fe80045be4a16369862cf2f653fc81fe562fc95af7a038aa5b4438670f178c4",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 6,
+      "merge_commit": "398f9154317f6c54bf98fe3359672ad5cb851585",
+      "merged_changed": 1,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Parametrize deprecation tests and check targets (#3715)",
+      "suspect": false,
+      "time": 1784759350,
+      "touched": 7,
+      "trees": {
+        "10b43c211b825181cb81ef383e8091fd41750150": "e1e2160081055028854fd4ae4d5bdb7bfc946564",
+        "5e906a8afb67242dffdd91404dbf31f469054b15": "44e06d6d8f9cd1de903585dd44ff4d9972e599f2",
+        "cfa01eeb7894a408af70b29d28c0b24f8680f9fb": "19ee823d4189f6878e6adb9f1772f479d52fc746"
+      }
+    },
+    {
+      "base": "b67832c2167e5b0ff6764a8c04a0a9087e697b5a",
+      "branches": [
+        "398f9154317f6c54bf98fe3359672ad5cb851585",
+        "b3a191bf58db2a4bd13706981af78d41b7b5a056"
+      ],
+      "followups": [],
+      "id": "e466e79f7b60d496e516b64a0ccb2151fba5c6d20bffe44d5a1c7ba93578dc0b",
+      "input_digest": "e466e79f7b60d496e516b64a0ccb2151fba5c6d20bffe44d5a1c7ba93578dc0b",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 26,
+      "merge_commit": "42235de05e38e3b9c9346662a3c6b6a36901b8a1",
+      "merged_changed": 1,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Fix `sdist` include to ship `CHANGES.md` after changelog rename (#3685)",
+      "suspect": false,
+      "time": 1784807117,
+      "touched": 27,
+      "trees": {
+        "398f9154317f6c54bf98fe3359672ad5cb851585": "252f13eada087a74db78c490ff4bf6ebb1f13085",
+        "b3a191bf58db2a4bd13706981af78d41b7b5a056": "dbd5b194552513e2edb1ec142de82f837962b145",
+        "b67832c2167e5b0ff6764a8c04a0a9087e697b5a": "11cef2e55b73d60a3c3df7b2b1eb46c8a7c6178f"
+      }
+    },
+    {
+      "base": "398f9154317f6c54bf98fe3359672ad5cb851585",
+      "branches": [
+        "42235de05e38e3b9c9346662a3c6b6a36901b8a1",
+        "0c9e836c7c22f72492e82c448d1981b59a20795e"
+      ],
+      "followups": [],
+      "id": "fb2e1be095987e56042cf3c901cb8b6004a1d680440562f3fbe9c5ca4c173a8c",
+      "input_digest": "fb2e1be095987e56042cf3c901cb8b6004a1d680440562f3fbe9c5ca4c173a8c",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 1,
+      "merge_commit": "5aa8ac43527f91c4c801a50b485c09576715d340",
+      "merged_changed": 6,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Update all GitHub actions (#3721)",
+      "suspect": false,
+      "time": 1784833099,
+      "touched": 7,
+      "trees": {
+        "0c9e836c7c22f72492e82c448d1981b59a20795e": "5ae4ca8049def319cae8e8b4366d5002a6fc0041",
+        "398f9154317f6c54bf98fe3359672ad5cb851585": "252f13eada087a74db78c490ff4bf6ebb1f13085",
+        "42235de05e38e3b9c9346662a3c6b6a36901b8a1": "87847efdc4c93c96c15c180b3caf8b52e7def9d1"
+      }
+    },
+    {
+      "base": "8b44edfff7d9a6c895fa804148c16b3a0bc9efb5",
+      "branches": [
+        "fc5c7f45da0a4443f60ba2d322fe4bf829977739",
+        "3ee9309b9c1804528842392c461526760bff0035"
+      ],
+      "followups": [],
+      "id": "13aee4cca1259cb78f7e787ca1fa2c0e2dfe78faea85391f1ff531cf3c2ab385",
+      "input_digest": "13aee4cca1259cb78f7e787ca1fa2c0e2dfe78faea85391f1ff531cf3c2ab385",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 3,
+      "merge_commit": "cbd7a4109da16ce58f54c2a618b4c986e3041fcf",
+      "merged_changed": 2,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Run Flask's test suite in the nightly workflow (#3768)",
+      "suspect": false,
+      "time": 1786923821,
+      "touched": 5,
+      "trees": {
+        "3ee9309b9c1804528842392c461526760bff0035": "64a95e5a3e8bde94f7fb96b1ab89b177c99caf1a",
+        "8b44edfff7d9a6c895fa804148c16b3a0bc9efb5": "a52cd0994280efa88a13aa9af244c4b809b89b13",
+        "fc5c7f45da0a4443f60ba2d322fe4bf829977739": "46053c39b2fdab393269ebecb6cdbd77bdad29ea"
+      }
+    },
+    {
+      "base": "61b69e967e525bd502f5bf42def4d551e761fe0e",
+      "branches": [
+        "e1fd5946ab26aaf372009eaff1acf947140b40fb",
+        "131c86aadddfa5cb6dca8339c9d6294c4eacb8ac"
+      ],
+      "followups": [],
+      "id": "7a44816f21a0c836c2c246a9b505a54300aa9870e469826bb41880afe9d31620",
+      "input_digest": "7a44816f21a0c836c2c246a9b505a54300aa9870e469826bb41880afe9d31620",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 5,
+      "merge_commit": "2c8cd3ac958a7eb316d67f2d316c27086c4c0369",
+      "merged_changed": 1,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Add FAQ entry about `UnicodeEncodeError` on Windows (#3778)",
+      "suspect": false,
+      "time": 1787242330,
+      "touched": 6,
+      "trees": {
+        "131c86aadddfa5cb6dca8339c9d6294c4eacb8ac": "6f728a308123d75d4229c73d875488afc393b4af",
+        "61b69e967e525bd502f5bf42def4d551e761fe0e": "9a54368b2768c6ec6443b0b90795eb1df6d83494",
+        "e1fd5946ab26aaf372009eaff1acf947140b40fb": "5492745346afdabe6a1d3086b1395f2806d4e82d"
+      }
+    },
+    {
+      "base": "7944461a80b780d060899c8835acab3c273a04a6",
+      "branches": [
+        "6aabf099bfdd4c1e75fe8d0e0d4241372b988ab1",
+        "bb695aaecdef95832d167fc1d508921745aa824e"
+      ],
+      "followups": [],
+      "id": "a0f95fe350ab085962dda39af7cad202897fbb582377b1b784a106d3a3c87eaa",
+      "input_digest": "a0f95fe350ab085962dda39af7cad202897fbb582377b1b784a106d3a3c87eaa",
+      "kind": "merge",
+      "language": "python",
+      "line_changed": 0,
+      "merge_commit": "3cbaa76b6014be7427d1ab06b4af40f01e7c278e",
+      "merged_changed": 11,
+      "repository": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "signals": [],
+      "subject": "Merge stable into main (#3876)",
+      "suspect": false,
+      "time": 1790016887,
+      "touched": 11,
+      "trees": {
+        "6aabf099bfdd4c1e75fe8d0e0d4241372b988ab1": "014c6c60967424c964e69a4517b1a310b38d9c54",
+        "7944461a80b780d060899c8835acab3c273a04a6": "014c6c60967424c964e69a4517b1a310b38d9c54",
+        "bb695aaecdef95832d167fc1d508921745aa824e": "b8c174fe04ce2f9bd96a686f49a5b4cc12225c0c"
+      }
+    },
+    {
+      "base": "edd138ee3049749190de3dcd7e32d7bcbf224e41",
+      "branches": [
+        "8755b17fbcfdee76511eeb460e18e94e6c9a8d30",
+        "945018a9f7268d359634bd3fab794a48df8b9cf7"
+      ],
+      "followups": [],
+      "id": "d6731bfe73313becc6f29deb234379ae69a80d1945401f4b093543bfeb55e543",
+      "input_digest": "d6731bfe73313becc6f29deb234379ae69a80d1945401f4b093543bfeb55e543",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 1,
+      "merge_commit": "e8c8c21244f87da80aaa5ac5ab9c92f3faca2489",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "perf(jsx/dom): optimize matching-head child lookup during reconciliation (#5329)",
+      "suspect": false,
+      "time": 1789378402,
+      "touched": 3,
+      "trees": {
+        "8755b17fbcfdee76511eeb460e18e94e6c9a8d30": "0890eb197e8abee4f665ebc63bc5e372af26cbca",
+        "945018a9f7268d359634bd3fab794a48df8b9cf7": "0f0e2d4e529246ade708bf747c3c39f3c508852e",
+        "edd138ee3049749190de3dcd7e32d7bcbf224e41": "56f48c63d8ebfb131d99432b78854e46acc9978d"
+      }
+    },
+    {
+      "base": "edd138ee3049749190de3dcd7e32d7bcbf224e41",
+      "branches": [
+        "098e11912ab244c5c33931de007f04dc8e3c2929",
+        "a72ae7b57e024c99987c45439cc8dee0244a46fc"
+      ],
+      "followups": [],
+      "id": "4231ddf6209975b1a5be76329466aa1a433fd70f1f03d54198643488f3a69014",
+      "input_digest": "4231ddf6209975b1a5be76329466aa1a433fd70f1f03d54198643488f3a69014",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 4,
+      "merge_commit": "cb5bea3614e6591e8ab933ef9a38ce7addf1d09a",
+      "merged_changed": 3,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(jsx): replace Suspense and ErrorBoundary content across newlines (#5380)",
+      "suspect": false,
+      "time": 1789891895,
+      "touched": 7,
+      "trees": {
+        "098e11912ab244c5c33931de007f04dc8e3c2929": "62496ba23f696b5d6da9801bb0f6b007ebe15e01",
+        "a72ae7b57e024c99987c45439cc8dee0244a46fc": "65848c950fcd47c9c7b295cf281397a6e90875f4",
+        "edd138ee3049749190de3dcd7e32d7bcbf224e41": "56f48c63d8ebfb131d99432b78854e46acc9978d"
+      }
+    },
+    {
+      "base": "edd138ee3049749190de3dcd7e32d7bcbf224e41",
+      "branches": [
+        "cb5bea3614e6591e8ab933ef9a38ce7addf1d09a",
+        "79e50aa8a38bbe27f7617cf59c9aebbf57864d9a"
+      ],
+      "followups": [],
+      "id": "aba5930f4bcaf2ff641a65799faab42778be96870249cb72ef90a45329d90241",
+      "input_digest": "aba5930f4bcaf2ff641a65799faab42778be96870249cb72ef90a45329d90241",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 7,
+      "merge_commit": "f5a53463ad2ff791fc02418b645750ce75a260ad",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(accepts): match media types and language tags case-insensitively (#5376)",
+      "suspect": false,
+      "time": 1789893232,
+      "touched": 9,
+      "trees": {
+        "79e50aa8a38bbe27f7617cf59c9aebbf57864d9a": "5998a5fa869210c452abcfe42d2d86f672ea111e",
+        "cb5bea3614e6591e8ab933ef9a38ce7addf1d09a": "cbc7c8313f7aa876f8561cf424d9bdf4337ce329",
+        "edd138ee3049749190de3dcd7e32d7bcbf224e41": "56f48c63d8ebfb131d99432b78854e46acc9978d"
+      }
+    },
+    {
+      "base": "edd138ee3049749190de3dcd7e32d7bcbf224e41",
+      "branches": [
+        "00ee875728e2369b98a9ab7dda0690b77afedcff",
+        "eb67c3d2dff5ed7815b8a02e63e85861ab7c37f0"
+      ],
+      "followups": [],
+      "id": "5b097d3e9402081a967871aecf6ac31c561a14bff43e02da6dbd513d7201ac67",
+      "input_digest": "5b097d3e9402081a967871aecf6ac31c561a14bff43e02da6dbd513d7201ac67",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 11,
+      "merge_commit": "f950277cd3d9264622785e82785f21c648da699a",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(pretty-json): don't break responses with unparseable JSON bodies (#5377)",
+      "suspect": false,
+      "time": 1789895995,
+      "touched": 13,
+      "trees": {
+        "00ee875728e2369b98a9ab7dda0690b77afedcff": "c91dad7e74cfe0cbdda121ca51584c15e1eb9848",
+        "eb67c3d2dff5ed7815b8a02e63e85861ab7c37f0": "ca1ec061f1b42490cfefa8125306b934c57fff2b",
+        "edd138ee3049749190de3dcd7e32d7bcbf224e41": "56f48c63d8ebfb131d99432b78854e46acc9978d"
+      }
+    },
+    {
+      "base": "edd138ee3049749190de3dcd7e32d7bcbf224e41",
+      "branches": [
+        "f950277cd3d9264622785e82785f21c648da699a",
+        "68c9509b76930c60715f8a7c3f818759d4023f7a"
+      ],
+      "followups": [],
+      "id": "aff11985e68d85b1b57216550527dc2677903176ec2751e9f06fd17fe3596176",
+      "input_digest": "aff11985e68d85b1b57216550527dc2677903176ec2751e9f06fd17fe3596176",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 13,
+      "merge_commit": "52febbcc30bc509d5e4987577e63906fe08fc471",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(jwt): throw JwtTokenInvalid when the signature is not valid base64url (#5379)",
+      "suspect": false,
+      "time": 1789896349,
+      "touched": 15,
+      "trees": {
+        "68c9509b76930c60715f8a7c3f818759d4023f7a": "4e106a472bc906b3b11f767e4a51753a931776d8",
+        "edd138ee3049749190de3dcd7e32d7bcbf224e41": "56f48c63d8ebfb131d99432b78854e46acc9978d",
+        "f950277cd3d9264622785e82785f21c648da699a": "b9fb04cf276a8102936cbd6c20f49512eb6a91db"
+      }
+    },
+    {
+      "base": "00ee875728e2369b98a9ab7dda0690b77afedcff",
+      "branches": [
+        "52febbcc30bc509d5e4987577e63906fe08fc471",
+        "6f6790f013fa702c736c6ffb03ac685bcf553d90"
+      ],
+      "followups": [],
+      "id": "877137abf15f262eef0409ae232a2f75cdc100eaf1a4ef03aa1d1680980a9b3c",
+      "input_digest": "877137abf15f262eef0409ae232a2f75cdc100eaf1a4ef03aa1d1680980a9b3c",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 4,
+      "merge_commit": "0d86899d28e146da0c8760201b2d08ddae732eaa",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(aws-lambda): treat binary +xml archive media types as binary (#5424)",
+      "suspect": false,
+      "time": 1789985571,
+      "touched": 6,
+      "trees": {
+        "00ee875728e2369b98a9ab7dda0690b77afedcff": "c91dad7e74cfe0cbdda121ca51584c15e1eb9848",
+        "52febbcc30bc509d5e4987577e63906fe08fc471": "decf824120a1738440979bf85be51e4e943f570c",
+        "6f6790f013fa702c736c6ffb03ac685bcf553d90": "5b638c8ddbc9ecfbd60785dcd3593ccc196faeb4"
+      }
+    },
+    {
+      "base": "5e5b83d6ed963a2bc7d8384002e1c953648253b1",
+      "branches": [
+        "0d86899d28e146da0c8760201b2d08ddae732eaa",
+        "72f02990d379d9be2d296372b41a5a44fd5929c4"
+      ],
+      "followups": [],
+      "id": "b3296e2cce0019791152f3aaf5685a976c08fb2d3252ad733ef53208bd8566f6",
+      "input_digest": "b3296e2cce0019791152f3aaf5685a976c08fb2d3252ad733ef53208bd8566f6",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 56,
+      "merge_commit": "28e8572cd265b4da1160ce6cd51919bb70516e2c",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(aws-lambda): preserve empty query parameters (#5292)",
+      "suspect": false,
+      "time": 1789985752,
+      "touched": 56,
+      "trees": {
+        "0d86899d28e146da0c8760201b2d08ddae732eaa": "aff4406e4a2706cf943d5d448f14e5ee799c0b84",
+        "5e5b83d6ed963a2bc7d8384002e1c953648253b1": "0c10c61552e01c0a33824dd65ce6d82a3605789e",
+        "72f02990d379d9be2d296372b41a5a44fd5929c4": "b9e548c2991682a238e7ba5684102c7d5e6c37f0"
+      }
+    },
+    {
+      "base": "90e1b948467961718afd3ae34af9dee582b42248",
+      "branches": [
+        "de310ac063febf3e7b73f6206142d0e88800661f",
+        "c86ef4218c5b0dbf85cef16b3da9ee1864d00811"
+      ],
+      "followups": [],
+      "id": "ac5758e280f4310f5a09f947fd1b1c532f0571321f7cdf1de68f17b7d2e61304",
+      "input_digest": "ac5758e280f4310f5a09f947fd1b1c532f0571321f7cdf1de68f17b7d2e61304",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 25,
+      "merge_commit": "6cadf7537385c6e3df9cbd6d05c9b84c82ae0361",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(lambda-edge): fail with a descriptive error on a malformed event (#5358)",
+      "suspect": false,
+      "time": 1790056971,
+      "touched": 25,
+      "trees": {
+        "90e1b948467961718afd3ae34af9dee582b42248": "e5ba0db00c672a4c76bb1be9d9b2421cf734ac11",
+        "c86ef4218c5b0dbf85cef16b3da9ee1864d00811": "6e212446c5006beaa786b6c88a2b43d4de43c6f8",
+        "de310ac063febf3e7b73f6206142d0e88800661f": "bc3c94d35a757f1c8f5205eb4ebd9df5f09b0713"
+      }
+    },
+    {
+      "base": "6cadf7537385c6e3df9cbd6d05c9b84c82ae0361",
+      "branches": [
+        "7c3b0df96dbf3e767968ff5afe4c0d999257b8ee",
+        "ebe45718739b2ea8101ddfcf994cf07cb03b9cec"
+      ],
+      "followups": [
+        {
+          "files": [
+            "package.json"
+          ],
+          "fix_words": false,
+          "hours": 0.14,
+          "sha": "a79a8048b6b3fd777c8f2b842cc4ad81c250ba2b",
+          "signals": [],
+          "subject": "chore(package.json): invoke package scripts through pnpm instead of bun (#5434)"
+        },
+        {
+          "files": [
+            "package.json",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 0.28,
+          "sha": "8dcd52b92beada28962e818bdca8a137a6beb656",
+          "signals": [],
+          "subject": "chore: replace prettier with oxfmt (#5435)"
+        },
+        {
+          "files": [
+            ".tool-versions",
+            "package.json",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 6.62,
+          "sha": "57ba76a2a45d0573ed8f1c1e4a9d11dda9c6ab11",
+          "signals": [],
+          "subject": "chore(deps): upgrade vitest to 5.0.1 (#5437)"
+        },
+        {
+          "files": [
+            "eslint.config.mjs",
+            "package.json",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 23.86,
+          "sha": "3ed3a14f6d47f3a000f6f0206912261fc0e4b6cd",
+          "signals": [],
+          "subject": "chore: replace eslint with oxlint (#5443)"
+        },
+        {
+          "files": [
+            ".github/pull_request_template.md",
+            ".github/workflows/autofix.yml",
+            ".github/workflows/ci.yml",
+            "package.json",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 28.96,
+          "sha": "5f31392d724cf98c9e48a3de119a55284583ad5f",
+          "signals": [],
+          "subject": "chore: introduce Vite+ (#5444)"
+        }
+      ],
+      "id": "38a3e064ec26465411619d947a492e4961d6aa82a3dbcd522a2cbeee8048ca2c",
+      "input_digest": "38a3e064ec26465411619d947a492e4961d6aa82a3dbcd522a2cbeee8048ca2c",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 1,
+      "merge_commit": "535ae553fd32db848381db8f40d832c4a4f61ecb",
+      "merged_changed": 13,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "chore: migrate the package manager from bun to pnpm (#5433)",
+      "suspect": false,
+      "time": 1790213857,
+      "touched": 13,
+      "trees": {
+        "6cadf7537385c6e3df9cbd6d05c9b84c82ae0361": "0518e14de6ecf02c3295b4f6902cd17d5a239626",
+        "7c3b0df96dbf3e767968ff5afe4c0d999257b8ee": "62d433ed6426938c62155052896919dbc4b5ea50",
+        "ebe45718739b2ea8101ddfcf994cf07cb03b9cec": "b80e22eef824be70025e9b2ad55b97047118a66d"
+      }
+    },
+    {
+      "base": "ee0622e14487444211942eec2f6ab7ccede4c6af",
+      "branches": [
+        "f69c1a525c50dafb45c58690ac8e0d3e62546d5f",
+        "960240c75e7535775957442fccfb145e2c8e0ad0"
+      ],
+      "followups": [],
+      "id": "19c97af4b8fc4a823556db94c3c5861ce2e9e6adade7ba0032a743e65e352755",
+      "input_digest": "19c97af4b8fc4a823556db94c3c5861ce2e9e6adade7ba0032a743e65e352755",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 1,
+      "merge_commit": "52f6c7ec865b31001a14eed9b323a0235f0a3156",
+      "merged_changed": 1,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "ci: remove empty step left in `cr.yml` by the pnpm migration (#5456)",
+      "suspect": false,
+      "time": 1790478710,
+      "touched": 2,
+      "trees": {
+        "960240c75e7535775957442fccfb145e2c8e0ad0": "1ec9e6229c329a78a7b649b108cf63c6a3be65bc",
+        "ee0622e14487444211942eec2f6ab7ccede4c6af": "c3157d2e1373a7d5697ae7548d94a503997d7806",
+        "f69c1a525c50dafb45c58690ac8e0d3e62546d5f": "d48062be1c5a15bf1dcf8e3fc3316bd34e2f3ba0"
+      }
+    },
+    {
+      "base": "90d02fb1645c12a65d27f39594d2129db2065ba7",
+      "branches": [
+        "d7fb6972924f0a22fa3877b1a6e11e5273828527",
+        "1e0fa85bed209e540b6e8b5c44dae21c8a20b9bb"
+      ],
+      "followups": [
+        {
+          "files": [
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 0.89,
+          "sha": "b877827fccde0be4ee78457ae8b65db2436139f9",
+          "signals": [],
+          "subject": "feat(adapters): add the seven adapters as workspace packages (#5463)"
+        },
+        {
+          "files": [
+            ".github/workflows/release.yml",
+            "docs/MAINTAINING.md",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 1.68,
+          "sha": "1c6e060d1309195d2feacf29b4a7b5bd7eb3eccb",
+          "signals": [],
+          "subject": "feat(adapters/deno): publish to JSR (#5465)"
+        },
+        {
+          "files": [
+            ".github/workflows/ci-adapters.yml",
+            ".github/workflows/ci.yml",
+            "adapters/bun/tsconfig.json",
+            "docs/MAINTAINING.md",
+            "package.json",
+            "pnpm-lock.yaml"
+          ],
+          "fix_words": false,
+          "hours": 2.21,
+          "sha": "645ddd6e6ceb0cf5bd9c49dfe03850f874409151",
+          "signals": [],
+          "subject": "test: move adapter runtime tests into `adapters/*` (#5466)"
+        },
+        {
+          "files": [
+            "package.json"
+          ],
+          "fix_words": false,
+          "hours": 2.7,
+          "sha": "f3d5e8856244eb5faf9e1322834ca1639134d971",
+          "signals": [],
+          "subject": "4.13.10"
+        },
+        {
+          "files": [
+            "package.json"
+          ],
+          "fix_words": false,
+          "hours": 24.58,
+          "sha": "37ce06904e732d4bc11c9075adf362c76049a594",
+          "signals": [],
+          "subject": "4.13.11"
+        }
+      ],
+      "id": "ec2f2307f14ed3029e39b0ba1631b0149738b70a34225198957c84b8236ce557",
+      "input_digest": "ec2f2307f14ed3029e39b0ba1631b0149738b70a34225198957c84b8236ce557",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 11,
+      "merge_commit": "fc2343dbad8af7ab82bc4a6c6907e57416aed878",
+      "merged_changed": 27,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "feat(adapters): add @hono/bun as a workspace package (#5447)",
+      "suspect": false,
+      "time": 1790573862,
+      "touched": 36,
+      "trees": {
+        "1e0fa85bed209e540b6e8b5c44dae21c8a20b9bb": "ad033070f6a6606762f9a655b433a27958af119c",
+        "90d02fb1645c12a65d27f39594d2129db2065ba7": "504b91bf1bfe6caa5c5c0b452f246a488cf85e0b",
+        "d7fb6972924f0a22fa3877b1a6e11e5273828527": "85905418e020b3d1f16ab661ed15ddd44ac7f5da"
+      }
+    },
+    {
+      "base": "18331a905e2415f7f73038357f2eec354123f7a6",
+      "branches": [
+        "c437d7569219a21e45fa81797749e8f34fe19dcc",
+        "a4dfcbf97a1df8d8c694f81b6221a97612494a86"
+      ],
+      "followups": [],
+      "id": "0c9101e0fff61809502b0bdbf5b24fb164b7c7ab2ec7b72d119cc8dda1551de6",
+      "input_digest": "0c9101e0fff61809502b0bdbf5b24fb164b7c7ab2ec7b72d119cc8dda1551de6",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 20,
+      "merge_commit": "c3053ccf14f1c4c70a0c2888eed6121b9f6c8f95",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(etag): correctly match mixed-case header name in retainedHeader option (#5475)",
+      "suspect": false,
+      "time": 1790757400,
+      "touched": 22,
+      "trees": {
+        "18331a905e2415f7f73038357f2eec354123f7a6": "8bab609232f39e754e93b1967126db013f6c9860",
+        "a4dfcbf97a1df8d8c694f81b6221a97612494a86": "38853d6fbc8c26cf9715ad650f05f11da1cdd3d6",
+        "c437d7569219a21e45fa81797749e8f34fe19dcc": "261729381755d69d6ccff8187619432af709ec18"
+      }
+    },
+    {
+      "base": "37ce06904e732d4bc11c9075adf362c76049a594",
+      "branches": [
+        "c3053ccf14f1c4c70a0c2888eed6121b9f6c8f95",
+        "5294f3cc7b553f59e50fae39e2664685cb0cc8e4"
+      ],
+      "followups": [],
+      "id": "5bd2e4df5cabac72022a6d044db6b05e32f331d04610e2a60dfe2eaa213c1a1e",
+      "input_digest": "5bd2e4df5cabac72022a6d044db6b05e32f331d04610e2a60dfe2eaa213c1a1e",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 19,
+      "merge_commit": "e5bb2062a3ddd645e3a16d1300bd76d6c9af33a5",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(jsx): add px to numeric gridGap, gridRowGap and gridColumnGap (#5487)",
+      "suspect": false,
+      "time": 1790757919,
+      "touched": 21,
+      "trees": {
+        "37ce06904e732d4bc11c9075adf362c76049a594": "6190a6763972c97b43b22a01ab50f1abcba77266",
+        "5294f3cc7b553f59e50fae39e2664685cb0cc8e4": "8a14364f63caa7984d9cf6963f1e174039f334c7",
+        "c3053ccf14f1c4c70a0c2888eed6121b9f6c8f95": "69c56dbe989f735579844e590c5aaa7c2bfd81e4"
+      }
+    },
+    {
+      "base": "f5a53463ad2ff791fc02418b645750ce75a260ad",
+      "branches": [
+        "e5bb2062a3ddd645e3a16d1300bd76d6c9af33a5",
+        "2047742377ba8f2c031a976f8b0aa5b21fe76a40"
+      ],
+      "followups": [],
+      "id": "94b9ae1388c9bd89aa1e45f5f9451b556f15a803eaa1cfcca12aa6eb326ba1cc",
+      "input_digest": "94b9ae1388c9bd89aa1e45f5f9451b556f15a803eaa1cfcca12aa6eb326ba1cc",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 286,
+      "merge_commit": "afb2068c1c53a530528ac5f237e245793dd03c07",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(combine): return a Response from a short-circuiting middleware in some() (#5391)",
+      "suspect": false,
+      "time": 1790758102,
+      "touched": 287,
+      "trees": {
+        "2047742377ba8f2c031a976f8b0aa5b21fe76a40": "ed5784deaf4072222b6a990229330916d615713f",
+        "e5bb2062a3ddd645e3a16d1300bd76d6c9af33a5": "7487e700bfeb17fd489929c4599f64defcf8fbdd",
+        "f5a53463ad2ff791fc02418b645750ce75a260ad": "78a3eb72245df62469112cc58f07cc4231d1ff7c"
+      }
+    },
+    {
+      "base": "b877827fccde0be4ee78457ae8b65db2436139f9",
+      "branches": [
+        "afb2068c1c53a530528ac5f237e245793dd03c07",
+        "aeb31008cbd519e9a2eedc2f717ae0e930933e27"
+      ],
+      "followups": [
+        {
+          "files": [
+            "package.json"
+          ],
+          "fix_words": false,
+          "hours": 0.04,
+          "sha": "6abd35b0a5f35f67b6417627d5b0a6c2d266ac04",
+          "signals": [],
+          "subject": "4.13.12"
+        }
+      ],
+      "id": "631fe803c1068655083788d8ff1e46c62bd53b143f1275b7ccfbe97da622f867",
+      "input_digest": "631fe803c1068655083788d8ff1e46c62bd53b143f1275b7ccfbe97da622f867",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 108,
+      "merge_commit": "95eb860473d26bd303a2a29716e61a77c8c5e5f5",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "chore(deps): upgrade vite-plus to 1.0.0 (#5464)",
+      "suspect": false,
+      "time": 1790758606,
+      "touched": 108,
+      "trees": {
+        "aeb31008cbd519e9a2eedc2f717ae0e930933e27": "ca80aa0b5a585eda5e21f438b74aba6cb58ab048",
+        "afb2068c1c53a530528ac5f237e245793dd03c07": "04b368aa6d61bca874327345b6bade3d0db0ce29",
+        "b877827fccde0be4ee78457ae8b65db2436139f9": "50ffd94a4d6793dfed348feb693394eab382616a"
+      }
+    },
+    {
+      "base": "57ba76a2a45d0573ed8f1c1e4a9d11dda9c6ab11",
+      "branches": [
+        "6abd35b0a5f35f67b6417627d5b0a6c2d266ac04",
+        "5c372c47f35dddd1074ca57eb1a048a7b41c7d7a"
+      ],
+      "followups": [],
+      "id": "ac631147cca2ec0ca9c79efb13cfcca4d1bb36513165928f2c7b945383849db9",
+      "input_digest": "ac631147cca2ec0ca9c79efb13cfcca4d1bb36513165928f2c7b945383849db9",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 271,
+      "merge_commit": "deff529656cff775b35956f7f9071388d4eb55ae",
+      "merged_changed": 1,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "test(client): simulate network error for undefined route in parseResponse test (#5439)",
+      "suspect": false,
+      "time": 1790857561,
+      "touched": 272,
+      "trees": {
+        "57ba76a2a45d0573ed8f1c1e4a9d11dda9c6ab11": "78a0035fc0b1af1a7819b888ccd3c750af104ebf",
+        "5c372c47f35dddd1074ca57eb1a048a7b41c7d7a": "1f6ee353a7daf370f79763336ba2015a2dfda1df",
+        "6abd35b0a5f35f67b6417627d5b0a6c2d266ac04": "8810f3cf4892e5f1f6de4cc6d4ccbb42f8984c52"
+      }
+    },
+    {
+      "base": "3ed3a14f6d47f3a000f6f0206912261fc0e4b6cd",
+      "branches": [
+        "deff529656cff775b35956f7f9071388d4eb55ae",
+        "61d223dbe37515eadc90822806a18262ecc2b43a"
+      ],
+      "followups": [],
+      "id": "d12e026066f826ee99706fa4a983c4352f7e6c826d0b8d2baee0fec4026a4dc2",
+      "input_digest": "d12e026066f826ee99706fa4a983c4352f7e6c826d0b8d2baee0fec4026a4dc2",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 217,
+      "merge_commit": "6d73a74f9757ed65d6103c0e8375097fa20873c4",
+      "merged_changed": 1,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "docs(request): fix jsdoc comments for some getters (#5445)",
+      "suspect": false,
+      "time": 1790858639,
+      "touched": 218,
+      "trees": {
+        "3ed3a14f6d47f3a000f6f0206912261fc0e4b6cd": "856e865d76f29c1b48eebd6a83823b05d8a41700",
+        "61d223dbe37515eadc90822806a18262ecc2b43a": "6dee638e441e2b88af917209f8b846a60176d9ad",
+        "deff529656cff775b35956f7f9071388d4eb55ae": "6773cd9a51851e9b2b4c9bd83089495607db31c2"
+      }
+    },
+    {
+      "base": "52febbcc30bc509d5e4987577e63906fe08fc471",
+      "branches": [
+        "6d73a74f9757ed65d6103c0e8375097fa20873c4",
+        "d02b923645f9763c086e8aa95bfbfaf79d9a58b3"
+      ],
+      "followups": [],
+      "id": "95f50313bdc2a3fdb34e0cd7c073c00ada978035c31183b6982fa07081ba3c9c",
+      "input_digest": "95f50313bdc2a3fdb34e0cd7c073c00ada978035c31183b6982fa07081ba3c9c",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 284,
+      "merge_commit": "f23b146afcec63606144cde50b5fbd360dd60238",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(jsx): allow JSXNode function component results (#5476)",
+      "suspect": false,
+      "time": 1790858707,
+      "touched": 285,
+      "trees": {
+        "52febbcc30bc509d5e4987577e63906fe08fc471": "decf824120a1738440979bf85be51e4e943f570c",
+        "6d73a74f9757ed65d6103c0e8375097fa20873c4": "cc3820a03248b020df716f531e82d7bb830e6e5a",
+        "d02b923645f9763c086e8aa95bfbfaf79d9a58b3": "f0c9303c088b8f7820a6b4fa308650ea496dbf7f"
+      }
+    },
+    {
+      "base": "6abd35b0a5f35f67b6417627d5b0a6c2d266ac04",
+      "branches": [
+        "f23b146afcec63606144cde50b5fbd360dd60238",
+        "23f2249a9ff5744462cd2b76e8d56b5bfcaf4e00"
+      ],
+      "followups": [],
+      "id": "388e6b5d4224151c1713ed653fa60b4be6d6cb00d0583b0c82faec245de6b770",
+      "input_digest": "388e6b5d4224151c1713ed653fa60b4be6d6cb00d0583b0c82faec245de6b770",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 4,
+      "merge_commit": "ae595de8ae05ea548560da93140ee1d53e5a8202",
+      "merged_changed": 5,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "feat(mount): introduce Mount Middleware and deprecate `app.mount` (#5221)",
+      "suspect": false,
+      "time": 1791085311,
+      "touched": 9,
+      "trees": {
+        "23f2249a9ff5744462cd2b76e8d56b5bfcaf4e00": "3413a5e01f7a3764ba0ae17dd50018981da483df",
+        "6abd35b0a5f35f67b6417627d5b0a6c2d266ac04": "8810f3cf4892e5f1f6de4cc6d4ccbb42f8984c52",
+        "f23b146afcec63606144cde50b5fbd360dd60238": "509aa85c9c832626c775cd8942af99ed91d890f0"
+      }
+    },
+    {
+      "base": "08a023cbfde55b434fb0fb30fae35d42e4bf20aa",
+      "branches": [
+        "552ea024250093a48071b3ded9710de4c6e05f14",
+        "e05bc0c14a3e3737973c205bc3d7eb245a97c308"
+      ],
+      "followups": [],
+      "id": "0bf90a67e9881c4876acda467896fefdf6009b0666590b9ee588c44e3ecf184c",
+      "input_digest": "0bf90a67e9881c4876acda467896fefdf6009b0666590b9ee588c44e3ecf184c",
+      "kind": "squash",
+      "language": "typescript",
+      "line_changed": 13,
+      "merge_commit": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+      "merged_changed": 2,
+      "repository": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "signals": [],
+      "subject": "fix(serve-static): only serve GET and HEAD requests (#5514)",
+      "suspect": false,
+      "time": 1791879490,
+      "touched": 15,
+      "trees": {
+        "08a023cbfde55b434fb0fb30fae35d42e4bf20aa": "5cf2db9690a2f5dbc39ad2b895a8c217965f2523",
+        "552ea024250093a48071b3ded9710de4c6e05f14": "aca38ca8e3a1b2f43a06f3d258b4499bd82ae319",
+        "e05bc0c14a3e3737973c205bc3d7eb245a97c308": "91b03dd70ba79279530a512a8ce292113e13ca05"
+      }
+    }
+  ],
+  "dataset_digest": "cd865e0e7336630ac93e21a2c3457277b388333c81eddd7048121b58219a36df",
+  "repositories": [
+    {
+      "base": "adbc8813901bba65827259daa8e22ff94ec1f30e",
+      "base_sha": "adbc8813901bba65827259daa8e22ff94ec1f30e",
+      "identity": [
+        "7791653039ea3ce88714e49686635d9dbdd1f5f3"
+      ],
+      "language": "go",
+      "shallow": false,
+      "source_url": "https://github.com/spf13/cobra"
+    },
+    {
+      "base": "2247b35ea1c47c727d7a06e51fa280e12a863ff6",
+      "base_sha": "2247b35ea1c47c727d7a06e51fa280e12a863ff6",
+      "identity": [
+        "4101de3daf91c6d35b92395a72bf84132ef48f7c"
+      ],
+      "language": "python",
+      "shallow": false,
+      "source_url": "https://github.com/pallets/click"
+    },
+    {
+      "base": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+      "base_sha": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+      "identity": [
+        "14cd5e6e54956686ed21f696044cbdb2b8faf7ee",
+        "b0cac62cf1aa73ff3962dea52675b377c6749036"
+      ],
+      "language": "typescript",
+      "shallow": true,
+      "source_url": "https://github.com/honojs/hono"
+    }
+  ],
+  "schema_version": 1,
+  "selection": "latest parallel first-parent merges; not a random sample",
+  "target_cases": 60
+}

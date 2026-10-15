@@ -26,6 +26,9 @@ import (
 )
 
 type Options struct {
+	// ParseCache optionally shares bounded exact-content syntax across analyses.
+	// Inventory, manifests, import resolution, and provenance are always rebuilt.
+	ParseCache             *indexer.ParseCache
 	SuggestTests           bool
 	Suite                  string
 	CWD                    string
@@ -114,6 +117,7 @@ type ExecutionEvidence struct {
 	observedFiles        []string
 }
 type Report struct {
+	Drift                []model.Finding              `json:"drift,omitempty"`
 	RunnerPreparations   []evidence.RunnerPreparation `json:"runner_preparations,omitempty"`
 	VerificationProposal *testselection.Proposal      `json:"verification_proposal,omitempty"`
 	// Selection is the bounded execution plan for a --suite mode, including
@@ -266,7 +270,10 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	if e = analyzeTreeRules(ctx, temp, &r); e != nil {
 		return r, e
 	}
-	parseCache := indexer.NewParseCache()
+	parseCache := o.ParseCache
+	if parseCache == nil {
+		parseCache = indexer.NewParseCache()
+	}
 	snapshot, e := indexAndDiscover(ctx, temp, &r, parseCache)
 	if e != nil {
 		return r, e

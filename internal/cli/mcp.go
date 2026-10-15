@@ -38,6 +38,10 @@ func p(name, flag, kind, description string, required bool) toolParam {
 }
 
 var mcpTools = []toolSpec{
+	{"radar_land", "gate", "Compute a bounded static branch-pair matrix, ancestry chains and deterministic landing order. Never publishes refs or runs merge drivers. Pair checks do not prove N-way or runtime compatibility.", []toolParam{p("branches", "", "string", "comma-separated branch references", false), p("base", "base", "string", "integration base", false), p("detail", "__detail", "boolean", "retain full pair evidence", false)}},
+	{"radar_conflict_brief", "gate", "Read bounded base/branch conflict hunks, intersecting symbols and inferred related tests for two branches. Never resolves conflicts, writes source refs or executes code.", []toolParam{p("branches", "", "string", "exactly two comma-separated branches", true), p("base", "base", "string", "integration base", false)}},
+	{"radar_overlap", "gate", "Inspect saved worktree changes for supported cross-agent drift. Missing pair coverage is unknown; related symbols/tests remain bounded static evidence. Never executes code.", []toolParam{p("branches", "", "string", "comma-separated branches (default worktrees)", false), p("base", "base", "string", "integration base", false), p("symbol", "symbol", "string", "symbol name filter", false), p("file", "file", "string", "repository-relative file filter", false)}},
+	{"radar_show", "show", "Read a repository-bound historical gate proof by its trailer run ID. Historical results do not verify the current HEAD.", []toolParam{p("run_id", "", "string", "immutable gate run ID", true)}},
 	{"radar_gate", "gate", "Start here. Combine branches (default: every worktree branch with commits beyond the base, or HEAD when none exists) in private Git state and report conflicts, contract changes, supported symbol conflicts, migration order, lockfile consistency, unique keys, generated-output warnings and failing evidence with the branches to look at, plus the tests that cover the change. In a workspace (radar workspace add) it checks every workspace repository, each on its own, and statically checks declared cross-repo links (cross_repo). Repositories outside the workspace are not reachable here: a human registers them with radar workspace add. Never executes repository code; a human runs `radar gate --run` to test the combined tree. In authorized CLI executions, base_comparison records an automatic baseline rerun of failed commands; base-existing failures block verification and have no branch lead. Read gate.verdict (pass/fail/blocked/error); a required check is met only by passed; PASS without --run means no test ran; next is the suggested step.", []toolParam{p("branches", "", "string", "comma-separated branches (default: worktree branches)", false), p("targets", "", "string", "comma-separated REPO:REF or REF targets; in a workspace, unnamed repos take part at their base", false), p("base", "base", "string", "integration base (default: origin/HEAD's branch, main, master or trunk)", false), p("policy", "policy", "string", "optional required-check policy path", false), p("plan", "plan", "string", "optional reviewed plan path", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_check", "check", "Analyze changed files, dependency impact, contracts and optional plan. Missing coverage is not a pass; does not execute repository commands.", []toolParam{p("base", "base", "string", "baseline ref", true), p("head", "head", "string", "head revision (default working tree)", false), p("plan", "plan", "string", "optional plan path", false), p("require_complete", "require-complete", "boolean", "legacy whole-analysis strictness", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend tests without execution", false), p("suite", "suite", "string", "preview a bounded selection without execution: targeted, balanced or full", false), p("max_commands", "max-commands", "integer", "command budget for the suite preview", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
 	{"radar_merge_check", "merge-check", "Preview the combined branches in temporary Git state without executing repository commands; individual branch evidence is not integration proof.", []toolParam{p("base", "base", "string", "baseline ref", true), p("branches", "branches", "string", "comma-separated refs", true), p("plan", "plan", "string", "optional reviewed plan path", false), p("policy", "policy", "string", "optional required-check policy path", false), p("suggest_tests", "suggest-tests", "boolean", "recommend candidate tests without execution", false), p("detail", "__detail", "boolean", "include full report instead of bounded summary", false)}},
@@ -73,6 +77,14 @@ func (t toolSpec) schema() map[string]any {
 // args converts tool arguments into a command line.
 func (t toolSpec) args(arguments map[string]any) ([]string, error) {
 	args := []string{t.command}
+	switch t.name {
+	case "radar_land":
+		args = append(args, "--landing")
+	case "radar_conflict_brief":
+		args = append(args, "--conflict-brief")
+	case "radar_overlap":
+		args = append(args, "--overlap")
+	}
 	positional := []string{}
 	for _, param := range t.params {
 		value, ok := arguments[param.name]
@@ -246,7 +258,13 @@ func (a *app) callTool(name string, arguments map[string]any) map[string]any {
 	var stdout, stderr bytes.Buffer
 	code := Run(a.ctx, args, &stdout, &stderr)
 	text := stdout.String()
-	if (spec.command == "check" || spec.command == "merge-check" || spec.command == "gate") && arguments["detail"] != true {
+	if name == "radar_conflict_brief" {
+		text = compactConflictBrief(text)
+	}
+	if name == "radar_overlap" {
+		text = compactVerification(text)
+	}
+	if (spec.command == "check" || spec.command == "merge-check" || spec.command == "gate") && arguments["detail"] != true && name != "radar_conflict_brief" && name != "radar_overlap" {
 		text = compactVerification(text)
 	}
 	if len(text) > maxToolOutput {

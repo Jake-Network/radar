@@ -4,6 +4,12 @@
 
 **When an agent says “done”, see what was checked and what still needs checking.**
 
+Radar is the integration layer for parallel coding agents:
+
+- **Combine:** check their combined committed tree before merging.
+- **Land:** inspect branch pairs, stacks, landing order and conflict repair briefs.
+- **Prove:** retain what was checked in local records, commit trailers and opt-in PR checks.
+
 Radar checks committed agent branches together before you merge. Two green
 branches can still break when combined. It builds their combination privately,
 checks it without running repository code, and explains missing evidence.
@@ -126,8 +132,10 @@ your repository's own test runners. Then:
 radar doctor
 ```
 
-Windows binaries are not published yet: Windows Git defaults such as
-`core.autocrlf` are not handled yet. On other systems, build from source with Go 1.23+ and a native C compiler (for Tree-sitter):
+Windows binaries are not published yet. This checkout disables private Git
+line-ending conversion and adds native qualification jobs; those jobs still need
+successful hosted runs. Build from source with Go 1.23+ and a native C compiler
+(for Tree-sitter):
 
 ```sh
 git clone --branch v0.2.0 --depth 1 https://github.com/Jake-Network/radar.git
@@ -138,6 +146,14 @@ go build -trimpath -o radar ./cmd/radar
 Use the GitHub binary installer or tag checkout for 0.2.0. The version's
 earlier source commit was cached by the Go module proxy before the hook release;
 `go install ...@v0.2.0` can therefore install that earlier implementation.
+
+To install the current development checkout, use `go install ./cmd/radar` from
+its root. Landing, cross-worktree drift, trailer/show and SCIP described here are
+development additions, not features retroactively added to the v0.2.0 binaries.
+Local [Claude Code/Codex marketplace packages](integrations/plugins/README.md)
+can install the hook and skill after Radar is on PATH. These local catalogs have
+not been submitted to an external marketplace. Release packaging generates a
+Homebrew formula; a published tap still requires a qualified release.
 
 Release details and runtime limits: [RELEASING](docs/RELEASING.md).
 
@@ -150,6 +166,7 @@ coding-agent Stop hooks. See the [changelog](CHANGELOG.md) for the release scope
 radar doctor          # base, agent branches, uncommitted worktrees, test runners, next step
 radar setup claude    # optional: connect Claude Code (or codex, both); add --dry-run first
 radar gate            # combine every agent branch and check it; runs no code
+radar land            # pair matrix, ancestry chains and an estimated landing order
 radar gate --run      # also run the related tests on the combined tree
 ```
 
@@ -164,6 +181,11 @@ snapshots; those results do not verify the committed branches.
 In a terminal, bare `radar` opens a menu that shows the same information and
 runs the same commands (tests only after you confirm). `radar watch` rechecks
 while agents commit; see [watch](docs/USAGE.md#watch).
+`radar gate --overlap` inspects saved cross-worktree drift. Use
+[`radar land --apply`](docs/USAGE.md#landing-parallel-branches) to publish only a
+private integration ref, and [`radar gate --trailer`](docs/USAGE.md#recording-a-verified-run)
+to record a passing selected policy. Pair compatibility and saved snapshots do
+not replace verification of the final committed combination.
 
 ## Reading the result
 

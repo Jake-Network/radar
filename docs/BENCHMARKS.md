@@ -157,6 +157,26 @@ phase time unavailable. File reduction is not runtime savings.
 
 ## History replay
 
+The checked-in [history corpus](../benchmarks/history/README.md) now has
+60 exact candidates: 20 Cobra (Go), 20 Click (Python), and 20 Hono (TypeScript).
+Its public source URLs, base/head/tree SHAs and fetched Hono PR-head refs are
+pinned. All 60 have static observations from the named development binary:
+
+| Repository | Static pass | Static fail | Blocked | Error/timeout |
+| --- | ---: | ---: | ---: | ---: |
+| Cobra | 17 | 0 | 3 | 0 |
+| Click | 8 | 4 | 8 | 0 |
+| Hono | 5 | 13 | 2 | 0 |
+
+These are detector observations, not labeled accuracy. All 60 human reviews are
+still absent; recall and false-positive rates in `score.json` are `null`. Some
+candidates have textual conflicts, so this is not yet a clean-merge/broken-build
+benchmark. `dataset.py` validates independent reviews and adjudication, binds
+comparator results to exact inputs, and reports per-cause recall, false positives,
+missed and unavailable cases only when their denominators exist. No repository
+code, external merge resolver, or LLM was run. The corpus records binary SHA and
+development-snapshot provenance; these observations do not qualify a later release.
+
 [`benchmarks/history/replay.py`](../benchmarks/history/replay.py) replays real merges from a
 local clone through the static gate. For a merge with parents P1 (base line) and P2 (merged work)
 it gates `[P1, P2]` onto `merge-base(P1, P2)`, so whatever landed on the base meanwhile is one
@@ -210,8 +230,9 @@ The two-branch migration check's final binary SHA-256 was
 External editable Python imports and base-existing versus candidate-only test
 failures were checked with controlled fixtures. Actual Qurify pytest/DB execution,
 the historical 22-file branch selection, native macOS default `TMPDIR`, and hosted
-CI remain unverified. The current CI workflow has no macOS job; this change does
-not add one.
+CI remain unverified. The Phase 0 measurement above preceded the macOS and
+Windows qualification jobs now configured in this checkout; those jobs have not
+been executed by the local Linux checks.
 
 ## Evidence and historical verification
 

@@ -12,12 +12,21 @@ with or without color; JSON and MCP output are never styled.
 control color.
 Terminal gate progress goes to stderr and is erased before the report.
 
-`radar doctor` reads Git metadata and committed files to report the base,
+`radar doctor` reads Git metadata, committed files and bounded local resource
+configuration to report the base,
 participating worktree branches, excluded dirty changes, discovered languages
 and test frameworks, available runner programs, and a next command. Its JSON
 adds these facts under `project`. Runner availability does not establish that
 framework dependencies are installed: `node_modules` is not copied into private
 candidates, and frameworks such as pytest are checked when tests run.
+
+Doctor also warns when worktrees declare the same literal database URL, port or
+Compose project name in conventional root `.env`/Compose files. Values are
+compared privately and omitted from reports. Expressions remain `unknown`.
+Static `.pth` inspection of `VIRTUAL_ENV` warns about external paths or
+uninterpreted loaders without running Python. These are configuration advisories,
+not runtime isolation checks; nested settings and full Compose semantics are
+not interpreted.
 
 ## Explicit inputs
 
@@ -49,6 +58,52 @@ These observations are repair leads, do not change the verdict, and are not
 available in `merge-check`. Selection modes, omitted-command handling, policies,
 contract obligations and exit codes are in [VERIFICATION](VERIFICATION.md).
 
+## Landing parallel branches
+
+```sh
+radar land api client docs --base main
+radar land api client --base main --conflict-brief --json
+radar land api client --base main --apply
+# Explicitly authorize an installed structural merge driver:
+radar land api client --base main --driver mergiraf --allow-execution
+```
+
+Landing reports pair conflicts, ancestry constraints, a deterministic order and
+independent branches. Up to 12 branches use all pairs and exact optimization of
+a pair-based rebase estimate; larger sets use changed-file overlap and a greedy
+order. Estimates are not measured rebase counts, and omitted pairs remain
+unverified. A conflict brief requires exactly two branches and includes bounded
+committed source/hunks, inferred symbols and related tests, and reproduction
+arguments. Related tests are static leads, not observed coverage.
+
+`--apply` publishes only `refs/radar/integration/<run-id>` after a static PASS;
+it preserves branch refs, index and working files and prints a fast-forward
+command when ancestry permits. Review the result and select the intended base
+before running that command. Tests require a separate `gate --run`.
+`mergiraf` and `weave` require `--allow-execution`, run with host permissions in
+the private candidate, and record successful repairs as `resolved_by`; merely
+installing a driver does not authorize it. MCP `radar_land` and
+`radar_conflict_brief` expose static previews only. Workspace landing adds
+repository-local plans and declared cross-repository contract comparisons;
+it does not perform cross-repository runtime tests or apply refs atomically.
+
+## Recording a verified run
+
+```sh
+radar gate api client --base main --trailer
+radar show RUN-ID --json
+```
+
+Only a passing gate emits a `Radar-Verified:` trailer and saves its immutable
+report in local Radar state. The trailer lists supported static checks and
+observed tests/selected commands, or `not_run`. Append it to a commit message
+only after reviewing the result. `show` reads the historical candidate report;
+it does not verify today's HEAD. Records bind repository identity and content
+digests, not an authenticated signer, and require the original local state.
+For PR check runs and report types, see
+[Actions integration](../integrations/github-actions/README.md) and
+[report package](../integrations/report/README.md).
+
 ## Agent setup
 
 ```sh
@@ -76,6 +131,7 @@ in linked worktrees. It never merges into your checkout.
 radar watch --base main
 radar watch --base main agent-api agent-web
 radar watch --base main --include-dirty
+radar gate --base main --overlap --file src/api.py --json
 radar watch --base main --include-dirty --run --suite full --jsonl
 ```
 
@@ -101,6 +157,12 @@ Automatically selected `--run` sessions also authorize newly discovered
 worktrees; watch prints this scope on stderr. Code runs with your permissions.
 Private candidates are not an OS sandbox; Radar does not install dependencies
 or fetch history.
+
+Saved previews also report supported pairwise `drift` findings across worktrees.
+`gate --overlap` provides an on-demand saved-state map; `--file` and `--symbol`
+filter findings, and MCP exposes `radar_overlap`. Drift is an inferred repair
+lead. No findings does not prove absence of cross-worktree relationships or
+runtime compatibility. Watch completion JSON carries the current drift list.
 
 ### Saved snapshots
 
@@ -284,6 +346,31 @@ are excluded from the supported conflict scope. Missing/partial source parsing
 blocks a supported check where the necessary declarations cannot be established.
 C++ cross-translation-unit function ownership and complex overloads remain outside
 this static scope. No relationship is compiler-resolved.
+
+### External SCIP input
+
+```sh
+radar index --ref HEAD --scip index.scip --scip-binding index.binding.json
+```
+
+Both flags are required. Generate the index yourself; Radar runs no producer.
+The binding has exactly these fields (replace placeholders with actual values):
+
+```json
+{
+  "version": 1,
+  "revision": "exact indexed revision from Radar's snapshot",
+  "index_sha256": "lowercase SHA-256 of the index.scip bytes",
+  "sources": {"src/api.py": "lowercase SHA-256 of that source file's bytes"}
+}
+```
+
+Supply every indexed document's repository-relative path and source digest.
+Stale revisions, mismatched bytes, malformed or unsupported input remain
+unverified and are rejected. Imported occurrences add `verified_tool` links to
+the structural graph; this is a producer assertion, not proof of compiler
+execution or producer identity. Existing inferred relationships remain inferred.
+An imported index does not automatically replace gate's candidate analysis.
 
 ### Migration, dependency and uniqueness checks
 

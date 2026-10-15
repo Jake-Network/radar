@@ -21,6 +21,8 @@ demo-all: build
 	bash examples/migrations/demo.sh "$$(pwd)/bin/radar"
 	bash examples/static-rules/demo.sh "$$(pwd)/bin/radar"
 	bash examples/watch/demo.sh "$$(pwd)/bin/radar"
+	bash examples/landing/demo.sh "$$(pwd)/bin/radar"
+	bash examples/drift/demo.sh "$$(pwd)/bin/radar"
 	bash examples/intelligent-verification/demo.sh "$$(pwd)/bin/radar"
 	bash examples/selection-eval/demo.sh "$$(pwd)/bin/radar"
 	bash examples/java-maven/demo.sh "$$(pwd)/bin/radar"

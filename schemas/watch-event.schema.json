@@ -2,31 +2,181 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Radar watch event",
   "type": "object",
-  "required": ["type", "sequence", "time", "state", "verification_state", "last_completed", "last_change"],
+  "required": [
+    "type",
+    "sequence",
+    "time",
+    "state",
+    "verification_state",
+    "last_completed",
+    "last_change"
+  ],
   "properties": {
-    "type": {"enum": ["changed", "checking", "completed", "attributed", "error", "heartbeat"]},
-    "sequence": {"type": "integer", "minimum": 1},
-    "time": {"type": "string", "format": "date-time"},
+    "type": {
+      "enum": [
+        "changed",
+        "checking",
+        "completed",
+        "attributed",
+        "error",
+        "heartbeat"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
     "state": {
       "type": "object",
-      "required": ["key"],
+      "required": [
+        "key"
+      ],
       "properties": {
-        "key": {"type": "string"},
-        "value": {"type": "object"}
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "object"
+        }
       }
     },
     "result": {
       "type": "object",
-      "properties": {"value": {"type": "object"}}
+      "properties": {
+        "value": {
+          "type": "object",
+          "properties": {
+            "drift": {
+              "type": "array",
+              "description": "Pair-only supported static findings across pinned worktree snapshots. Static leads, not runtime compatibility proof.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "code",
+                  "severity",
+                  "evidence",
+                  "explanation",
+                  "branches",
+                  "locations"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "enum": [
+                      "verified_static",
+                      "verified_tool",
+                      "observed_test",
+                      "inferred",
+                      "proposed",
+                      "unknown"
+                    ]
+                  },
+                  "explanation": {
+                    "type": "string"
+                  },
+                  "branches": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "locations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "path"
+                      ],
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
-    "error": {"type": "string"},
-    "verification_state": {"type": "string"},
-    "last_completed": {"type": "string", "format": "date-time"},
-    "last_change": {"type": "string", "format": "date-time"}
+    "error": {
+      "type": "string"
+    },
+    "verification_state": {
+      "type": "string"
+    },
+    "last_completed": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_change": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
   "allOf": [
-    {"if": {"properties": {"type": {"const": "completed"}}}, "then": {"required": ["result"]}},
-    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"required": ["error"]}},
-    {"if": {"properties": {"type": {"const": "heartbeat"}}}, "then": {"not": {"required": ["result"]}}}
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "completed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "heartbeat"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "result"
+          ]
+        }
+      }
+    }
   ]
 }

@@ -16,6 +16,7 @@ import (
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/overlap"
 	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/watch"
 )
@@ -38,6 +39,7 @@ func watchCommand() command {
 }
 
 type watchInput struct {
+	OverlapInputs []overlap.Input             `json:"overlap_inputs,omitempty"`
 	Base          string                      `json:"base"`
 	Refs          []string                    `json:"branches"`
 	SHAs          []string                    `json:"commits"`
@@ -213,6 +215,8 @@ func (a *app) watch(o options) int {
 	display := watchDisplay{VerificationState: "NOT VERIFIED"}
 	var cachedKey string
 	var cachedReport *integration.Report
+	parseCache, saveParseCache := savedSyntaxCache(a.root)
+	defer saveParseCache()
 	err := watch.Run(sessionCtx, watch.Options{Interval: o.interval, Debounce: o.debounce, Heartbeat: 30 * time.Second}, func(ctx context.Context) (watch.State, error) { return a.observeWatch(ctx, o) }, func(ctx context.Context, s watch.State) (watch.Result, error) {
 		in := s.Value.(watchInput)
 		in.config.Inputs = append([]ConfigurationInput(nil), in.config.Inputs...)
@@ -221,10 +225,11 @@ func (a *app) watch(o options) int {
 		}
 		semantic, _ := json.Marshal(struct {
 			Base      string
+			Refs      []string
 			Inputs    []string
 			Config    []ConfigurationInput
 			Snapshots []integration.DirtySnapshot
-		}{in.Base, in.SHAs, in.Configuration, in.Snapshots})
+		}{in.Base, in.Refs, in.SHAs, in.Configuration, in.Snapshots})
 		semanticKey := configurationDigest(semantic)
 		if o.attributionRuns == 0 && cachedReport != nil && cachedKey == semanticKey {
 			reused := *cachedReport
@@ -242,13 +247,22 @@ func (a *app) watch(o options) int {
 			c.Close()
 			return watch.Result{}, e
 		}
-		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage}
+		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage, ParseCache: parseCache}
 		r, e := integration.Analyze(ctx, c, opts)
 		if e != nil {
 			c.Close()
 			return watch.Result{}, e
 		}
 		in.config.applyIntegration(&r)
+		if len(in.SHAs) > 1 {
+			drift, err := overlap.Analyze(ctx, a.root, in.Base, overlapInputs(in), parseCache)
+			if err != nil {
+				c.Close()
+				return watch.Result{}, err
+			}
+			r.Drift = drift.Findings
+			r.Limitations = append(r.Limitations, drift.Limitations...)
+		}
 		if !configurationUnstable(in.config.Inputs) {
 			cachedKey = semanticKey
 			cachedReport = &r
@@ -357,6 +371,12 @@ func (a *app) renderWatch(e watch.Event, o options) {
 			}
 			g.attribute()
 			renderGate(a.out, g, o.verify)
+			for _, f := range r.Drift {
+				fmt.Fprintf(a.out, "  ! drift [%s]: %s\n", strings.Join(f.Branches, ", "), f.Explanation)
+				for _, p := range f.Locations {
+					fmt.Fprintf(a.out, "    %s:%d\n", p.Path, p.Line)
+				}
+			}
 		} else if observed, ok := e.Result.Value.(watchAttribution); ok {
 			fmt.Fprintln(a.out, "Observed Attribution — diagnostic observations; Fast Gate unchanged")
 			for _, attr := range observed.Observed {

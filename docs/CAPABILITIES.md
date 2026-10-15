@@ -153,6 +153,34 @@ declared with `junit`: one file, or a directory of `TEST-*.xml` files.
 Inventory, selection and result interpretation are described in
 [verification](VERIFICATION.md#test-selection).
 
+## Parallel work and landing
+
+`land` reuses supported static checks for pair conflicts and ancestry-aware
+ordering. Its rebase count is an estimate, not observed workflow performance.
+Pair bounds and unsupported relationships remain unknown. Conflict briefs expose
+bounded committed hunks, inferred symbol/test links and reproduction arguments;
+they do not establish coverage. Explicit CLI opt-in can run an installed
+`mergiraf`/`weave` in private state or publish `refs/radar/integration/*` after
+complete-candidate static verification. User branch movement remains explicit.
+
+`watch --include-dirty`, `gate --overlap` and Stop hooks inspect saved peer
+worktree drift. These are static repair leads, not a lock or runtime guarantee.
+The hook only blocks new drift caused by the current worktree's saved changes;
+pre-existing textual conflicts/drift are informational. Doctor's bounded local
+resource advisories compare literals privately and leave expressions unknown.
+
+Passing gate trailers refer to immutable local historical reports; `show` does
+not revalidate current commits or authenticate a signer. Actions check runs and
+report rendering are described in the [integration](../integrations/github-actions/README.md)
+and [report package](../integrations/report/README.md) guides.
+
+Explicit `index --scip ... --scip-binding ...` adds producer-asserted occurrences
+after checking revision, index digest and every indexed source digest. It does
+not run a compiler, authenticate the producer or replace candidate analysis.
+A bounded content-based syntax cache reuses unchanged parsing; import resolution,
+manifest reads and diagnostics are recomputed. This is not incremental updating
+of the entire dependency graph. See [Usage](USAGE.md#external-scip-input).
+
 ## Plans
 
 Plans hold requirements, decisions, constraints, contract and graph deltas,
@@ -163,23 +191,23 @@ property is there and nothing more.
 
 ## Not supported
 
-- compiler-backed semantics or SCIP ingestion
-- incremental indexing
-- Windows binaries (Git defaults such as `core.autocrlf` are not handled yet)
+- built-in compiler/type-checker execution
+- incremental updating of the entire dependency graph
+- published Windows binaries (native qualification jobs are configured, not demonstrated by local Linux checks)
 - release signing or notarization
 - an OS sandbox for executed tests
 - automatic dependency installation or `git fetch`
 
 ## Future work
 
-Unscheduled priorities: Windows Git defaults and native binaries;
-cross-repository candidate test scenarios and pinned CI workspace inputs;
-TypeScript project references and package-based `extends`; symbol-level Python
-imports; Java endpoint discovery; configuration-aware C/C++ includes and
-per-test CTest selection; compiler-backed semantics and incremental indexing;
-signed releases and OS-level test isolation. Each needs reproducible positive
-and negative fixtures before it becomes a capability. Agent orchestration,
-dependency installation and automatic remote fetching remain out of scope.
+Cross-repository runtime scenarios, TypeScript project references and package-based
+`extends`, symbol-level Python imports, Java endpoint discovery,
+configuration-aware C/C++ includes and per-test CTest selection remain future
+work. Task-footprint Split prediction is conditional on interviews or observed
+drift showing a useful prediction opportunity; no new predictive command is
+implemented. A hosted GitHub App is conditional on self-host adoption and is not
+implemented. Agent orchestration, dependency installation and automatic remote
+fetching remain out of scope.
 
 
 Configuration examples are in [Usage](USAGE.md#advanced-configuration).

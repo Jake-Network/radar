@@ -116,6 +116,14 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 	if _, e = gitrepo.RunPrivate(ctx, temp, "init", "--quiet"); e != nil {
 		return fail(e)
 	}
+	// Pin checkout bytes in this private repository, not in the shared Git
+	// command profile: dirty-input inspection must still see the source's real
+	// normalization settings and refuse states it cannot reproduce.
+	for _, setting := range [][2]string{{"core.autocrlf", "false"}, {"core.eol", "lf"}} {
+		if _, e = gitrepo.RunPrivate(ctx, temp, "config", setting[0], setting[1]); e != nil {
+			return fail(e)
+		}
+	}
 	// Ordinary local stores already have immutable pack indexes. Copy their
 	// bytes instead of rebuilding and revalidating a pack of the entire history.
 	copied, copyErr := gitrepo.CopyObjectStore(ctx, root, temp)

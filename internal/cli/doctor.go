@@ -18,20 +18,22 @@ import (
 
 // doctorProject is what doctor found in this repository: what `radar gate`
 // would combine, what it would leave out, and how its tests would run. It
-// reads Git metadata and committed files only; nothing is executed or written.
+// reads Git metadata, committed files and bounded local resource configuration;
+// nothing is executed or written.
 type doctorProject struct {
-	Base      string          `json:"base,omitempty"`
-	Branches  []string        `json:"branches"`
-	Skipped   []string        `json:"skipped_branches"`
-	Worktrees int             `json:"worktrees"`
-	Dirty     []doctorDirty   `json:"dirty_worktrees"`
-	Languages []string        `json:"languages"`
-	Tests     []doctorRunner  `json:"test_runners"`
-	Contracts bool            `json:"contracts_declared"`
-	Agents    map[string]bool `json:"agent_skills_installed"`
-	Problems  []string        `json:"problems"`
-	Workspace string          `json:"workspace,omitempty"`
-	Next      string          `json:"next"`
+	Base      string           `json:"base,omitempty"`
+	Branches  []string         `json:"branches"`
+	Skipped   []string         `json:"skipped_branches"`
+	Worktrees int              `json:"worktrees"`
+	Dirty     []doctorDirty    `json:"dirty_worktrees"`
+	Languages []string         `json:"languages"`
+	Tests     []doctorRunner   `json:"test_runners"`
+	Contracts bool             `json:"contracts_declared"`
+	Agents    map[string]bool  `json:"agent_skills_installed"`
+	Problems  []string         `json:"problems"`
+	Workspace string           `json:"workspace,omitempty"`
+	Next      string           `json:"next"`
+	Resources []doctorResource `json:"resource_advisories"`
 
 	testsErr            error
 	worktreesIncomplete bool
@@ -142,6 +144,13 @@ func (a *app) doctor(_ options) int {
 			}
 			more(fmt.Sprintf("%s %s: %d staged, %d unstaged, %d untracked — not checked until committed", p.mark("!"), p.cyan(name), d.Staged, d.Unstaged, d.Untracked))
 		}
+		for _, advisory := range proj.Resources {
+			mark := "!"
+			if advisory.Status == "unknown" {
+				mark = "?"
+			}
+			line("Resources", fmt.Sprintf("%s %s: %s (%s)", p.mark(mark), advisory.Kind, advisory.Key, strings.Join(advisory.Worktrees, ", ")))
+		}
 		if len(proj.Languages) == 0 {
 			line("Languages", p.dim("none Radar parses (TypeScript/JavaScript, Python, Go, Rust, Java, C/C++)"))
 		} else {
@@ -237,6 +246,12 @@ func (a *app) inspectProject() *doctorProject {
 		d.Problems = append(d.Problems, "worktree inspection unavailable: "+err.Error())
 	} else {
 		d.Worktrees = len(worktrees)
+		roots := []string{}
+		for _, w := range worktrees {
+			roots = append(roots, w.Path)
+		}
+		d.Resources = inspectResources(roots)
+		d.Resources = append(d.Resources, editableAdvisories(a.root, os.Getenv("VIRTUAL_ENV"))...)
 		for _, w := range worktrees {
 			if w.InspectionError != "" {
 				d.worktreesIncomplete = true

@@ -3,7 +3,23 @@
   "title": "Radar workspace gate report",
   "description": "radar gate --json for a workspace run (version 1). Declared cross-repository links are checked statically; runtime execution remains per repository. Single-repository reports keep their own format.",
   "type": "object",
-  "required": ["version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "repos", "cross_repo", "selection", "digest", "run_id", "verdict", "next"],
+  "required": [
+    "version",
+    "workspace",
+    "scope_source",
+    "scope_summary",
+    "one_off",
+    "only",
+    "repo_count",
+    "branch_count",
+    "repos",
+    "cross_repo",
+    "selection",
+    "digest",
+    "run_id",
+    "verdict",
+    "next"
+  ],
   "properties": {
     "version": {
       "const": 1
@@ -13,7 +29,12 @@
       "description": "Registered workspace name; empty for a one-off scope built only from --with."
     },
     "scope_source": {
-      "enum": ["registry", "--with", "replay", "team file"],
+      "enum": [
+        "registry",
+        "--with",
+        "replay",
+        "team file"
+      ],
       "description": "Where the set of repositories came from."
     },
     "scope_summary": {
@@ -56,10 +77,20 @@
     "selection": {
       "type": "object",
       "description": "How inputs were chosen, with every repo spelled out; --again repeats it.",
-      "required": ["mode", "targets", "bases", "with", "only", "all"],
+      "required": [
+        "mode",
+        "targets",
+        "bases",
+        "with",
+        "only",
+        "all"
+      ],
       "properties": {
         "mode": {
-          "enum": ["auto", "named"]
+          "enum": [
+            "auto",
+            "named"
+          ]
         },
         "targets": {
           "type": "array",
@@ -100,13 +131,22 @@
     "again": {
       "type": "object",
       "description": "Present for --again: how the selection differs from the previous run.",
-      "required": ["previous_run", "mode", "added", "removed", "moved"],
+      "required": [
+        "previous_run",
+        "mode",
+        "added",
+        "removed",
+        "moved"
+      ],
       "properties": {
         "previous_run": {
           "type": "string"
         },
         "mode": {
-          "enum": ["auto", "named"]
+          "enum": [
+            "auto",
+            "named"
+          ]
         },
         "added": {
           "type": "array",
@@ -152,7 +192,12 @@
       }
     },
     "verdict": {
-      "enum": ["pass", "fail", "blocked", "error"],
+      "enum": [
+        "pass",
+        "fail",
+        "blocked",
+        "error"
+      ],
       "description": "Worst repository or declared link verdict, in the order fail, error, blocked, pass: a failure decides the workspace even when another repository could not be checked. blocked renders as NOT VERIFIED."
     },
     "next": {
@@ -173,7 +218,12 @@
     },
     "team_file": {
       "type": "object",
-      "required": ["home", "path", "blob", "uncommitted"],
+      "required": [
+        "home",
+        "path",
+        "blob",
+        "uncommitted"
+      ],
       "properties": {
         "home": {
           "type": "string"
@@ -199,9 +249,88 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "properties": {
           "id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "landing": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "base",
+          "pairs",
+          "order",
+          "complete",
+          "limitations"
+        ]
+      }
+    },
+    "cross_repo_pairs": {
+      "type": "object",
+      "description": "Pair-specific static declared links on pinned repository bases; include_dirty marks saved snapshots, not runtime checks.",
+      "required": [
+        "version",
+        "status",
+        "complete",
+        "include_dirty",
+        "bases",
+        "pairs",
+        "omitted",
+        "limitations"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unknown",
+            "incomplete",
+            "error"
+          ]
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "include_dirty": {
+          "type": "boolean"
+        },
+        "bases": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "inputs",
+              "links",
+              "status",
+              "reason"
+            ]
+          }
+        },
+        "omitted": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
             "type": "string"
           }
         }
@@ -211,7 +340,10 @@
   "$defs": {
     "not_checked": {
       "type": "object",
-      "required": ["status", "reason"],
+      "required": [
+        "status",
+        "reason"
+      ],
       "properties": {
         "status": {
           "const": "not_checked"
@@ -223,7 +355,19 @@
     },
     "repo": {
       "type": "object",
-      "required": ["id", "path", "common_dir", "origin", "base_ref", "base", "base_source", "selection_source", "branches", "dirty", "verdict"],
+      "required": [
+        "id",
+        "path",
+        "common_dir",
+        "origin",
+        "base_ref",
+        "base",
+        "base_source",
+        "selection_source",
+        "branches",
+        "dirty",
+        "verdict"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -236,7 +380,12 @@
           "type": "string"
         },
         "origin": {
-          "enum": ["registry", "--with", "replay", "team file"]
+          "enum": [
+            "registry",
+            "--with",
+            "replay",
+            "team file"
+          ]
         },
         "base_ref": {
           "type": "string"
@@ -246,16 +395,31 @@
           "description": "Pinned base commit SHA; empty when it could not be resolved."
         },
         "base_source": {
-          "enum": ["auto", "named", "", "team file"]
+          "enum": [
+            "auto",
+            "named",
+            "",
+            "team file"
+          ]
         },
         "selection_source": {
-          "enum": ["auto: worktree", "named", "base only", ""]
+          "enum": [
+            "auto: worktree",
+            "named",
+            "base only",
+            ""
+          ]
         },
         "branches": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["ref", "commit", "source", "changed"],
+            "required": [
+              "ref",
+              "commit",
+              "source",
+              "changed"
+            ],
             "properties": {
               "ref": {
                 "type": "string"
@@ -264,7 +428,10 @@
                 "type": "string"
               },
               "source": {
-                "enum": ["auto: worktree", "named"]
+                "enum": [
+                  "auto: worktree",
+                  "named"
+                ]
               },
               "changed": {
                 "type": "array",
@@ -285,7 +452,10 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path", "commit"],
+            "required": [
+              "path",
+              "commit"
+            ],
             "properties": {
               "path": {
                 "type": "string"
@@ -301,7 +471,13 @@
           "description": "Every worktree with uncommitted changes; selected marks worktrees of selected branches. Uncommitted changes never enter a candidate.",
           "items": {
             "type": "object",
-            "required": ["path", "selected", "staged", "unstaged", "untracked"],
+            "required": [
+              "path",
+              "selected",
+              "staged",
+              "unstaged",
+              "untracked"
+            ],
             "properties": {
               "path": {
                 "type": "string"
@@ -340,7 +516,12 @@
           "type": "string"
         },
         "verdict": {
-          "enum": ["pass", "fail", "blocked", "error"]
+          "enum": [
+            "pass",
+            "fail",
+            "blocked",
+            "error"
+          ]
         },
         "error": {
           "type": "string",
@@ -362,10 +543,18 @@
     },
     "cross_repo": {
       "type": "object",
-      "required": ["status", "reason"],
+      "required": [
+        "status",
+        "reason"
+      ],
       "properties": {
         "status": {
-          "enum": ["not_checked", "passed", "failed", "incomplete"]
+          "enum": [
+            "not_checked",
+            "passed",
+            "failed",
+            "incomplete"
+          ]
         },
         "reason": {
           "type": "string"
@@ -374,7 +563,14 @@
     },
     "link": {
       "type": "object",
-      "required": ["id", "producer", "consumer", "direction", "cells", "status"],
+      "required": [
+        "id",
+        "producer",
+        "consumer",
+        "direction",
+        "cells",
+        "status"
+      ],
       "properties": {
         "id": {
           "type": "string"
@@ -389,7 +585,12 @@
           "type": "string"
         },
         "status": {
-          "enum": ["passed", "warning", "failed", "incomplete"]
+          "enum": [
+            "passed",
+            "warning",
+            "failed",
+            "incomplete"
+          ]
         },
         "cells": {
           "type": "array",
@@ -397,16 +598,32 @@
           "maxItems": 4,
           "items": {
             "type": "object",
-            "required": ["producer", "consumer", "status", "findings"],
+            "required": [
+              "producer",
+              "consumer",
+              "status",
+              "findings"
+            ],
             "properties": {
               "producer": {
-                "enum": ["base", "candidate"]
+                "enum": [
+                  "base",
+                  "candidate"
+                ]
               },
               "consumer": {
-                "enum": ["base", "candidate"]
+                "enum": [
+                  "base",
+                  "candidate"
+                ]
               },
               "status": {
-                "enum": ["passed", "warning", "failed", "incomplete"]
+                "enum": [
+                  "passed",
+                  "warning",
+                  "failed",
+                  "incomplete"
+                ]
               },
               "findings": {
                 "type": "array",

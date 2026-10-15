@@ -200,3 +200,23 @@ Protobuf and GraphQL checks support a bounded literal subset; unsupported gramma
 cannot establish compatibility. `--observe-coverage` requires execution opt-in;
 fresh observed file relationships supplement static selection, and stale or
 unrelated baseline records do not count as coverage.
+
+## Landing, saved drift and retained proof
+
+For parallel work, `radar_land` (`radar gate --landing --json`) gives a bounded
+pair matrix and ancestry-aware landing estimate. It is not N-way or runtime
+proof. `radar_conflict_brief` reads bounded committed hunks with inferred symbol
+and related-test links; repair in your branch, then rerun the full gate.
+`radar_overlap` (`radar gate --overlap --json`) inspects saved peer drift before
+editing a symbol; it is a query, not a lock. No findings does not prove complete
+compatibility. The Stop hook blocks only current dirty additions and reports
+inherited peer conflicts as warnings. Static MCP tools cannot authorize merge
+drivers, repository execution, or `land --apply` private-ref publication.
+
+When the user requests a commit, a passing `radar gate --trailer` can supply the
+exact `Radar-Verified:` trailer to preserve in its message. Never invent one,
+attach a failed/blocked run, or imply tests ran for a static-only result.
+`radar show RUN-ID` replays historical candidate evidence, not today's HEAD.
+Only use `--run` when repository execution has already been authorized within
+the current scope; otherwise obtain that authorization first. Preserve existing
+authorization and constraints rather than asking again for the same execution.

@@ -45,6 +45,8 @@ analysis path.
 | `symbols`, `lockfiles`, `uniqueness` | supported static conflict scopes, direct dependency locks and literal/declared key uniqueness |
 | `generated`, `runners`, `coverage` | declared output relationships, explicit runner profiles/dependency cache and fresh command-suite file observations |
 | `integration` | private candidate, analysis, execution, gate input |
+| `landing`, `overlap` | pair matrix/order, bounded conflict briefs/private refs, saved-state drift |
+| `runproof`, `scip` | immutable historical reports, explicitly bound external occurrences |
 | `composition`, `workspace` | multi-repository scope, registry, team file, run records |
 | `testselection` | test inventory, selection modes, grouping, budgets |
 | `evidence` | runs commands and classifies results |
@@ -59,7 +61,17 @@ execution in `evidence`, and analysis rules in the package that owns them.
 Native agent Stop adapters (`cli/agent_hook.go`) reuse the watch input observer
 and private dirty-candidate analysis for one static preview. Onboarding writes
 project-local hook configuration; portable plugin packages supply the same
-command. They do not execute tests or control agent permissions.
+command. They do not execute tests or control agent permissions. Their result
+cache binds local/peer saved state and analysis configuration. A separate bounded
+syntax cache reuses parse results by path/content/version; manifests, import
+resolution and source safety checks run again for each tree.
+
+Landing reuses `integration.Analyze` for pairs and reanalyzes the complete
+ordered candidate before publishing a private ref. Pair results cannot authorize
+the N-way candidate. Conflict briefs carry bounded committed excerpts and inferred
+test associations. External structural drivers require explicit CLI execution
+consent; MCP exposes static planning only. Cross-worktree drift applies existing
+static detectors to saved snapshots and remains a repair lead.
 
 ## Evidence model
 
@@ -76,7 +88,9 @@ records stay valid across clones and worktrees.
 Test evidence is bound to the repository, the exact commit or candidate tree,
 the plan digest, the argv and directory, and the criterion. Records are
 insert-only. Records from a branch never count as evidence for a combined
-candidate.
+candidate. Historical `gate --trailer` reports are stored separately by
+`runproof`; `show` checks identity/digest and replays the recorded candidate,
+without claiming current validity or signer authentication.
 
 ## Design decisions
 
@@ -85,9 +99,10 @@ candidate.
   snapshots per repository are kept; commit snapshots are kept because plans
   pin them. Uses the pure-Go modernc driver.
 - **Tree-sitter, built in.** Grammars ship in the binary, which needs CGO at
-  build time but no language toolchain at runtime. Compiler-backed semantics
-  (SCIP, go/types, rust-analyzer, tsc) are not implemented and are reported as
-  unavailable, not guessed.
+  build time but no language toolchain at runtime. Explicit SCIP input can add
+  producer-asserted `verified_tool` occurrences when revision/index/source
+  hashes match. Radar does not run the producer or authenticate it. Native
+  go/types, rust-analyzer and tsc integrations remain unavailable.
 - **`ParseWithOptions` instead of `ParseCtx`.** The pinned upstream `ParseCtx`
   can race parser teardown. Adapters use a bounded input callback and a parser
   timeout with context checks instead.

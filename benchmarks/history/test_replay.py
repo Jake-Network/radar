@@ -148,6 +148,12 @@ class HistoryFixture(unittest.TestCase):
         self.assertIn('p50 2.0, p95 3.0 over 3 runs', out['markdown'])
         self.assertEqual(out, replay.report(results, {'a': 'migration', 'b': 'none'}))
 
+    def test_forged_execution_flag_cannot_be_replayed_as_a_branch(self):
+        data = replay.mine(self.repo, 'main', limit=1)
+        data['candidates'][0]['branches'][0] = '--run'
+        with self.assertRaisesRegex(ValueError, 'immutable commit hashes'):
+            replay.replay(data, self.repo, '/does-not-exist')
+
     def test_labels_reject_unknown_causes(self):
         path = pathlib.Path(self.tmp.name) / 'labels.csv'
         path.write_text('id,cause\nabc,typo\n')

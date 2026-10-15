@@ -10,14 +10,15 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 )
 
-// ParseCache is a bounded cache of syntax results for a single analysis. Callers
-// allocate it locally and discard it after comparing immutable trees. Import
+// ParseCache is a bounded cache of syntax results. Callers may keep it in memory
+// or explicitly Load/Save it in private local state across analyses. Import
 // resolution, manifest reads, source limits and diagnostics still run per tree.
 // It is safe to share among concurrent builds; returned values never alias it.
 type ParseCache struct {
-	mu      sync.Mutex
-	entries map[string]languages.Result
-	bytes   int64
+	mu           sync.Mutex
+	entries      map[string]languages.Result
+	bytes        int64
+	hits, misses uint64
 }
 
 func NewParseCache() *ParseCache { return &ParseCache{entries: map[string]languages.Result{}} }
@@ -29,8 +30,10 @@ func (c *ParseCache) get(key, repository, revision string) (languages.Result, bo
 	defer c.mu.Unlock()
 	result, ok := c.entries[key]
 	if !ok {
+		c.misses++
 		return languages.Result{}, false
 	}
+	c.hits++
 	return cloneParseResult(result, repository, revision), true
 }
 func (c *ParseCache) put(key string, result languages.Result, sourceBytes int64) {
@@ -102,7 +105,9 @@ func cloneParseResult(in languages.Result, repository, revision string) language
 	return out
 }
 
-// Parse reuses a successful adapter result for identical source bytes. A nil
+// Parse reuses a successful adapter result for identical relative paths and source
+// bytes, including across private candidate directories. Repository and revision
+// are provenance only and are rebound on every hit. A nil
 // receiver performs the ordinary parse; canceled contexts never hit the cache.
 func (c *ParseCache) Parse(ctx context.Context, adapter languages.Adapter, source languages.Source) (languages.Result, error) {
 	if err := ctx.Err(); err != nil {
@@ -110,7 +115,7 @@ func (c *ParseCache) Parse(ctx context.Context, adapter languages.Adapter, sourc
 	}
 	digest := sha256.Sum256(source.Content)
 	capability := adapter.Capability()
-	key := source.Repository + "\x00" + source.Path + "\x00" + capability.Language + "\x00" + capability.Method + "\x00" + hex.EncodeToString(digest[:])
+	key := parserFingerprint() + "\x00" + source.Path + "\x00" + capability.Language + "\x00" + capability.Method + "\x00" + hex.EncodeToString(digest[:])
 	if result, ok := c.get(key, source.Repository, source.Revision); ok {
 		if err := ctx.Err(); err != nil {
 			return languages.Result{}, err

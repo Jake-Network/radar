@@ -12,9 +12,13 @@ target prevents collection and publication.
 | Linux arm64 | Ubuntu 22.04 ARM | `radar-linux_arm64.tar.gz` |
 | macOS arm64 | macOS 15 Apple Silicon | `radar-darwin_arm64.tar.gz` |
 | macOS amd64 | macOS 15 Intel | `radar-darwin_amd64.tar.gz` |
+| Windows amd64 | Windows Server 2022 + UCRT64 GCC | `radar-windows_amd64.zip` |
 
-Windows packaging exists, but Git defaults (`core.autocrlf`, long paths) still
-prevent native qualification. No Windows binary is published.
+These are configured qualification targets, not a claim that the current branch
+passed hosted runs. The existing public v0.2.0 distribution has no Windows binary.
+Private committed candidates disable Git line-ending conversion; Windows CI
+exercises `core.autocrlf=true` and packaging, and macOS CI keeps the default
+`TMPDIR`. Local Linux regression checks cannot qualify either native platform.
 
 ## Release procedure
 
@@ -25,7 +29,7 @@ git tag -a vX.Y.Z -m "Radar X.Y.Z" <release-commit>
 git push origin vX.Y.Z
 ```
 
-The tag prepares assets without publishing. After all four targets qualify:
+The tag prepares assets without publishing. After all five targets qualify:
 
 ```sh
 gh workflow run release.yml --ref vX.Y.Z -f publish=true
@@ -36,14 +40,14 @@ repaired workflow from main with an explicit tag:
 
 ```sh
 gh workflow run release.yml --ref main -f tag=vX.Y.Z
-# After all four targets qualify:
+# After all five targets qualify:
 gh workflow run release.yml --ref main -f tag=vX.Y.Z -f publish=true
 ```
 
 The resolver rejects missing/malformed tags and branch publication requests.
 Build and collection scripts check out the resolved tag SHA; publication
-rechecks that the tag still identifies it. macOS resolves `TMPDIR` to its
-physical path to match Git's canonical paths.
+rechecks that the tag still identifies it. Candidate construction canonicalizes
+its private temporary root; CI does not rewrite macOS `TMPDIR` to hide aliases.
 
 Publication uses the protected `release` environment. Configure reviewers in
 GitHub; repository files do not configure environment or branch protection.
@@ -76,7 +80,8 @@ MinGW from PATH to catch accidental compiler DLL dependencies.
 
 `ci.yml` requires formatting, vet, full/race tests, hook and plugin regressions,
 all demos, PR-driver and benchmark regressions, archive/installer checks,
-actionlint and the Windows installer job. `release.yml` repeats native
+actionlint, the Windows installer job, Windows native tests/archive validation,
+and macOS default-TMPDIR smoke. `release.yml` repeats native
 qualification, verifies every checksum and generates a Homebrew formula for
 review; it never pushes to a tap. Signing, notarization and attestations are
 not implemented.

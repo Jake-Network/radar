@@ -1,23 +1,53 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/contractgraph"
 	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/model"
+	"github.com/Jake-Network/radar/internal/project"
+	"github.com/Jake-Network/radar/internal/scip"
 )
 
 func (a *app) index(o options) int {
+	if (o.scip == "") != (o.scipBinding == "") {
+		return a.fail(fmt.Errorf("--scip and --scip-binding must be supplied together"))
+	}
 	s, e := a.snapshot(o.ref)
 	if e != nil {
 		return a.fail(e)
+	}
+	if o.scip != "" {
+		data, err := a.readIndexInput(o.scip, scip.MaxBytes)
+		if err != nil {
+			return a.fail(err)
+		}
+		bound, err := a.readIndexInput(o.scipBinding, 8<<20)
+		if err != nil {
+			return a.fail(err)
+		}
+		var binding scip.Binding
+		decoder := json.NewDecoder(bytes.NewReader(bound))
+		decoder.DisallowUnknownFields()
+		var extra any
+		if err = decoder.Decode(&binding); err != nil || decoder.Decode(&extra) != io.EOF {
+			a.report(map[string]any{"status": model.StatusUnknown, "error": "invalid SCIP source binding"}, func(w io.Writer) { fmt.Fprintln(w, "? SCIP input unverified: invalid source binding") })
+			return 2
+		}
+		if err = scip.Augment(a.ctx, &s, data, binding); err != nil {
+			a.report(map[string]any{"status": model.StatusUnknown, "error": err.Error(), "diagnostics": s.Diagnostics}, func(w io.Writer) { fmt.Fprintln(w, "? SCIP input unverified:", err) })
+			return 2
+		}
 	}
 	if e = a.store.SaveSnapshot(a.ctx, s); e != nil {
 		return a.fail(e)
@@ -41,6 +71,43 @@ func (a *app) index(o options) int {
 		}
 	})
 	return 0
+}
+
+func (a *app) readIndexInput(name string, limit int64) ([]byte, error) {
+	var filename string
+	var err error
+	if filepath.IsAbs(name) {
+		parent, e := filepath.EvalSymlinks(filepath.Dir(name))
+		if e != nil {
+			return nil, e
+		}
+		filename, err = project.SafePath(parent, filepath.Base(name))
+	} else {
+		filename, err = project.SafePath(a.root, name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > limit {
+		return nil, fmt.Errorf("index input must be a bounded regular file")
+	}
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("index input exceeds size limit")
+	}
+	return b, nil
 }
 
 // freshSnapshot indexes the working tree. Its revision is a digest of the
