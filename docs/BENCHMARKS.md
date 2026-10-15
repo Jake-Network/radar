@@ -184,6 +184,35 @@ unknown and no runtime tests ran. Binary SHA-256:
 Two repeats of one merge do not establish a new 40-merge median, labeled recall,
 or a ten-second target across repositories.
 
+## Python workspace checks (2026-10-15)
+
+Local read-only inventory and disposable-clone checks used Qurify commit
+`037b658c8078f6c3feaa2a69da5ed009ca568571` (1,612 tracked files), on Linux.
+This differs from the earlier macOS/1,621-file report. No Qurify dependencies,
+services or application tests were run.
+
+| Check | Observation |
+| --- | --- |
+| Symlink `TMPDIR`, two new Alembic revisions sharing `drop_team_collections` | The original `a91a6ed` candidate code exits 2 with the canonical-directory error. The combined fix builds the candidate and exits 1 with one `migration_multiple_heads` finding. The source checkout is untouched. |
+| Oversized Swagger bundle | Inventory remains 489 tests; the bundle's inventory blocker falls from 1 to 0, with one warning retained. Oversized tests/configuration still block. |
+| Isolated revision, no first-party imports | 284 optional recommendations, all `package_fallback`; targeted selects 0 commands/0 files and leaves the revision uncovered. This is documented conservative selection, not a false import edge. A reduced uv fixture protects that distinction. |
+| Unchanged Stop hook | Before the clean-input shortcut: 15.875 s cold. With `9321bf0`: 7.418 s cold, 1.070 s in a second process using the cache. Both report NOT VERIFIED for no selected changes, not test success. |
+
+A separate pre-shortcut phase sample measured input observation at 0.433 s,
+candidate construction (object copy and merge together) at 7.615 s, and static
+analysis at 3.935 s. CPU profiles showed parsing/indexing and discovery costs;
+these do not isolate migration wall time or object copy from merge. Timings are
+individual local samples, not a macOS result or a general latency guarantee.
+The two-branch migration check's final binary SHA-256 was
+`844d12611c4855661b6195f5f5b5f39ca854e86917738f9bc446d167dc132672`
+(source `927d3d5`, before this documentation update).
+
+External editable Python imports and base-existing versus candidate-only test
+failures were checked with controlled fixtures. Actual Qurify pytest/DB execution,
+the historical 22-file branch selection, native macOS default `TMPDIR`, and hosted
+CI remain unverified. The current CI workflow has no macOS job; this change does
+not add one.
+
 ## Evidence and historical verification
 
 [Summary JSON](../benchmarks/external/results/summary.json),
