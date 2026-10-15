@@ -35,9 +35,12 @@ var gradleFiles = []string{"build.gradle", "build.gradle.kts", "settings.gradle"
 // outside comments, so helpers and fixtures under src/test/java are not
 // inventoried as tests. The match is lexical: a marker in a string counts.
 func javaTestFile(file, content string) bool {
+	return javaTestPath(file) && javaTestMarker.MatchString(withoutComments(content))
+}
+
+func javaTestPath(file string) bool {
 	base := strings.TrimSuffix(path.Base(file), ".java")
-	conventional := strings.Contains("/"+file, "/src/test/java/") || strings.HasPrefix(base, "Test") || strings.HasSuffix(base, "Test") || strings.HasSuffix(base, "Tests") || strings.HasSuffix(base, "TestCase") || strings.HasSuffix(base, "IT")
-	return conventional && javaTestMarker.MatchString(withoutComments(content))
+	return strings.Contains("/"+file, "/src/test/java/") || strings.HasPrefix(base, "Test") || strings.HasSuffix(base, "Test") || strings.HasSuffix(base, "Tests") || strings.HasSuffix(base, "TestCase") || strings.HasSuffix(base, "IT")
 }
 
 // withoutComments drops // and /* */ comments for lexical checks; comment

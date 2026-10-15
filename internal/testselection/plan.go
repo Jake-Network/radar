@@ -142,7 +142,9 @@ func Plan(p Proposal, changed []string, mode string, maxCommands int) (Selection
 		s.Uncovered = uncovered(p, changed)
 	}
 	for _, d := range p.Inventory.Diagnostics {
-		s.Blocking = append(s.Blocking, "inventory incomplete: "+d.Path+": "+d.Message)
+		if inventoryDiagnosticBlocks(d) {
+			s.Blocking = append(s.Blocking, "inventory incomplete: "+d.Path+": "+d.Message)
+		}
 	}
 
 	s.Candidates = len(candidates)

@@ -161,6 +161,12 @@ Selection establishes a static relationship, not behavioral coverage. Inventory
 reads configuration as data, without evaluating scripts, importing Python or
 running collection hooks. Limits: 10,000 files, 1 MiB per file, 32 MiB total;
 skipped input remains visible.
+Oversized files that cannot match supported test path conventions leave a
+warning without making inventory incomplete. Oversized tests and configuration
+still block selection. Rust source remains potentially test-bearing because
+tests can be inline. This exception does not establish import relationships for
+skipped helpers: indexing has a separate 2 MiB source limit, and missing import
+relationships remain unknown.
 
 | Mode | Selection |
 | --- | --- |

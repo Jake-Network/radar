@@ -153,7 +153,11 @@ func DiscoverProvider(ctx context.Context, p indexer.Provider, revision string) 
 			continue
 		}
 		if entry.Size > MaxFileBytes {
-			diagnostic(entry.Path, "test/configuration exceeds 1 MiB discovery limit")
+			if isManifest(entry.Path) || possibleTestPath(entry.Path) {
+				diagnostic(entry.Path, "test/configuration exceeds 1 MiB discovery limit")
+			} else {
+				diagnostic(entry.Path, oversizedSourceWarning)
+			}
 			continue
 		}
 		if count >= MaxFiles || total+entry.Size > MaxTotalBytes {
@@ -230,6 +234,44 @@ func DiscoverProvider(ctx context.Context, p indexer.Provider, revision string) 
 	}
 	return inv, nil
 }
+
+// Only this bounded, known omission is informational. Unknown diagnostics
+// continue to block discovery, including unreadable tests and exhausted budgets.
+const oversizedSourceWarning = "non-test source exceeds 1 MiB discovery limit; skipped"
+
+func inventoryDiagnosticBlocks(d model.Diagnostic) bool {
+	return d.Message != oversizedSourceWarning || isManifest(d.Path) || possibleTestPath(d.Path)
+}
+
+func pythonTestPath(file string) bool {
+	base := path.Base(file)
+	return strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.py")
+}
+
+func javascriptTestPath(file string) bool {
+	base := path.Base(file)
+	return strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") || strings.Contains("/"+file, "/__tests__/")
+}
+
+func possibleTestPath(file string) bool {
+	switch path.Ext(file) {
+	case ".go":
+		return strings.HasSuffix(file, "_test.go")
+	case ".py":
+		return pythonTestPath(file)
+	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts":
+		return javascriptTestPath(file)
+	case ".java":
+		return javaTestPath(file)
+	case ".rs":
+		// Rust supports inline tests in any module. Without reading the body
+		// we cannot exclude this file from test discovery.
+		return true
+	default:
+		return cTestPath(file)
+	}
+}
+
 func relevant(p string) bool {
 	if isManifest(p) {
 		return true
@@ -276,7 +318,6 @@ func packageRoot(file, ecosystem string, contents map[string]string) string {
 	}
 }
 func classify(file, content string, contents map[string]string) string {
-	base := path.Base(file)
 	switch path.Ext(file) {
 	case ".go":
 		if strings.HasSuffix(file, "_test.go") {
@@ -287,7 +328,7 @@ func classify(file, content string, contents map[string]string) string {
 			return "cargo"
 		}
 	case ".py":
-		if !(strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.py")) {
+		if !pythonTestPath(file) {
 			return ""
 		}
 		if framework := pythonFramework(content); framework != "" {
@@ -300,7 +341,7 @@ func classify(file, content string, contents map[string]string) string {
 			}
 		}
 	case ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts":
-		if !(strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") || strings.Contains("/"+file, "/__tests__/")) {
+		if !javascriptTestPath(file) {
 			return ""
 		}
 		if strings.Contains(content, "node:test") {
