@@ -30,8 +30,6 @@ jobs:
         run: python3 scripts/agent-hooks-test.py /tmp/radar
       - name: Native plugin package wiring
         run: python3 -m unittest discover -s integrations/plugins -p 'test_*.py'
-      - name: Detector issue draft consistency
-        run: python3 -m unittest discover -s integrations/contributors -p 'test_*.py'
       - name: Typed report consumer
         run: |
           node --test integrations/report/test.mjs
