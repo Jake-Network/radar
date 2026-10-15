@@ -503,7 +503,7 @@ func executionRemediation(ev ExecutionEvidence) string {
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
 	case d != nil && d.Kind == "python_import_unverified":
-		return "Use a runner profile prefix and declared setup to create a Python environment inside the candidate, or deactivate the external virtual environment, then rerun the same gate. The combined source was not tested."
+		return "Use a runner profile prefix and declared setup to create a Python environment inside the candidate, or deactivate the external virtual environment and remove import paths, editable or local-path installs and import hooks that point outside the candidate and installed copies of repository projects not built from it, then rerun the same gate. The combined source was not tested."
 	case d.Environment():
 		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies committed files; dependency installation requires declared setup and execution opt-in), then rerun the same gate. The combined source was not tested.", d.Name)
 	case d != nil:

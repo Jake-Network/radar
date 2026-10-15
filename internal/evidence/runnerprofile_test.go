@@ -100,9 +100,11 @@ func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
 	// Standalone Python distributions can copy several large interpreter
 	// binaries. This test exercises relocation, not the artifact size limit.
 	cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 256 << 20}
-	p := runners.Profile{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}, {".venv/bin/python", "-c", `import os, sysconfig; f=sysconfig.get_paths()['purelib']+'/local-editable.pth'; open(f,'w').write(os.path.abspath('libs')+'\n')`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
+	p := runners.Profile{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}, {".venv/bin/python", "-c", `import os, sysconfig; f=sysconfig.get_paths()['purelib']+'/local-editable.pth'; open(f,'w').write(os.path.abspath('libs')+'\n')`}, {".venv/bin/python", "-c", `import os, pathlib, sysconfig; d=pathlib.Path(sysconfig.get_paths()['purelib'], 'editable-0.1.dist-info'); d.mkdir(); (d/'METADATA').write_text('Metadata-Version: 2.1\nName: editable\nVersion: 0.1\n'); (d/'direct_url.json').write_text('{"url": "' + pathlib.Path(os.path.abspath('.')).as_uri() + '", "dir_info": {"editable": true}}')`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
+	// Candidate roots with spaces are percent-encoded in direct_url.json.
 	makeRoot := func() string {
-		root := t.TempDir()
+		root := filepath.Join(t.TempDir(), "with space")
+		os.Mkdir(root, 0700)
 		os.WriteFile(filepath.Join(root, "uv.lock"), []byte("same"), 0600)
 		os.Mkdir(filepath.Join(root, "libs"), 0700)
 		os.WriteFile(filepath.Join(root, "libs", "editable.py"), []byte("VALUE=7\n"), 0600)
@@ -118,6 +120,11 @@ func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
 	r, err = PrepareRunner(context.Background(), second, "repo", p, cache, time.Minute)
 	if err != nil || !r.CacheHit {
 		t.Fatal(r, err)
+	}
+	// The editable install's recorded source must follow the new candidate, while
+	// the first checkout still exists.
+	if d := pythonImportCheck(context.Background(), second, second, []string{filepath.Join(second, ".venv", "bin", "python"), "-m", "pytest"}, environment(t.TempDir(), nil)); d != nil {
+		t.Fatalf("relocated editable install refused: %+v", d)
 	}
 	// Removing the first checkout makes stale editable paths observable.
 	os.RemoveAll(first)

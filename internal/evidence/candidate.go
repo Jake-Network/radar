@@ -101,6 +101,12 @@ func observeCandidateReport(ctx context.Context, root, cwd string, argv []string
 	var out output
 	env := environment(home, nil)
 	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		// The preflight shares the command's deadline; running out of it is a
+		// timeout, not an import provenance finding.
+		if runCtx.Err() != nil {
+			r.Status = model.StatusTimeout
+			return r, nil
+		}
 		r.Diagnosis = diagnosis
 		return r, nil
 	}

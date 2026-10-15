@@ -149,3 +149,17 @@ func TestGradleInterpolatedIncludesStayUnknown(t *testing.T) {
 		}
 	}
 }
+
+// An array-of-tables header starts a new table; its keys do not belong to
+// the table before it.
+func TestTOMLArrayTablesEndTheirPredecessor(t *testing.T) {
+	if got := PyProjectName([]byte("[tool.poetry]\npackage-mode = false\n[[tool.poetry.source]]\nname = \"private-mirror\"\n")); got != "" {
+		t.Fatalf("source name read as project name: %q", got)
+	}
+	if got := PyProjectName([]byte("[[tool.poetry.source]]\nname = \"mirror\"\n[tool.poetry]\nname = \"app\"\n")); got != "app" {
+		t.Fatalf("project name: %q", got)
+	}
+	if got := tomlValue("[lib]\npath = \"src/lib.rs\"\n[[bin]]\nname = \"tool\"\n", "lib", "name"); got != "" {
+		t.Fatalf("bin name read as lib name: %q", got)
+	}
+}

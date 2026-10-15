@@ -207,8 +207,8 @@ func (p Profile) Rewrite(argv []string) []string {
 	return append(out, p.Exclude...)
 }
 
-// CacheKey binds artifacts to declaration, platform, repository identity and
-// every declared lockfile. Empty/missing inputs never produce a reusable key.
+// CacheKey binds artifacts to the cache format, declaration, platform,
+// repository identity and every declared lockfile. Empty/missing inputs never produce a reusable key.
 func CacheKey(p Profile, repository string, lockfiles map[string][]byte) (string, error) {
 	if err := Validate(p); err != nil {
 		return "", err
@@ -217,6 +217,9 @@ func CacheKey(p Profile, repository string, lockfiles map[string][]byte) (string
 		return "", fmt.Errorf("cache identity and lockfiles required")
 	}
 	h := sha256.New()
+	// The format token retires entries whose venv metadata was stored before
+	// direct_url.json was relocated.
+	h.Write([]byte("radar-dependency-cache-2\x00"))
 	declaration, _ := json.Marshal(p)
 	h.Write(declaration)
 	for _, s := range []string{runtime.GOOS, runtime.GOARCH, repository} {

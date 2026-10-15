@@ -283,23 +283,63 @@ account's `~/.m2`; Gradle user-home properties remain visible to builds.
 | Python `ImportError` for a removed name | `failed`. |
 | Missing modules/toolchains/headers/libraries, checksum/registry errors, unresolved JVM dependencies, CMake configuration errors | Environment `error`. |
 | Compiler location outside candidate, generated/dependency source or nonexistent file | Environment `error`. |
-| First-party Python package resolves outside the candidate, or import preflight cannot verify it | Environment `error` (`python_import_unverified`); no branch lead. |
+| First-party Python package or import location is outside the candidate, or import preflight cannot verify it | Environment `error` (`python_import_unverified`); no branch lead. |
 | Missing runner/command, timeout or output limit | `error`. |
 | Exit 0 without recognized tests | `unknown`. |
 
-Before Python test execution, Radar probes conventional flat/src packages in the
-command's project and statically related workspace members using the same
-interpreter, runner prefix, CWD and scrubbed environment. Python versioned
-executables, pytest console entry points and supported `uv run` forms are
-checked; unresolved launcher provenance or aggregate workspace package scope is
-an environment problem. Test/tooling
-directories are not treated as installed application packages. Namespace search paths are checked too. This preflight
-shares the command timeout and does not inject `PYTHONPATH`. An external editable
-install cannot certify the combined tree. Use runner profile `prefix`/`setup`
-to build a candidate-local environment, or deactivate the external environment.
-Packages in custom layouts remain outside this bounded preflight; detected
-dynamic import patterns that prevent scope verification leave it unverified.
-This is not a full runtime import trace.
+Before Python test execution on a combined candidate, Radar probes the
+command's interpreter with the same runner prefix, CWD and scrubbed
+environment. Python versioned executables, pytest console entry points and
+supported `uv run` forms are checked. On Windows, `pytest.exe` has no readable
+interpreter line, so bare `pytest` is unverified; use `python -m pytest`. Another
+`uv` form, a separate `pytest` argument behind another program, or a known
+launcher such as `env`, `timeout`, `coverage` or `poetry run` that names a
+Python interpreter is an environment problem, because its interpreter cannot be
+established. Opaque wrappers such as `sh -c "pytest -q"` or `make test` are not
+checked. The probe runs no
+first-party code, never calls an import hook it does not recognise, and does
+not inject `PYTHONPATH`. It refuses:
+
+- an import path, symlink in site-packages, editable-install mapping or
+  preloaded module outside both the candidate and the interpreter's own
+  standard library, site-packages and prefix directories, or an import hook it
+  cannot inspect;
+- a distribution installed from a remote `file:` URL or from a local path
+  outside the candidate that still exists, and any installed distribution named
+  like a project in this repository that was not built from the candidate;
+- a first-party package of the command's projects (the repository root and the
+  projects containing the CWD or a path argument) that resolves outside the
+  candidate, including a namespace portion or a standard-library name that
+  hides it;
+- a package of any other project in the repository that resolves outside the
+  candidate, unless the standard library or a distribution of another name
+  hides it. When that project's `pyproject.toml` has no readable name, any
+  installed copy is refused.
+
+The interpreter's own environment is not candidate source even inside the
+candidate directory: its checkouts (such as pip's `src/` for `-e git+…`) are refused like any outside
+path. A site-packages copy counts as candidate code only when every
+distribution that installs the name was built from the candidate's source tree
+itself (not from a wheel, sdist or VCS snapshot, which may be an old release)
+and recorded the file that loads. Namespace packages are checked member by
+member, so other distributions may install into the same namespace, but a file
+there that no distribution installed is refused.
+
+The location checks do not depend on names, so a package that a merge deleted
+or renamed cannot load from the original checkout unnoticed. As a consequence,
+any editable install of a project outside the candidate is refused, even an
+unrelated one. Packages are found by name in conventional flat/src layouts
+under every `pyproject.toml`; a project in another layout is covered only by
+its distribution name. `test` and `tests` are not probed by name because the
+test runner puts them on `sys.path` itself. A namespace package nested more
+than 32 levels deep is unverified. Use runner profile `prefix`/`setup` to build
+a candidate-local environment, or deactivate the external environment.
+
+The probe only sees what the interpreter can find at startup. It does not
+check a package that an index-installed distribution provides under a name the
+candidate no longer has (including the old name of a renamed project),
+`setup.py`-only or custom layouts by name, or paths a test adds at runtime. The
+preflight shares the command timeout. This is not a full runtime import trace.
 
 Dependency/toolchain diagnostics prevent source attribution, even when mixed
 with apparent compile errors. Source locations must be repository-relative and

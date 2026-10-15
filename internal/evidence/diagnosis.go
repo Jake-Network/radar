@@ -18,7 +18,10 @@ type Diagnosis struct {
 	// environment, or a module or header a branch renamed or removed) or
 	// build_failed (the compiler rejected repository source; Name is the
 	// undefined symbol or the file), or python_import_unverified (first-party
-	// Python imports are external or could not be verified).
+	// Python imports are external or could not be verified, or the
+	// interpreter can load modules from outside the candidate; Name is the
+	// package, module or distribution, sys.path or sys.meta_path, or python
+	// when the interpreter or probe could not be established).
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Message string `json:"message"`

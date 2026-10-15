@@ -405,6 +405,9 @@ func RunCandidateBudget(ctx context.Context, root string, c CandidateCheckpoint,
 		}
 	}
 	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		if runCtx.Err() != nil {
+			return finish(model.StatusTimeout), nil
+		}
 		result := finish(model.StatusError)
 		result.Observation.Diagnosis = diagnosis
 		return result, nil

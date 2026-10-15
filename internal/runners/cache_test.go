@@ -2,8 +2,11 @@ package runners
 
 import (
 	"context"
+	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +62,36 @@ func TestCacheInterpreterUsesSelectedExecutableIdentity(t *testing.T) {
 	}
 	if err := cache.Store(context.Background(), key, root, p); err == nil {
 		t.Fatal("unselected external executable cached")
+	}
+}
+
+func TestRelocateDirectURLComparesPathsNotText(t *testing.T) {
+	old, next := filepath.Join(t.TempDir(), "old root"), filepath.Join(t.TempDir(), "new #root")
+	stored, err := relocateDirectURL([]byte(`{"url": "file://`+filepath.ToSlash(strings.ReplaceAll(old, " ", "%20"))+`/libs/a", "dir_info": {"editable": true}}`), old, true)
+	if err != nil || strings.Contains(string(stored), "old") || !strings.Contains(string(stored), `"__RADAR_PROJECT_ROOT__/libs/a"`) || !strings.Contains(string(stored), `"editable":true`) {
+		t.Fatalf("store: %s %v", stored, err)
+	}
+	restored, err := relocateDirectURL(stored, next, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(restored, &record); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(record.URL)
+	if err != nil || u.Scheme != "file" || filepath.FromSlash(u.Path) != filepath.Join(next, "libs", "a") {
+		t.Fatalf("restore: %s %v", restored, err)
+	}
+	// URLs outside the root and non-file URLs are kept as they are.
+	for _, data := range []string{`{"url": "file:///elsewhere/pkg", "dir_info": {}}`, `{"url": "git+https://example.com/repo", "vcs_info": {"vcs": "git"}}`} {
+		if got, err := relocateDirectURL([]byte(data), old, true); err != nil || string(got) != data {
+			t.Fatalf("%s: %s %v", data, got, err)
+		}
+	}
+	if _, err := relocateDirectURL([]byte("not json"), old, true); err == nil {
+		t.Fatal("malformed metadata cached")
 	}
 }

@@ -206,9 +206,12 @@ covers only the checks and supported scope listed in the report.
 
 `.radar/runners.json` declares runner prefixes and setup argv; only explicit
 execution opt-in can run them. Dependency cache hits are not test evidence.
-Python first-party imports outside the candidate produce environment diagnostics,
-not test evidence or branch leads. Follow the repair hint to create a candidate-local
-environment with runner prefix/setup, or deactivate the external virtual environment.
+For a directly launched Python interpreter, pytest or `uv run`, imports that can
+come from outside the candidate (editable installs, import paths, import hooks,
+local-path installs of another checkout, or an installed copy of a repository
+project not built from the candidate) produce environment diagnostics, not test
+evidence or branch leads. Known launchers such as `poetry run` are unverified. Follow the repair hint to create a
+candidate-local environment with runner prefix/setup, or deactivate the external one.
 `.radar/generated.json` declares sources, outputs and generator argv. Static
 observations are warnings; --run regenerates in a separate private copy.
 Contract bindings may declare `generate` argv, also execution-only. Generated

@@ -1,11 +1,14 @@
 package runners
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -307,6 +310,25 @@ func copyArtifact(ctx context.Context, src, dst, relocate, sourceRoot string, to
 				return os.WriteFile(target, data, info.Mode().Perm()&0777)
 			}
 		}
+		// direct_url.json records, as a file URL, the source a local install came from.
+		if filepath.Base(src) == ".venv" && base == "direct_url.json" && strings.HasSuffix(filepath.Dir(p), ".dist-info") {
+			if info.Size() > 1<<20 || sourceRoot == "" {
+				return fmt.Errorf("editable environment metadata cannot be relocated")
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			data, err = relocateDirectURL(data, sourceRoot, relocate == "__RADAR_VENV_ROOT__")
+			if err != nil {
+				return err
+			}
+			*total += int64(len(data)) - info.Size()
+			if *total > limit {
+				return fmt.Errorf("editable metadata exceeds cache byte budget")
+			}
+			return os.WriteFile(target, data, info.Mode().Perm()&0777)
+		}
 		if filepath.Base(src) == ".venv" && (strings.HasSuffix(base, ".pth") || strings.HasPrefix(base, "__editable__") && strings.HasSuffix(base, ".py")) {
 			if info.Size() > 1<<20 || sourceRoot == "" {
 				return fmt.Errorf("editable environment metadata cannot be relocated")
@@ -351,6 +373,49 @@ func copyArtifact(ctx context.Context, src, dst, relocate, sourceRoot string, to
 		}
 		return closeErr
 	})
+}
+
+// relocateDirectURL replaces a file URL inside sourceRoot with a placeholder
+// when storing, and the placeholder with the current root's file URL when
+// restoring. URLs are percent-encoded, so the path is compared, never the text.
+func relocateDirectURL(data []byte, sourceRoot string, store bool) ([]byte, error) {
+	const placeholder = "__RADAR_PROJECT_ROOT__"
+	var record map[string]any
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, fmt.Errorf("editable environment metadata cannot be relocated")
+	}
+	raw, _ := record["url"].(string)
+	switch {
+	case store:
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") {
+			return data, nil
+		}
+		p := u.Path
+		if len(p) > 2 && p[0] == '/' && p[2] == ':' {
+			p = p[1:] // file:///C:/x on Windows
+		}
+		rel, err := filepath.Rel(sourceRoot, filepath.FromSlash(p))
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			return data, nil
+		}
+		record["url"] = placeholder + "/" + filepath.ToSlash(rel)
+	case strings.HasPrefix(raw, placeholder+"/"):
+		p := filepath.ToSlash(filepath.Join(sourceRoot, filepath.FromSlash(strings.TrimPrefix(raw, placeholder+"/"))))
+		if !strings.HasPrefix(p, "/") {
+			p = "/" + p
+		}
+		record["url"] = (&url.URL{Scheme: "file", Path: p}).String()
+	default:
+		return data, nil
+	}
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(record); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // The executable selected by the current PATH may live in a hosted toolcache,

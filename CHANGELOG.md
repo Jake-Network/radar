@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+* The Python import preflight now checks where the test's interpreter can load
+  code from, not only first-party package names. Import paths, editable and
+  local-path installs, preloaded modules and unknown import hooks outside the
+  candidate make the run unverified, even when unrelated, so a package a merge
+  deleted cannot load from the original checkout. An installed copy of a
+  repository project must be built from the candidate. Directly launched
+  interpreters, pytest and supported `uv run` forms are probed; known launchers
+  around Python are unverified, and opaque wrappers such as `sh -c` are not
+  checked.
 * Landing plans report bounded branch-pair checks, ancestry chains, deterministic
   order and conflict briefs. Explicit `land --apply` creates only a private
   integration ref after a passing combined-tree gate. Optional external merge
