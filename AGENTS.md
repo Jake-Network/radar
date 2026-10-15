@@ -59,7 +59,7 @@ CI(`.github/workflows/ci.yml`)는 위에 더해 `integrations/github-actions/tes
 - 의존성·체크섬·toolchain 메시지가 하나라도 섞이면(`goDependency` 등) 소스 탓으로 돌리지 않는다. 절대 경로나 `..` 탈출 경로는 toolchain/module cache 쪽이므로 버린다. 위치는 `pathutil.ResolveInside`로 다시 검증한다.
 - Python: `ModuleNotFoundError`는 환경(의존성 부재), `ImportError`(예: 브랜치가 지운 이름)는 결합 소스의 실패다. unittest 로더가 모든 import 실패 앞에 `ImportError: Failed to import test module`을 붙이므로 `ImportError`만으로 환경 문제로 분류하면 안 된다.
 - runner 부재, 명령 부재, timeout, 인식되지 않은 출력은 환경/명령 문제다. exit `0`만으로 테스트 사례가 관측되었다고 주장하지 않는다(인식된 실행 수가 있어야 함).
-- `Diagnosis.Kind`(`runner_missing`, `command_missing`, `module_missing`, `build_failed`)는 닫힌 enum이다. 종류를 추가하면 `diagnosis.go`, `schemas/integration-evidence.schema.json`의 enum, `integration/execute.go`의 `executionRemediation` 문구를 함께 바꾼다. Diagnosis는 고정 문장 + 식별자 형태로 제한된 이름이며 원시 출력은 넣지 않는다.
+- `Diagnosis.Kind`(`runner_missing`, `command_missing`, `module_missing`, `build_failed`, `python_import_unverified`)는 닫힌 enum이다. 종류를 추가하면 `diagnosis.go`, `schemas/integration-evidence.schema.json`의 enum, `integration/execute.go`의 `executionRemediation` 문구를 함께 바꾼다. Diagnosis는 고정 문장 + 식별자 형태로 제한된 이름이며 원시 출력은 넣지 않는다.
 
 ## 출력과 공개 형식
 
