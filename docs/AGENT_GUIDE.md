@@ -79,8 +79,9 @@ hooks or dependency installation, fetches nothing and changes no source branch.
 
 Supported static failures return Stop JSON requesting investigation and repair.
 Committed textual conflicts produce an informational `systemMessage`: restack or
-reconcile those branches before landing. New conflicted paths introduced by saved
-changes still block. Other supported failures, including committed migration
+reconcile those branches before landing. New conflict hunks introduced by saved changes still block, including additional
+hunks in an already conflicted file. Marker labels and unrelated context edits
+do not count as new hunks. Binary conflicts compare unmerged index blob IDs. Other supported failures, including committed migration
 heads, remain repairable in the current branch and still block.
 
 Unchanged previews reuse the last result for that worktree. The key includes

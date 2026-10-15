@@ -168,11 +168,11 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	}
 	in.config.applyIntegration(&report)
 	// Committed merge conflicts need restacking, not another agent turn. When
-	// dirty content is present, compare the committed candidate so only newly
-	// introduced conflict paths request a repair. Other supported failures
+	// dirty content is present, compare conflict hunks with the committed
+	// candidate so newly introduced conflicting content requests a repair. Other supported failures
 	// (including committed migration heads) remain actionable.
 	if len(report.Conflicts) > 0 {
-		committedConflicts := report.Conflicts
+		newConflict := false
 		if len(in.Snapshots) > 0 {
 			committed, err := integration.BuildCandidate(ctx, root, in.Base, in.SHAs)
 			if committed != nil {
@@ -181,20 +181,13 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			if err != nil {
 				return unavailable("committed conflict comparison unavailable: " + err.Error())
 			}
-			committedConflicts = committed.Conflicts
-		}
-		prior := map[string]bool{}
-		for _, path := range committedConflicts {
-			prior[path] = true
-		}
-		newConflict := false
-		for _, path := range report.Conflicts {
-			if !prior[path] {
-				newConflict = true
+			newConflict, err = hookHasNewConflicts(ctx, candidate, committed)
+			if err != nil {
+				return unavailable("committed conflict comparison unavailable: " + err.Error())
 			}
 		}
 		if !newConflict {
-			return finish(agentHookResponse{Message: hookText("Radar NOT VERIFIED: committed integration has textual conflicts; restack or reconcile these branches before landing: " + strings.Join(report.Conflicts, ", ") + ". Saved changes introduced no new conflicted paths. No tests were run.")})
+			return finish(agentHookResponse{Message: hookText("Radar NOT VERIFIED: committed integration has textual conflicts; restack or reconcile these branches before landing: " + strings.Join(report.Conflicts, ", ") + ". Saved changes introduced no new conflict hunks. No tests were run.")})
 		}
 	}
 	if report.Gate.Verdict == gate.Fail {

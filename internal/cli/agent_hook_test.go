@@ -311,3 +311,54 @@ func TestAgentHookDirtyCreatesMigrationHeads(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestAgentHookDirtyConflictInAlreadyConflictedFile(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	source := func(first, second string) string {
+		return "def first():\n    return " + first + "\n" + strings.Repeat("\n# separate functions\n", 12) + "def second():\n    return " + second + "\n" + strings.Repeat("\n# end spacing\n", 12)
+	}
+	put(t, root, "backend.py", source("1", "1"))
+	gitTest(t, root, "add", "backend.py")
+	gitTest(t, root, "commit", "-qm", "two independent functions")
+	a := agent("a", map[string]string{"backend.py": source("2", "2")})
+	b := agent("b", map[string]string{"backend.py": source("3", "1")})
+	invoke := func() agentHookResponse {
+		return hookInvoke(t, root, hookEvent(t, a), "--base", "main", "--branches", "a,b")
+	}
+	if r := invoke(); r.Decision != "" || !strings.Contains(r.Message, "restack") {
+		t.Fatalf("inherited first-function conflict must warn: %+v", r)
+	}
+	put(t, b, "backend.py", source("3", "3"))
+	if r := invoke(); r.Decision != "block" || !strings.Contains(r.Reason, "backend.py") {
+		t.Fatalf("new dirty second-function conflict in same file must block: %+v", r)
+	}
+	put(t, b, "backend.py", source("4", "1"))
+	if r := invoke(); r.Decision != "block" {
+		t.Fatalf("dirty modification of inherited conflicting content must block: %+v", r)
+	}
+	// Changing context alone must not make the inherited conflict actionable;
+	// synthetic dirty commits also change marker labels, which are ignored.
+	put(t, b, "backend.py", source("3", "1")+"\n# unrelated saved comment\n")
+	if r := invoke(); r.Decision != "" || !strings.Contains(r.Message, "restack") {
+		t.Fatalf("context-only dirty edit must keep inherited conflict informational: %+v", r)
+	}
+}
+
+func TestAgentHookDirtyBinaryConflictContent(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	put(t, root, "asset.bin", "base\x00content")
+	gitTest(t, root, "add", "asset.bin")
+	gitTest(t, root, "commit", "-qm", "binary baseline")
+	a := agent("a", map[string]string{"asset.bin": "first\x00content"})
+	b := agent("b", map[string]string{"asset.bin": "second\x00content"})
+	invoke := func() agentHookResponse {
+		return hookInvoke(t, root, hookEvent(t, a), "--base", "main", "--branches", "a,b")
+	}
+	if r := invoke(); r.Decision != "" || !strings.Contains(r.Message, "restack") {
+		t.Fatal(r)
+	}
+	put(t, b, "asset.bin", "dirty\x00content")
+	if r := invoke(); r.Decision != "block" {
+		t.Fatalf("changed binary conflict side must block: %+v", r)
+	}
+}
