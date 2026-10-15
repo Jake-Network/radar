@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -164,7 +165,9 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			if len(name) > 512 {
 				continue
 			}
-			r.FailedCases = append(r.FailedCases, name)
+			if !slices.Contains(r.FailedCases, name) {
+				r.FailedCases = append(r.FailedCases, name)
+			}
 			if len(r.FailedCases) >= 20 {
 				break
 			}
@@ -177,7 +180,9 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			if !strings.HasSuffix(name, "."+match[1]) {
 				name += "." + match[1]
 			}
-			r.FailedCases = append(r.FailedCases, name)
+			if !slices.Contains(r.FailedCases, name) {
+				r.FailedCases = append(r.FailedCases, name)
+			}
 			if len(r.FailedCases) >= 20 {
 				break
 			}
