@@ -99,6 +99,16 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 		return c, e
 	}
 	c.Dir = temp
+	// System temporary directories can have trusted symlink ancestors (for
+	// example /var on macOS). Pin the new private root to its physical path
+	// before Git creates anything beneath it. Object-store checks still reject
+	// symlinks introduced inside this private root.
+	temp, e = filepath.EvalSymlinks(temp)
+	if e != nil {
+		c.Close()
+		return c, e
+	}
+	c.Dir = temp
 	fail := func(e error) (*Candidate, error) {
 		c.Close()
 		return c, e
