@@ -46,3 +46,14 @@ func TestGateTextSeparatesBaseFailuresFromCandidateFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestUnidentifiedFailuresRemainVisibleAfterBaseComparison(t *testing.T) {
+	ev := integration.ExecutionEvidence{Status: model.StatusFailed,
+		Observation:    evidence.CandidateObservation{Harness: "pytest", TestsFailed: 2, FailedCases: []string{"tests/test_old.py::test_old"}},
+		BaseComparison: &integration.BaseComparison{ExistingCases: []string{"tests/test_old.py::test_old"}},
+	}
+	detail := executionDetail(ev)
+	if !strings.Contains(detail, "1 failure lacks a reliable identity; candidate failure retained") || strings.Contains(detail, "0 remaining") {
+		t.Fatal(detail)
+	}
+}

@@ -49,6 +49,7 @@ type gateReport struct {
 	Landing                 *landing.Report            `json:"landing,omitempty"`
 	ConflictBrief           *landing.ConflictBrief     `json:"conflict_brief,omitempty"`
 	IntegrationRef          *landing.Applied           `json:"integration_ref,omitempty"`
+	LandingApply            *landing.ApplyOutcome      `json:"landing_apply,omitempty"`
 	RunID                   string                     `json:"run_id,omitempty"`
 	WorktreeInspectionError string                     `json:"worktree_inspection_error,omitempty"`
 	Worktrees               []gitrepo.WorktreeStatus   `json:"worktrees"`
@@ -972,7 +973,9 @@ func gateMark(s model.Status) string {
 func executionDetail(ev integration.ExecutionEvidence) string {
 	detail := fmt.Sprintf("in %s; %s", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))
 	if ev.BaseComparison != nil {
-		if ev.BaseComparison.AllExisting {
+		if unknown := ev.UnidentifiedFailureCount(); unknown > 0 {
+			detail += "; " + plural(unknown, "failure lacks a reliable identity", "failures lack reliable identities") + "; candidate failure retained"
+		} else if ev.BaseComparison.AllExisting {
 			detail += "; already fails on base; integration not verified"
 		} else if n := len(ev.BaseComparison.ExistingCases); n > 0 {
 			detail += fmt.Sprintf("; %d failed cases already fail on base; %d remaining candidate failures", n, len(ev.NewFailedCases()))

@@ -177,6 +177,9 @@
         "limitations"
       ]
     },
+    "landing_apply": {
+      "$ref": "#/$defs/landing_apply"
+    },
     "integration_ref": {
       "type": "object",
       "required": [
@@ -187,6 +190,9 @@
         "report"
       ],
       "properties": {
+        "outcome": {
+          "$ref": "#/$defs/landing_apply"
+        },
         "ref": {
           "type": "string",
           "pattern": "^refs/radar/integration/[a-f0-9]+$"
@@ -211,6 +217,16 @@
     }
   },
   "$defs": {
+    "landing_apply": {
+      "type": "object",
+      "required": ["published", "objects_imported"],
+      "properties": {
+        "published": {"type": "boolean"},
+        "objects_imported": {"type": "boolean"},
+        "reason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
     "status": {
       "enum": [
         "passed",

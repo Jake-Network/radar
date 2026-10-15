@@ -24,6 +24,8 @@ func TestPytestBaselineFailureIdentities(t *testing.T) {
 		count        int
 	}{
 		{"failure and error", "FAILED test_case.py::test_old - AssertionError: raw secret\nERROR test_case.py::TestCase::test_new - missing fixture\n", 2},
+		{"collection error is not a case identity", "ERROR test_case.py - ValueError: existing collection failure\n", 0},
+		{"new collection cause is still unidentified", "ERROR test_case.py - ImportError: new missing name\n", 0},
 		{"escape", "FAILED ../test_case.py::test_bad - AssertionError\n", 0},
 		{"untracked location", "FAILED missing.py::test_bad - AssertionError\n", 0},
 		{"parameter values", "FAILED test_case.py::test_bad[private-value] - AssertionError\n", 0},

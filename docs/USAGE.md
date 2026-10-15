@@ -82,6 +82,10 @@ command when ancestry permits. Review the result and select the intended base
 before running that command. Tests require a separate `gate --run`.
 Pass the same `--policy PATH` and `--plan PATH` to landing as to gate; missing
 requirements or configuration changes prevent ref publication.
+`landing_apply` reports whether a ref was published, whether immutable candidate
+objects were imported, and the refusal reason. Imported objects may remain after
+a refusal; they do not update branches or establish verification. Existing base
+and branch history is excluded from the candidate object pack.
 `mergiraf` and `weave` require `--allow-execution`, run with host permissions in
 the private candidate, and record successful repairs as `resolved_by`; merely
 installing a driver does not authorize it. MCP `radar_land` and

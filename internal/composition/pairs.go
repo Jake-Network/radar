@@ -84,6 +84,7 @@ func Pairwise(ctx context.Context, repos []Repo, team *Team, maxPairs int, inclu
 	candidates := []pairCandidate{}
 	snapshots := make([][]integration.DirtySnapshot, len(repos))
 	worktreePins := make([][]gitrepo.WorktreeStatus, len(repos))
+	unavailable := map[int]bool{}
 	for i, r := range repos {
 		br := r
 		br.Branches = nil
@@ -95,41 +96,26 @@ func Pairwise(ctx context.Context, repos []Repo, team *Team, maxPairs int, inclu
 		}
 		out.Bases = append(out.Bases, pin)
 		if includeDirty {
-			worktrees, err := gitrepo.InspectWorktrees(ctx, r.Path)
+			var err error
+			snapshots[i], worktreePins[i], err = observePairDirty(ctx, r)
 			if err != nil {
-				return out, nil, err
-			}
-			worktreePins[i] = worktrees
-			for _, wt := range worktrees {
-				if wt.InspectionError != "" {
-					return out, nil, fmt.Errorf("%s dirty inspection unavailable", r.ID)
+				if ctx.Err() != nil {
+					return out, nil, ctx.Err()
 				}
-				if len(wt.Staged)+len(wt.Unstaged)+len(wt.Untracked) == 0 {
-					continue
-				}
-				if r.Selection == SelectionNamed {
-					selected := false
-					for _, branch := range r.Branches {
-						if strings.TrimPrefix(branch.Ref, "refs/heads/") == wt.Branch {
-							if branch.Commit != wt.Commit {
-								return out, nil, ErrMoving
-							}
-							selected = true
-						}
-					}
-					if !selected {
-						continue
-					}
-				}
-				if wt.Detached {
-					return out, nil, errors.New("dirty detached worktrees require a named branch for cross-repository inspection")
-				}
-				s, err := integration.ObserveDirty(ctx, wt)
-				if err != nil {
+				if errors.Is(err, ErrMoving) {
 					return out, nil, err
 				}
-				s.InputIndex = -1
-				snapshots[i] = append(snapshots[i], s)
+				unavailable[i] = true
+				out.Complete = false
+				out.Limitations = append(out.Limitations, fmt.Sprintf("Cross-repository pair inspection incomplete: %s saved changes unavailable: %s", r.ID, err))
+				originals[i] = Result{Repo: r}
+				originals[i].Error = "saved changes unavailable: " + err.Error()
+				for _, b := range r.Branches {
+					failed := Result{Repo: r}
+					failed.Error = originals[i].Error
+					candidates = append(candidates, pairCandidate{repo: i, input: PairInput{Repo: r.ID, Base: r.Base, Ref: b.Ref, Commit: b.Commit}, result: failed})
+				}
+				continue
 			}
 		}
 		selected := append([]Branch(nil), r.Branches...)
@@ -206,7 +192,9 @@ func Pairwise(ctx context.Context, repos []Repo, team *Team, maxPairs int, inclu
 			pair.Reason = "declared static links checked with other repositories at their own bases"
 			for _, r := range selected {
 				if r.Error != "" || r.Report == nil || len(r.Report.Conflicts) > 0 {
-					pair.Status = model.StatusIncomplete
+					if pair.Status != model.StatusFailed {
+						pair.Status = model.StatusIncomplete
+					}
 					pair.Reason = "a repository candidate is unavailable or has textual conflicts"
 					break
 				}
@@ -233,6 +221,9 @@ func Pairwise(ctx context.Context, repos []Repo, team *Team, maxPairs int, inclu
 	// Publishing saved input evidence requires the entire inspection to have
 	// observed the same refs and dirty bytes, including after candidate creation.
 	for i, r := range repos {
+		if unavailable[i] {
+			continue
+		}
 		if r.BaseRef != "" {
 			sha, err := gitrepo.Resolve(ctx, r.Path, r.BaseRef)
 			if err != nil || sha != r.Base {
@@ -280,7 +271,40 @@ func pairLinkStatus(links []Link) model.Status {
 	return s
 }
 func buildPairDirty(ctx context.Context, res *Result, snapshots []integration.DirtySnapshot, team *Team) error {
-	c, err := integration.BuildDirtyCandidate(ctx, res.Path, res.Base, commits(res.Branches), snapshots)
+	// Commit SHAs alone cannot distinguish two named worktrees at the same
+	// HEAD. Bind each captured worktree to its exact named selection before
+	// passing immutable commits to the candidate builder.
+	inputs := commits(res.Branches)
+	bound := append([]integration.DirtySnapshot(nil), snapshots...)
+	assigned := map[int]bool{}
+	for i := range bound {
+		snapshot := &bound[i]
+		match := -1
+		for j, branch := range res.Branches {
+			if strings.TrimPrefix(branch.Ref, "refs/heads/") == snapshot.Branch {
+				if branch.Commit != snapshot.Head {
+					return ErrMoving
+				}
+				if match >= 0 {
+					return errors.New("one dirty worktree has multiple selected branch aliases")
+				}
+				match = j
+			}
+		}
+		if match < 0 {
+			// Auto selection can include saved changes on the base worktree.
+			// Appending a distinct slot preserves that worktree's identity even
+			// when other named inputs share the same head.
+			match = len(inputs)
+			inputs = append(inputs, snapshot.Head)
+		}
+		if assigned[match] {
+			return errors.New("multiple dirty worktrees target one named input")
+		}
+		assigned[match] = true
+		snapshot.InputIndex = match
+	}
+	c, err := integration.BuildDirtyCandidate(ctx, res.Path, res.Base, inputs, bound)
 	if c != nil {
 		defer c.Close()
 	}
@@ -294,4 +318,47 @@ func buildPairDirty(ctx context.Context, res *Result, snapshots []integration.Di
 	}
 	res.Report = &report
 	return nil
+}
+
+// An unsupported worktree makes only its repository unavailable; callers keep
+// unrelated pair evidence and explicitly mark the omitted scope incomplete.
+func observePairDirty(ctx context.Context, r Repo) ([]integration.DirtySnapshot, []gitrepo.WorktreeStatus, error) {
+	snapshots := []integration.DirtySnapshot{}
+	worktrees, err := gitrepo.InspectWorktrees(ctx, r.Path)
+	if err != nil {
+		return nil, worktrees, err
+	}
+
+	for _, wt := range worktrees {
+		if wt.InspectionError != "" {
+			return nil, worktrees, fmt.Errorf("%s dirty inspection unavailable", r.ID)
+		}
+		if len(wt.Staged)+len(wt.Unstaged)+len(wt.Untracked) == 0 {
+			continue
+		}
+		if r.Selection == SelectionNamed {
+			selected := false
+			for _, branch := range r.Branches {
+				if strings.TrimPrefix(branch.Ref, "refs/heads/") == wt.Branch {
+					if branch.Commit != wt.Commit {
+						return nil, worktrees, ErrMoving
+					}
+					selected = true
+				}
+			}
+			if !selected {
+				continue
+			}
+		}
+		if wt.Detached {
+			return nil, worktrees, errors.New("dirty detached worktrees require a named branch for cross-repository inspection")
+		}
+		s, err := integration.ObserveDirty(ctx, wt)
+		if err != nil {
+			return nil, worktrees, err
+		}
+		s.InputIndex = -1
+		snapshots = append(snapshots, s)
+	}
+	return snapshots, worktrees, nil
 }

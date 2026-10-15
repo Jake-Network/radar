@@ -17,7 +17,7 @@ func compactVerification(raw string) string {
 		return compactWorkspace(full)
 	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"error", "gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error", "landing", "conflict_brief", "overlap", "drift", "cross_repo_pairs", "run_id"} {
+	for _, key := range []string{"error", "gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error", "landing", "landing_apply", "conflict_brief", "overlap", "drift", "cross_repo_pairs", "run_id"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}

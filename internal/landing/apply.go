@@ -19,6 +19,15 @@ type Applied struct {
 	Tree        string             `json:"tree"`
 	FastForward []string           `json:"fast_forward"`
 	Report      integration.Report `json:"report"`
+	Outcome     ApplyOutcome       `json:"outcome"`
+}
+
+// ApplyOutcome distinguishes immutable object import from publishing a ref.
+// An imported object is not a verification claim and may remain after refusal.
+type ApplyOutcome struct {
+	Published       bool   `json:"published"`
+	ObjectsImported bool   `json:"objects_imported"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 // Apply is an explicit local mutation: it publishes only a new private ref and
@@ -29,8 +38,17 @@ func Apply(ctx context.Context, root string, r Report) (Applied, error) {
 }
 
 // ApplyWithOptions repeats explicit authorization for external merge drivers.
-func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Applied, error) {
-	a := Applied{FastForward: []string{}}
+func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (a Applied, err error) {
+	a = Applied{FastForward: []string{}}
+	defer func() {
+		if err != nil {
+			a.Outcome.Reason = err.Error()
+		}
+		if !a.Outcome.Published {
+			a.Ref = ""
+			a.FastForward = []string{}
+		}
+	}()
 	analysis, e := analysisOptions(o)
 	if e != nil {
 		return a, e
@@ -87,33 +105,38 @@ func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Ap
 	}
 	a.Commit = c.Commit
 	a.Tree = c.Tree
-	a.Ref = "refs/radar/integration/" + model.StableID(r.Base, strings.Join(inputs, "\n"), c.Tree)
-	copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	producer := gitrepo.PrivateCommand(copyCtx, c.Dir, "pack-objects", "--stdout", "--revs")
-	producer.Stdin = strings.NewReader(c.Commit + "\n")
-	pipe, e := producer.StdoutPipe()
-	if e != nil {
-		return a, e
-	}
-	defer pipe.Close()
-	producer.Stderr = io.Discard
-	consumer := gitrepo.PrivateCommand(copyCtx, root, "index-pack", "--stdin")
-	consumer.Stdin = pipe
-	consumer.Stdout = io.Discard
-	consumer.Stderr = io.Discard
-	if e = consumer.Start(); e != nil {
-		return a, e
-	}
-	if e = producer.Start(); e != nil {
-		pipe.Close()
-		consumer.Wait()
-		return a, e
-	}
-	pe := producer.Wait()
-	ce := consumer.Wait()
-	if pe != nil || ce != nil {
-		return a, errors.New("unable to import private integration objects")
+	ref := "refs/radar/integration/" + model.StableID(r.Base, strings.Join(inputs, "\n"), c.Tree)
+	// Repeating the same candidate need not import another pack. All exclusions
+	// are immutable commits already resolved from the source, never mutable refs.
+	if _, exists := gitrepo.Resolve(ctx, root, c.Commit); exists != nil {
+		copyCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		producer := gitrepo.PrivateCommand(copyCtx, c.Dir, "pack-objects", "--stdout", "--revs", "--incremental")
+		producer.Stdin = strings.NewReader(packRevisions(c.Commit, r.Base, inputs))
+		pipe, e := producer.StdoutPipe()
+		if e != nil {
+			return a, e
+		}
+		defer pipe.Close()
+		producer.Stderr = io.Discard
+		consumer := gitrepo.PrivateCommand(copyCtx, root, "index-pack", "--stdin")
+		consumer.Stdin = pipe
+		consumer.Stdout = io.Discard
+		consumer.Stderr = io.Discard
+		if e = consumer.Start(); e != nil {
+			return a, e
+		}
+		if e = producer.Start(); e != nil {
+			pipe.Close()
+			consumer.Wait()
+			return a, e
+		}
+		pe := producer.Wait()
+		ce := consumer.Wait()
+		if pe != nil || ce != nil {
+			return a, errors.New("unable to import private integration objects")
+		}
+		a.Outcome.ObjectsImported = true
 	}
 	// Configuration belongs to the invocation, not the Git candidate. Check its
 	// final boundary after object import and before making any integration ref
@@ -129,22 +152,42 @@ func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Ap
 	if a.Report.Gate.Verdict != gate.Pass {
 		return a, errors.New("landing configuration or selected requirements are unverified; no integration ref published")
 	}
-	// Create-only compare-and-swap: concurrent invocations cannot replace a ref.
-	if existing, err := gitrepo.Resolve(ctx, root, a.Ref); err == nil {
-		if existing != a.Commit {
-			return a, errors.New("integration ref already has another commit")
-		}
-	} else {
-		if _, e = gitrepo.RunPrivate(ctx, root, "update-ref", a.Ref, a.Commit, strings.Repeat("0", len(a.Commit))); e != nil {
-			return a, e
+	for _, b := range r.Branches {
+		current, resolveErr := gitrepo.Resolve(ctx, root, b.Name)
+		if resolveErr != nil || current != b.Commit {
+			return a, errors.New("landing input changed before publication; recompute plan")
 		}
 	}
 	yes, e := gitrepo.IsAncestor(ctx, root, "HEAD", a.Commit)
 	if e != nil {
 		return a, e
 	}
+	// Create-only compare-and-swap: concurrent invocations cannot replace a ref.
+	if existing, err := gitrepo.Resolve(ctx, root, ref); err == nil {
+		if existing != a.Commit {
+			return a, errors.New("integration ref already has another commit")
+		}
+	} else {
+		if _, e = gitrepo.RunPrivate(ctx, root, "update-ref", ref, a.Commit, strings.Repeat("0", len(a.Commit))); e != nil {
+			return a, e
+		}
+	}
+	a.Ref = ref
+	a.Outcome.Published = true
 	if yes {
 		a.FastForward = []string{"git", "merge", "--ff-only", a.Ref}
 	}
 	return a, nil
+}
+
+func packRevisions(commit, base string, inputs []string) string {
+	lines := []string{commit, "^" + base}
+	seen := map[string]bool{base: true}
+	for _, sha := range inputs {
+		if !seen[sha] {
+			seen[sha] = true
+			lines = append(lines, "^"+sha)
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
 }

@@ -120,6 +120,13 @@ func TestIncompleteFailureIdentitiesCannotClearCandidateFailure(t *testing.T) {
 	if r.Gate.Verdict != gate.Fail || ev.BaseComparison.AllExisting || ev.Observation.TestsFailed != 21 || !strings.Contains(ev.BaseComparison.Explanation, "lack recorded identities") {
 		t.Fatalf("gate=%+v ev=%+v baseline=%+v", r.Gate, ev, ev.BaseComparison)
 	}
+	if len(ev.BaseComparison.ExistingCases) != 0 || len(ev.NewFailedCases()) != 20 {
+		t.Fatalf("unknown 21st failure was hidden by partial matching: existing=%v new=%v", ev.BaseComparison.ExistingCases, ev.NewFailedCases())
+	}
+	paths := []string{"test_many.py", "backend.py"}
+	if got := ev.FailurePaths(paths); !slices.Equal(got, paths) {
+		t.Fatalf("unknown failure lost potential leads: %v", got)
+	}
 }
 
 func TestFailurePathsRequireExactCaseModule(t *testing.T) {
@@ -240,5 +247,76 @@ func TestFailurePathsPytestIDsRespectCWD(t *testing.T) {
 		if got := ev.FailurePaths(paths); !slices.Equal(got, []string{"apps/svc/tests/test_x.py"}) {
 			t.Fatalf("id=%s paths=%v", id, got)
 		}
+	}
+}
+
+func TestIncompleteFailureEvidenceCannotSuppressCasesOrPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		failed  int
+		cases   []string
+		harness string
+	}{
+		{"missing identity", 2, []string{"tests.test_old.Cases.test_old"}, "unittest"},
+		{"duplicate identity", 2, []string{"tests.test_old.Cases.test_old", "tests.test_old.Cases.test_old"}, "unittest"},
+		{"pytest collection error", 1, []string{"tests/test_import.py"}, "pytest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := ExecutionEvidence{Status: model.StatusFailed, Observation: evidence.CandidateObservation{TestsFailed: tc.failed, FailedCases: tc.cases, Harness: tc.harness}, BaseComparison: &BaseComparison{ExistingCases: append([]string{}, tc.cases...), AllExisting: true}}
+			paths := []string{"tests/test_old.py", "tests/test_new.py", "app/new_import.py"}
+			wantCases := tc.cases[:1]
+			if tc.harness == "pytest" {
+				wantCases = nil
+			}
+			if got := ev.NewFailedCases(); !slices.Equal(got, wantCases) {
+				t.Fatalf("unidentified failure lost reliable cases or counted invalid cases: %v", got)
+			}
+			if got := ev.FailurePaths(paths); !slices.Equal(got, paths) {
+				t.Fatalf("unidentified failure lost potential paths: %v", got)
+			}
+			if ev.IntegrationStatus() != model.StatusFailed || ev.UnidentifiedFailureCount() != 1 {
+				t.Fatalf("partial identities downgraded failure or unknown count incorrect: status=%s unknown=%d", ev.IntegrationStatus(), ev.UnidentifiedFailureCount())
+			}
+		})
+	}
+}
+
+func TestKnownBaseFailureAndUnidentifiedNewSubtestRemainFailures(t *testing.T) {
+	root := fixture(t)
+	gitTest(t, root, "checkout", "baseline")
+	put(t, root, "test_subtests.py", "import unittest\nfrom backend import UNIT_PRICE\nclass Cases(unittest.TestCase):\n def test_a_existing(self): self.fail('existing')\n def test_z_new(self):\n  with self.subTest(price=UNIT_PRICE):\n   self.assertEqual(UNIT_PRICE, 1)\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "existing baseline failure")
+	gitTest(t, root, "checkout", "-qb", "new-subtest-failure")
+	put(t, root, "backend.py", "UNIT_PRICE = 2\n")
+	gitTest(t, root, "commit", "-qam", "new subtest failure")
+	o := opts("new-subtest-failure")
+	o.Command = []string{"python3", "-m", "unittest", "test_subtests"}
+	r, err := Preview(context.Background(), root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := r.Executions[0]
+	if r.Gate.Verdict != gate.Fail || ev.BaseComparison == nil || ev.BaseComparison.AllExisting || len(ev.BaseComparison.ExistingCases) != 0 {
+		t.Fatalf("gate=%+v ev=%+v baseline=%+v", r.Gate, ev, ev.BaseComparison)
+	}
+	if ev.Observation.TestsFailed != 2 || ev.UnidentifiedFailureCount() != 1 || len(ev.NewFailedCases()) != 1 {
+		t.Fatalf("partial failure evidence was suppressed: %+v", ev)
+	}
+	paths := []string{"test_subtests.py", "backend.py"}
+	if got := ev.FailurePaths(paths); !slices.Equal(got, paths) {
+		t.Fatalf("unidentified candidate failure lost repair paths: %v", got)
+	}
+	found := false
+	for _, f := range r.Findings {
+		if f.Code == "integration_execution_failed" {
+			found = true
+			if len(f.Locations) == 0 {
+				t.Fatal("unknown failure lost observed test locations")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("candidate failure finding missing")
 	}
 }

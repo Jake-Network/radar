@@ -17,6 +17,15 @@ test('blocked is never a merge recommendation', () => {
   const r=report(); r.gate.verdict='blocked'; r.gate.required_checks[0].status='unknown';
   assert.equal(summarize(r).mergeRecommended,false); assert.equal(summarize(r).notVerified.length,1);
 });
+test('static PASS does not hide failed integration ref publication', () => {
+  const r={...report(),landing_apply:{published:false,objects_imported:true,reason:'inputs changed before publication'}};
+  const view=summarize(r);
+  assert.equal(view.verdict,'pass');
+  assert.equal(view.mergeRecommended,false);
+  assert.match(view.title,/not published/);
+  assert.ok(view.notVerified.some(s=>s.includes(r.landing_apply.reason)&&s.includes('true')));
+  assert.equal(summarize({...r,landing_apply:{...r.landing_apply,published:'false'}}).verdict,'error');
+});
 test('component renders untrusted strings exclusively as text', () => {
   const nodes=[]; const document={createElement(tag){ const node={tag, children:[],setAttribute(){},appendChild(child){this.children.push(child);},set innerHTML(_){throw Error('unsafe HTML');}};nodes.push(node);return node;}};
   const r=report(); r.limitations=['<img src=x onerror=alert(1)>'];

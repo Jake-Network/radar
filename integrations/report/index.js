@@ -24,6 +24,13 @@ export function parseReport(input) {
       !report.gate.required_checks.some(c => c.id === id && c.status === 'passed'))) {
     throw new TypeError('A passing report is missing a passed required check.');
   }
+  if (report.landing_apply !== undefined) {
+    const outcome = report.landing_apply;
+    if (!outcome || typeof outcome !== 'object' || typeof outcome.published !== 'boolean' ||
+        typeof outcome.objects_imported !== 'boolean' || (outcome.reason !== undefined && typeof outcome.reason !== 'string')) {
+      throw new TypeError('Unsupported landing publication outcome.');
+    }
+  }
   return report;
 }
 
@@ -31,12 +38,16 @@ export function parseReport(input) {
 export function summarize(input) {
   try {
     const report = parseReport(input);
+    const unpublished = report.landing_apply?.published === false;
     return {
       verdict: report.gate.verdict,
-      mergeRecommended: report.gate.verdict === 'pass',
-      title: `Radar: ${report.gate.verdict}`,
+      mergeRecommended: report.gate.verdict === 'pass' && !unpublished,
+      title: `Radar: ${report.gate.verdict}${unpublished ? '; integration ref not published' : ''}`,
       checked: report.gate.required_checks.filter(c => c.status === 'passed').map(c => `${c.id}: ${c.explanation}`),
-      notVerified: report.gate.required_checks.filter(c => c.status !== 'passed').map(c => `${c.id} (${c.status}): ${c.explanation}`),
+      notVerified: [
+        ...report.gate.required_checks.filter(c => c.status !== 'passed').map(c => `${c.id} (${c.status}): ${c.explanation}`),
+        ...(unpublished ? [`Integration ref not published: ${report.landing_apply.reason || 'publication unavailable'}. Completed object import: ${report.landing_apply.objects_imported}.`] : []),
+      ],
       limitations: report.limitations.map(String),
       execution: Array.isArray(report.executions) && report.executions.length ? 'Inspect individual observations; static checks do not establish runtime compatibility.' : 'Repository tests were not executed.',
     };

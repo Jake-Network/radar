@@ -311,7 +311,7 @@ func compareFailure(original, ev ExecutionEvidence) (string, string) {
 	}
 	want, got := original.Observation, ev.Observation
 	if !identifiable(want) {
-		return SubsetNotComparable, "the original failure names no failed case or source location to compare"
+		return SubsetNotComparable, "the original failure lacks complete reliable case identities or a source location to compare"
 	}
 	if want.Diagnosis != nil || got.Diagnosis != nil {
 		if want.Diagnosis == nil || got.Diagnosis == nil || want.Diagnosis.Kind != got.Diagnosis.Kind || want.Diagnosis.Name != got.Diagnosis.Name {
@@ -322,10 +322,9 @@ func compareFailure(original, ev ExecutionEvidence) (string, string) {
 				return SubsetDifferentFailure, ""
 			}
 		}
-		return SubsetReproduced, ""
 	}
-	for _, c := range want.FailedCases {
-		if !slices.Contains(got.FailedCases, c) {
+	for _, c := range original.reliableFailedCases() {
+		if !slices.Contains(ev.reliableFailedCases(), c) {
 			return SubsetDifferentFailure, ""
 		}
 	}
@@ -335,10 +334,14 @@ func compareFailure(original, ev ExecutionEvidence) (string, string) {
 // identifiable reports whether a failure can be recognized again: by failed
 // case names, or by a diagnosis with at least one located line.
 func identifiable(o evidence.CandidateObservation) bool {
+	ev := ExecutionEvidence{Observation: o}
+	if ev.UnidentifiedFailureCount() > 0 {
+		return false
+	}
 	if o.Diagnosis != nil {
 		return slices.ContainsFunc(o.Locations, func(l model.Provenance) bool { return l.Path != "" && l.Line > 0 })
 	}
-	return len(o.FailedCases) > 0
+	return len(ev.reliableFailedCases()) > 0
 }
 
 // unavailableDir reports a working directory that a subset does not have,

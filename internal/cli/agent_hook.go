@@ -202,15 +202,7 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	if err != nil {
 		return unavailable(err.Error())
 	}
-	if len(candidate.Conflicts) > 0 {
-		inspected, err := hookAllInputsInspected(ctx, candidate)
-		if err != nil {
-			return unavailable("candidate input inspection unavailable: " + err.Error())
-		}
-		if !inspected {
-			return finish(agentHookResponse{Message: "Radar NOT VERIFIED: merge stopped before all selected inputs were inspected; saved changes in later inputs remain unchecked. Reconcile the earlier committed conflict and rerun."})
-		}
-	}
+
 	report, err := integration.Analyze(ctx, candidate, integration.Options{Base: in.Base, Branches: in.SHAs, Policy: in.config.Policy, ParseCache: parseCache})
 	if err != nil {
 		return unavailable(err.Error())
@@ -220,7 +212,16 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	// dirty content is present, compare conflict hunks with the committed
 	// candidate so newly introduced conflicting content requests a repair. Other supported failures
 	// (including committed migration heads) remain actionable.
+	conflictMessage := ""
 	if len(report.Conflicts) > 0 {
+		inspected, err := hookAllInputsInspected(ctx, candidate)
+		if err != nil {
+			return unavailable("candidate input inspection unavailable: " + err.Error())
+		}
+		conflictMessage = "Radar NOT VERIFIED: combined integration has textual conflicts; restack or reconcile these branches before landing: " + strings.Join(report.Conflicts, ", ") + ". No tests were run."
+		if !inspected {
+			conflictMessage += " Merge stopped before all selected inputs were inspected; saved changes in later inputs remain unchecked."
+		}
 		newConflict := false
 		if len(in.Snapshots) > 0 {
 			committed, err := integration.BuildCandidate(ctx, root, in.Base, in.SHAs)
@@ -236,7 +237,12 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			}
 		}
 		if !newConflict {
-			return finish(agentHookResponse{Message: hookText("Radar NOT VERIFIED: committed integration has textual conflicts; restack or reconcile these branches before landing: " + strings.Join(report.Conflicts, ", ") + ". Saved changes introduced no new conflict hunks. No tests were run.")})
+			saved, err := hookSavedFailure(ctx, root, in, parseCache)
+			if err != nil {
+				conflictMessage += " Independent saved-change inspection unavailable: " + err.Error()
+			}
+			saved.Message = hookText(conflictMessage)
+			return finish(saved)
 		}
 	}
 	if report.Gate.Verdict == gate.Fail {
@@ -253,7 +259,7 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			}
 			lines = append(lines, finding.Code+": "+finding.Explanation)
 		}
-		return finish(agentHookResponse{Decision: "block", Reason: hookText(strings.Join(lines, "\n"))})
+		return finish(agentHookResponse{Decision: "block", Reason: hookText(strings.Join(lines, "\n")), Message: hookText(conflictMessage)})
 	}
 	if report.Gate.Verdict != gate.Pass {
 		for _, c := range report.Gate.Required {

@@ -2,6 +2,7 @@ package landing
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,92 @@ func git(t *testing.T, root string, args ...string) string {
 		t.Fatalf("git %v: %v %s", args, e, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func TestApplyImportsOnlyNewCandidateObjectsAndRepeatsWithoutPack(t *testing.T) {
+	root := fixture(t)
+	for i := 0; i < 18; i++ {
+		put(t, root, "history.txt", strings.Repeat(fmt.Sprintf("history-%02d\n", i), 1024))
+		git(t, root, "add", "history.txt")
+		git(t, root, "commit", "-qm", fmt.Sprintf("history %d", i))
+	}
+	git(t, root, "branch", "-f", "baseline")
+	branch(t, root, "a", "baseline", "a.md", "a\n")
+	branch(t, root, "b", "baseline", "b.md", "b\n")
+	git(t, root, "checkout", "-q", "baseline")
+	git(t, root, "repack", "-ad")
+	existing, err := filepath.Glob(filepath.Join(root, ".git", "objects", "pack", "*.idx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := map[string]bool{}
+	for _, p := range existing {
+		old[p] = true
+	}
+	plan, err := Plan(context.Background(), root, Options{Base: "baseline", Branches: []string{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := Apply(context.Background(), root, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applied.Outcome.Published || !applied.Outcome.ObjectsImported {
+		t.Fatalf("outcome: %+v", applied.Outcome)
+	}
+	after, err := filepath.Glob(filepath.Join(root, ".git", "objects", "pack", "*.idx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newPacks := 0
+	objects := 0
+	for _, p := range after {
+		if old[p] {
+			continue
+		}
+		newPacks++
+		for _, line := range strings.Split(git(t, root, "verify-pack", "-v", p), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 5 && (fields[1] == "commit" || fields[1] == "tree" || fields[1] == "blob") {
+				objects++
+			}
+		}
+	}
+	if newPacks != 1 || objects < 2 || objects > 6 {
+		t.Fatalf("history repacked: new packs=%d new objects=%d", newPacks, objects)
+	}
+	again, err := Apply(context.Background(), root, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.Outcome.Published || again.Outcome.ObjectsImported {
+		t.Fatalf("repeat imported objects: %+v", again.Outcome)
+	}
+	last, err := filepath.Glob(filepath.Join(root, ".git", "objects", "pack", "*.idx"))
+	if err != nil || !reflect.DeepEqual(after, last) {
+		t.Fatalf("repeat changed pack set: before=%v after=%v error=%v", after, last, err)
+	}
+}
+
+func TestApplyOutcomePreservesRefusalReasonAndMovingInput(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "a", "baseline", "a.md", "a\n")
+	branch(t, root, "b", "baseline", "b.md", "b\n")
+	git(t, root, "checkout", "-q", "baseline")
+	plan, err := Plan(context.Background(), root, Options{Base: "baseline", Branches: []string{"a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ApplyWithOptions(context.Background(), root, plan, Options{Finalize: func(ctx context.Context, r *integration.Report) error {
+		git(t, root, "update-ref", "refs/heads/a", git(t, root, "rev-parse", "b"))
+		return nil
+	}})
+	if err == nil || !strings.Contains(result.Outcome.Reason, "changed before publication") || result.Outcome.Published || !result.Outcome.ObjectsImported || result.Ref != "" {
+		t.Fatalf("moving input outcome: %+v %v", result, err)
+	}
+	if refs := git(t, root, "for-each-ref", "--format=%(refname)", "refs/radar/integration/"); refs != "" {
+		t.Fatal("published moving input", refs)
+	}
 }
 
 func TestApplyEnforcesSelectedPolicyAndFinalConfigurationBeforePublication(t *testing.T) {

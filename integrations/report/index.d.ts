@@ -8,6 +8,7 @@ export interface Finding { id: string; code: string; severity: 'error' | 'warnin
 export interface LandingPair { left: string; right: string; status: Status; checks: Check[]; findings: Finding[]; conflicts: string[]; explanation: string; resolved_by?: string; resolved_files?: string[] }
 export interface LandingReport { base: string; driver?: string; branches: {name: string; commit: string; changed: string[]}[]; pairs: LandingPair[]; order: string[]; independent: string[]; chains: string[][]; complete: boolean; estimated_rebases: number; order_method: string; limitations: string[] }
 export interface ConflictBrief { base: string; left: string; right: string; files: {path: string; base: string; left: string; right: string; hunks: {left: string; right: string}[]; symbols: string[]; tests: string[]; complete: boolean}[]; reproduction: string[]; evidence: 'inferred'; limitations: string[] }
+export interface LandingApplyOutcome { published: boolean; objects_imported: boolean; reason?: string }
 export interface GateReport {
   gate: { verdict: Verdict; policy: {version: 1; name?: string; require: string[]; on_missing?: 'blocked' | 'fail'}; required_checks: Check[]; explanation: string; [field: string]: unknown };
   status: Status; base: string; inputs: string[]; checks: Check[];
@@ -16,9 +17,9 @@ export interface GateReport {
   executions?: Record<string, unknown>[]; generated_executions?: Record<string, unknown>[];
   runner_preparations?: Record<string, unknown>[];
   /** Optional versioned roadmap evidence; consumers must inspect its own status. */
-  landing?: LandingReport; conflict_brief?: ConflictBrief;
+  landing?: LandingReport; conflict_brief?: ConflictBrief; landing_apply?: LandingApplyOutcome;
   drift?: Finding[]; overlap?: {drift: Finding[]; pairs_checked: number; limitations: string[]};
-  integration_ref?: {ref: string; commit: string; tree: string; fast_forward: string[]; report: GateReport}; run_id?: string;
+  integration_ref?: {ref: string; commit: string; tree: string; fast_forward: string[]; report: GateReport; outcome?: LandingApplyOutcome}; run_id?: string;
   [field: string]: unknown;
 }
 export interface Summary { verdict: Verdict; mergeRecommended: boolean; title: string; checked: string[]; notVerified: string[]; limitations: string[]; execution: string }

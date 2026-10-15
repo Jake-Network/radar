@@ -158,6 +158,18 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 			if _, err := pathutil.ResolveInside(root, p); err != nil {
 				continue
 			}
+			if len(parts) == 1 {
+				// Collection errors identify a file, not a failure cause or test
+				// case. A different error in that file on base cannot establish
+				// that this candidate failure already existed. Retain only a
+				// bounded source location for repair leads.
+				if len(r.Locations) < 20 && !slices.ContainsFunc(r.Locations, func(loc model.Provenance) bool {
+					return loc.Path == p && loc.Method == "observed_pytest_collection_error"
+				}) {
+					r.Locations = append(r.Locations, model.Provenance{Path: p, Method: "observed_pytest_collection_error", Evidence: model.ObservedTest})
+				}
+				continue
+			}
 			name := p
 			if len(parts) > 1 {
 				name += "::" + parts[1]

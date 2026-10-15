@@ -158,7 +158,7 @@ func firstPartyPythonContext(ctx context.Context, root string) ([]string, error)
 				if entry.Type()&os.ModeSymlink != 0 {
 					continue
 				}
-				if entry.IsDir() && pythonModuleName.MatchString(name) && flatNamespaceDirectory(name) {
+				if entry.IsDir() && pythonModuleName.MatchString(name) {
 					_, initErr := os.Stat(filepath.Join(layout, name, "__init__.py"))
 					if initErr != nil && !os.IsNotExist(initErr) {
 						return initErr
@@ -176,7 +176,7 @@ func firstPartyPythonContext(ctx context.Context, root string) ([]string, error)
 					}
 				} else if !entry.IsDir() && strings.HasSuffix(name, ".py") {
 					name = strings.TrimSuffix(name, ".py")
-					if pythonModuleName.MatchString(name) && name != "conftest" && name != "setup" && !strings.HasPrefix(name, "test_") && !strings.HasSuffix(name, "_test") {
+					if pythonModuleName.MatchString(name) && name != "__init__" && name != "conftest" && name != "setup" && !strings.HasPrefix(name, "test_") && !strings.HasSuffix(name, "_test") {
 						names[name] = true
 					}
 				}

@@ -85,6 +85,9 @@ do not count as new hunks. Binary conflicts compare unmerged index blob IDs. Oth
 heads, remain repairable in the current branch and still block.
 If an earlier merge stops before a later input is inspected, the hook reports
 that scope as NOT VERIFIED; it cannot claim the saved changes introduced no conflict.
+Known new dirty conflict hunks still block even when a later input is unchecked.
+With inherited conflicts, Radar separately checks the current saved snapshot
+against its own HEAD for repairable failures; this does not verify the combined tree.
 
 Unchanged previews reuse the last result for that worktree. The key includes
 HEAD, base and selected commits, saved content and index digests, configuration,

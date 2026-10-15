@@ -313,8 +313,12 @@ these comparisons, so baseline diagnostics cannot displace candidate commands. T
 candidate observation stays intact; `base_comparison` records the bound base
 execution and matching failed-case identities. If every candidate failure also
 fails on unchanged base, `integration_execution` is `incomplete` (NOT VERIFIED),
-with no branch repair lead. With mixed failures only candidate-only cases receive
-leads. A passing base keeps candidate failures as FAIL. Unavailable, unidentified,
+with no branch repair lead. With complete identities, mixed failures narrow leads
+to candidate-only cases. Missing identities retain FAIL and uncertain potential
+leads rather than subtracting unidentified failures. Pytest collection-error file
+paths are locations, not case identities: different collection causes in the same
+file cannot be treated as the same base failure. A passing base keeps candidate
+failures as FAIL. Unavailable, unidentified,
 source-mutating or budget-exhausted baseline comparisons retain FAIL and explain
 the gap. Case identities are bounded; omitted or truncated identities cannot
 clear the whole command. Pytest parameter IDs are omitted to avoid persisting

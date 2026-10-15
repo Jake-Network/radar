@@ -49,6 +49,7 @@ with tempfile.TemporaryDirectory(prefix='radar-landing-demo-') as directory:
     before=git('branch','--format=%(refname):%(objectname)')
     source=git('status','--porcelain')
     landed=radar('land',*branches,'--apply')
+    assert landed['landing_apply']['published'] and landed['landing_apply']['objects_imported'],landed
     assert git('branch','--format=%(refname):%(objectname)')==before
     assert git('status','--porcelain')==source
     ref=landed['integration_ref']['ref'];assert ref.startswith('refs/radar/integration/')

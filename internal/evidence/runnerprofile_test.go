@@ -97,7 +97,9 @@ func TestRunnerSetupSourceMutationCannotPoisonCache(t *testing.T) {
 }
 
 func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
-	cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 64 << 20}
+	// Standalone Python distributions can copy several large interpreter
+	// binaries. This test exercises relocation, not the artifact size limit.
+	cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 256 << 20}
 	p := runners.Profile{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}, {".venv/bin/python", "-c", `import os, sysconfig; f=sysconfig.get_paths()['purelib']+'/local-editable.pth'; open(f,'w').write(os.path.abspath('libs')+'\n')`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
 	makeRoot := func() string {
 		root := t.TempDir()

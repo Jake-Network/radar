@@ -12,7 +12,6 @@ import (
 )
 
 var pythonStaticImport = regexp.MustCompile(`(?m)(?:^|;|:)\s*(?:from\s+([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s+import\b|import\s+([^;#\n]+))`)
-var pythonDynamicImport = regexp.MustCompile(`\b(?:__import__|importlib|runpy|exec|eval)\b`)
 
 // Scope package checks to the command's project(s), then follow statically
 // referenced workspace member packages transitively. A different member's app,
@@ -130,6 +129,23 @@ func firstPartyPythonForCommandContext(ctx context.Context, root, dir string, ar
 			}
 		}
 	}
+	needed := map[string]bool{}
+	pyargs := false
+	for _, arg := range argv {
+		pyargs = pyargs || arg == "--pyargs"
+	}
+	for _, arg := range argv[1:] {
+		arg = strings.SplitN(arg, "::", 2)[0]
+		// Test filesystem paths are already pinned candidate inputs. Do not
+		// confuse their directory names with imported top-level packages.
+		moduleArg := pyargs || isUnittest(argv) || (strings.Contains(arg, ".") && !strings.HasSuffix(arg, ".py"))
+		if moduleArg && !strings.ContainsAny(arg, "/\\") {
+			first := strings.SplitN(arg, ".", 2)[0]
+			if pythonModuleName.MatchString(first) {
+				needed[first] = true
+			}
+		}
+	}
 	selected := map[string]bool{}
 	scanned := map[string]bool{}
 	files, bytes := 0, 0
@@ -144,7 +160,9 @@ func firstPartyPythonForCommandContext(ctx context.Context, root, dir string, ar
 			for name, roots := range owners {
 				for _, r := range roots {
 					if r == project {
-						selected[name] = true
+						if flatNamespaceDirectory(name) || needed[name] {
+							selected[name] = true
+						}
 					}
 				}
 			}
@@ -186,10 +204,8 @@ func firstPartyPythonForCommandContext(ctx context.Context, root, dir string, ar
 				if e != nil {
 					return e
 				}
-				if pythonDynamicImport.Match(code) {
-					return fmt.Errorf("dynamic Python imports require unavailable runtime provenance")
-				}
 				for _, imported := range staticPythonImports(code) {
+					needed[imported] = true
 					candidates := owners[imported]
 					local := false
 					for _, owner := range candidates {
@@ -216,6 +232,13 @@ func firstPartyPythonForCommandContext(ctx context.Context, root, dir string, ar
 		}
 	}
 	out := []string{}
+	for name, roots := range owners {
+		for _, owner := range roots {
+			if active[owner] && needed[name] {
+				selected[name] = true
+			}
+		}
+	}
 	for name := range selected {
 		out = append(out, name)
 	}

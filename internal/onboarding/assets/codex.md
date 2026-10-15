@@ -209,9 +209,12 @@ proof. `radar_conflict_brief` reads bounded committed hunks with inferred symbol
 and related-test links; repair in your branch, then rerun the full gate.
 `radar_overlap` (`radar gate --overlap --json`) inspects saved peer drift before
 editing a symbol; it is a query, not a lock. No findings does not prove complete
-compatibility. The Stop hook blocks only current dirty additions and reports
-inherited peer conflicts as warnings. Static MCP tools cannot authorize merge
+compatibility. The Stop hook warns about inherited textual conflicts and still
+checks current saved changes for repairable static failures. Static MCP tools cannot authorize merge
 drivers, repository execution, or `land --apply` private-ref publication.
+For an authorized `land --apply`, inspect `landing_apply.published` and its
+`reason`. `objects_imported` records immutable object import, which may complete
+even when no ref is published; it does not mean a user branch changed.
 
 When the user requests a commit, a passing `radar gate --trailer` can supply the
 exact `Radar-Verified:` trailer to preserve in its message. Never invent one,

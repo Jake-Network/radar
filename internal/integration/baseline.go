@@ -137,17 +137,17 @@ func (v *baseVerifier) compare(ctx context.Context, temp string, r Report, ev Ex
 	if baseline.Status != model.StatusFailed {
 		return b
 	}
+	if ev.UnidentifiedFailureCount() > 0 {
+		b.Explanation += " Some candidate failures lack recorded identities; complete comparison is unavailable."
+		return b
+	}
 	if ev.Observation.Diagnosis == nil && baseline.Observation.Diagnosis == nil {
-		for _, name := range ev.Observation.FailedCases {
-			if slices.Contains(baseline.Observation.FailedCases, name) {
+		for _, name := range ev.reliableFailedCases() {
+			if slices.Contains(baseline.reliableFailedCases(), name) {
 				b.ExistingCases = append(b.ExistingCases, name)
 			}
 		}
-		b.AllExisting = len(b.ExistingCases) > 0 && len(b.ExistingCases) == len(ev.Observation.FailedCases) && len(ev.Observation.FailedCases) >= ev.Observation.TestsFailed
-		if len(ev.Observation.FailedCases) < ev.Observation.TestsFailed {
-			b.Explanation += " Some candidate failures lack recorded identities; complete comparison is unavailable."
-			return b
-		}
+		b.AllExisting = len(b.ExistingCases) > 0 && len(b.ExistingCases) == len(ev.reliableFailedCases())
 	} else {
 		result, _ := compareFailure(ev, baseline)
 		b.AllExisting = result == SubsetReproduced
@@ -164,21 +164,49 @@ func (v *baseVerifier) compare(ctx context.Context, temp string, r Report, ev Ex
 	return b
 }
 
+// UnidentifiedFailureCount counts failed cases whose reliable identities were
+// omitted or truncated. Duplicate names cannot account for distinct failures;
+// pytest collection-error file paths do not identify the failing cause.
+func (ev ExecutionEvidence) UnidentifiedFailureCount() int {
+	return max(0, ev.Observation.TestsFailed-len(ev.reliableFailedCases()))
+}
+
+func (ev ExecutionEvidence) reliableFailedCases() []string {
+	cases := []string{}
+	for _, name := range ev.Observation.FailedCases {
+		if name == "" {
+			continue
+		}
+		if ev.Observation.Harness == "pytest" {
+			_, node, ok := strings.Cut(name, "::")
+			if !ok || node == "" {
+				continue
+			}
+		}
+		if !slices.Contains(cases, name) {
+			cases = append(cases, name)
+		}
+	}
+	return cases
+}
+
 // IntegrationStatus separates the observed command failure from its integration
 // meaning: failures already present on base leave verification incomplete.
 func (ev ExecutionEvidence) IntegrationStatus() model.Status {
-	if ev.Status == model.StatusFailed && ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+	if ev.Status == model.StatusFailed && ev.BaseComparison != nil && ev.BaseComparison.AllExisting && identifiable(ev.Observation) {
 		return model.StatusIncomplete
 	}
 	return ev.Status
 }
 
 // NewFailedCases excludes identities also observed on unchanged base, while
-// preserving the complete original observation for evidence consumers.
+// preserving the complete original observation for evidence consumers. Unknown
+// failures disable baseline suppression; duplicate and unreliable IDs are not cases.
 func (ev ExecutionEvidence) NewFailedCases() []string {
 	out := []string{}
-	for _, c := range ev.Observation.FailedCases {
-		if ev.BaseComparison == nil || !slices.Contains(ev.BaseComparison.ExistingCases, c) {
+	incomplete := ev.UnidentifiedFailureCount() > 0
+	for _, c := range ev.reliableFailedCases() {
+		if incomplete || ev.BaseComparison == nil || !slices.Contains(ev.BaseComparison.ExistingCases, c) {
 			out = append(out, c)
 		}
 	}
@@ -187,9 +215,9 @@ func (ev ExecutionEvidence) NewFailedCases() []string {
 
 // FailurePaths narrows repair leads after a partial baseline match. Case names
 // vary by runner; only paths explicitly represented by a remaining case can be
-// retained. When they cannot be resolved, omit the lead rather than blame A.
+// retained. Incomplete identities preserve all potential paths as uncertain leads.
 func (ev ExecutionEvidence) FailurePaths(paths []string) []string {
-	if ev.BaseComparison == nil || len(ev.BaseComparison.ExistingCases) == 0 {
+	if ev.UnidentifiedFailureCount() > 0 || ev.BaseComparison == nil || len(ev.BaseComparison.ExistingCases) == 0 {
 		return paths
 	}
 	out := []string{}

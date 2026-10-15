@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Jake-Network/radar/internal/workspace"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Jake-Network/radar/internal/model"
@@ -180,5 +182,80 @@ func TestPairwiseNamedDirtyScopeExcludesUnselectedWorktree(t *testing.T) {
 	}
 	if pairLinkStatus(CheckLinks(results, team)) != model.StatusPassed {
 		t.Fatal("unselected dirty branch entered full candidate")
+	}
+}
+
+func TestPairwiseSameHeadDirtyBranchesKeepDistinctIdentity(t *testing.T) {
+	f, producer, consumer, team, scope := teamFixture(t)
+	first := f.agent(producer, "api/first", nil)
+	second := f.agent(producer, "api/second", nil)
+	f.agent(consumer, "client/selected", map[string]string{"client.txt": "selected"})
+	if git(t, first, "rev-parse", "HEAD") != git(t, second, "rev-parse", "HEAD") {
+		t.Fatal("fixture heads differ")
+	}
+	write(t, first, "first.txt", "first saved tree")
+	write(t, second, "second.txt", "second saved tree")
+	repos, err := Collect(context.Background(), Request{Scope: scope, Named: map[string][]string{"orders": {"api/first", "api/second"}, "payments": {"client/selected"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, results, err := Pairwise(context.Background(), repos, team, 10, true)
+	if err != nil || report.Status != model.StatusPassed || len(report.Pairs) != 2 {
+		t.Fatalf("twins %+v %v", report, err)
+	}
+	seen := map[string]PairInput{}
+	for _, pair := range report.Pairs {
+		for _, input := range pair.Inputs {
+			if input.Repo == "orders" {
+				seen[input.Ref] = input
+			}
+		}
+	}
+	if len(seen) != 2 || seen["api/first"].Tree == seen["api/second"].Tree || seen["api/first"].DirtyDigest == seen["api/second"].DirtyDigest {
+		t.Fatalf("distinct saved inputs collapsed: %+v", seen)
+	}
+	for _, r := range results {
+		if r.ID == "orders" {
+			if r.Report == nil || len(r.Report.Inputs) != 2 || r.Report.Inputs[0] == r.Report.Inputs[1] {
+				t.Fatalf("original snapshots collapsed: %+v", r.Report)
+			}
+		}
+	}
+}
+
+func TestPairwiseUnavailableDirtyRepoKeepsUnrelatedPairEvidence(t *testing.T) {
+	f, producer, consumer, team, _ := teamFixture(t)
+	f.agent(producer, "api/work", map[string]string{"api.txt": "work"})
+	f.agent(consumer, "client/work", map[string]string{"client.txt": "work"})
+	third := f.repo("unavailable", map[string]string{"base.txt": "baseline"})
+	dirty := f.agent(third, "third/work", map[string]string{"third.txt": "work"})
+	if err := os.Symlink("outside", filepath.Join(dirty, "unsupported-link")); err != nil {
+		t.Skip(err)
+	}
+	scope := scopeOf(t, producer, consumer, third)
+	repos, err := Collect(context.Background(), Request{Scope: scope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, results, err := Pairwise(context.Background(), repos, team, 10, true)
+	if err != nil || report.Status != model.StatusIncomplete || report.Complete || len(report.Pairs) != 3 {
+		t.Fatalf("scoped failure %+v %v", report, err)
+	}
+	good := 0
+	unavailable := 0
+	for _, pair := range report.Pairs {
+		if pair.Status == model.StatusPassed {
+			good++
+		} else if pair.Status == model.StatusIncomplete {
+			unavailable++
+		}
+	}
+	if good != 1 || unavailable != 2 {
+		t.Fatalf("unrelated pair evidence lost: %+v", report.Pairs)
+	}
+	for _, result := range results {
+		if result.ID == "unavailable" && (result.Error == "" || result.Report != nil) {
+			t.Fatalf("missing scoped error: %+v", result)
+		}
 	}
 }

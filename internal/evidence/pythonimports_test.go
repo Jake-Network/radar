@@ -200,7 +200,9 @@ func TestPythonConsoleAndVersionedLaunchers(t *testing.T) {
 	// The uv context uses its own PATH, rather than the parent interpreter.
 	uvbin := t.TempDir()
 	put(uvbin, "uv", "#!/bin/sh\nshift\nPATH='"+filepath.Join(venv, "bin")+":'$PATH\nexport PATH\nexec \"$@\"\n")
-	argv := []string{filepath.Join(uvbin, "uv"), "run", "pytest"}
+	t.Setenv("PATH", uvbin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	env = environment(t.TempDir(), nil)
+	argv := []string{"uv", "run", "pytest"}
 	if d := pythonImportCheck(context.Background(), root, root, argv, env); d == nil || d.Name != "shared_modules" {
 		t.Fatalf("uv external: %+v", d)
 	}
@@ -412,5 +414,119 @@ func TestPythonScopeSyntaxBudgetsAndCancellation(t *testing.T) {
 	}
 	if _, e := pythonExecutableSource([]byte(strings.Repeat("value = 0\n", 40000))); e == nil {
 		t.Fatal("unbounded AST node count accepted")
+	}
+}
+
+func TestPythonDynamicCallsAreSyntaxAndAliasAware(t *testing.T) {
+	for _, source := range []string{"model.eval()\nsession.exec('select 1')\n", "import importlib.metadata\nVERSION = importlib.metadata.version('example')\n", "from importlib import metadata as meta\nVERSION = meta.version('example')\n"} {
+		root := t.TempDir()
+		if e := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname='example'\n"), 0600); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(filepath.Join(root, "example.py"), []byte(source), 0600); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := firstPartyPythonForCommand(root, root, []string{"python3", "-m", "pytest", "example.py"}); e != nil {
+			t.Fatalf("ordinary calls blocked: %q: %v", source, e)
+		}
+	}
+}
+
+func TestPythonConventionalNamesCanBeRealPackages(t *testing.T) {
+	root := t.TempDir()
+	if e := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname='example'\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	for _, name := range []string{"tests", "scripts", "build", "docs", "src"} {
+		if e := os.MkdirAll(filepath.Join(root, name), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(filepath.Join(root, name, "__init__.py"), nil, 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	names, e := firstPartyPython(root)
+	if e != nil || strings.Join(names, ",") != "build,docs,scripts,src,tests" {
+		t.Fatalf("real packages excluded: %v %v", names, e)
+	}
+}
+
+func TestPythonLoaderAliasesRemainUnverified(t *testing.T) {
+	for _, source := range []string{
+		"eval('code')\n", "exec('code')\n", "__import__('shared_modules')\n",
+		"(eval)('code')\n", "__builtins__.__import__('shared_modules')\n",
+		"import importlib as il\ngetattr(il, 'import_module')('shared_modules')\n",
+		"import importlib as il\nil.import_module('shared_modules')\n",
+		"from importlib import import_module as load\nload('shared_modules')\n",
+		"import importlib\nload = importlib.import_module\nsecond = load\nsecond('shared_modules')\n",
+		"import builtins as b\nb.eval('code')\n", "from builtins import __import__ as load\nload('shared_modules')\n",
+		"import runpy as r\nr.run_module('shared_modules')\n",
+		"import importlib as il\nVALUE = f'{il.import_module(\"shared_modules\")}'\n",
+	} {
+		if _, e := pythonExecutableSource([]byte(source)); e == nil {
+			t.Fatalf("loader call granted provenance: %q", source)
+		}
+	}
+}
+
+func TestPythonRealConventionalPackageProvenanceIsScoped(t *testing.T) {
+	if _, e := exec.LookPath("python3"); e != nil {
+		t.Skip(e)
+	}
+	root, external := t.TempDir(), t.TempDir()
+	put := func(base, name, data string) {
+		t.Helper()
+		p := filepath.Join(base, name)
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	put(root, "pyproject.toml", "[project]\nname='sample'\n")
+	// A literal src package is an ordinary first-party package, not just a layout.
+	put(root, "src/__init__.py", "VALUE = 'candidate'\n")
+	put(root, "tests/__init__.py", "VALUE = 'candidate'\n")
+	put(root, "test_selected.py", "from src import VALUE\n")
+	put(external, "src/__init__.py", "VALUE = 'external'\n")
+	env := append(environment(t.TempDir(), nil), "PYTHONPATH="+external)
+	// A member CWD makes the externally installed src visible ahead of its
+	// parent, matching console-launcher and nested test execution layouts.
+	if e := os.MkdirAll(filepath.Join(root, "nested"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	argv := []string{"python3", "-m", "pytest", "../test_selected.py"}
+	if d := pythonImportCheck(context.Background(), root, filepath.Join(root, "nested"), argv, env); d == nil || d.Name != "src" {
+		t.Fatalf("real src package omitted: %+v", d)
+	}
+	names, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_selected.py"})
+	if e != nil || strings.Join(names, ",") != "src" {
+		t.Fatalf("unrelated tests package included: %v %v", names, e)
+	}
+	names, e = firstPartyPythonForCommand(root, root, []string{"pytest", "--pyargs", "tests"})
+	if e != nil || strings.Join(names, ",") != "src,tests" {
+		t.Fatalf("explicit tests package omitted: %v %v", names, e)
+	}
+}
+
+func TestPythonOrdinaryEvalMethodsExecuteNormally(t *testing.T) {
+	if _, e := exec.LookPath("python3"); e != nil {
+		t.Skip(e)
+	}
+	root := t.TempDir()
+	files := map[string]string{
+		"pyproject.toml":   "[project]\nname='sample'\n",
+		"application.py":   "import importlib.metadata\nclass Model:\n def eval(self): return 1\nclass Session:\n def exec(self, query): return 2\nmodel = Model()\nsession = Session()\nVALUE = model.eval() + session.exec('select 1')\n",
+		"test_selected.py": "import unittest\nfrom application import VALUE\nclass TestApplication(unittest.TestCase):\n def test_value(self): self.assertEqual(VALUE, 3)\n",
+	}
+	for name, data := range files {
+		if e := os.WriteFile(filepath.Join(root, name), []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	got, e := ObserveCandidate(context.Background(), root, []string{"python3", "-m", "unittest", "test_selected"}, time.Minute)
+	if e != nil || got.Status != model.StatusPassed || got.TestsRun != 1 || got.Diagnosis != nil {
+		t.Fatalf("ordinary methods no longer runnable: %+v %v", got, e)
 	}
 }

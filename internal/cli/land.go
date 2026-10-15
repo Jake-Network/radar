@@ -105,12 +105,23 @@ func (a *app) land(o options) int {
 		}
 	}
 	var applied *landing.Applied
+	var applyOutcome *landing.ApplyOutcome
+	applyExit := -1
 	var report integration.Report
 	if o.apply {
 		v, e := landing.ApplyWithOptions(a.ctx, a.root, *plan, lopts)
+		applyOutcome = &v.Outcome
 		if e != nil {
-			if v.Report.Gate.Verdict != gate.Blocked && v.Report.Gate.Verdict != gate.Fail && v.Report.Gate.Verdict != gate.Error {
-				return a.fail(e)
+			if len(v.Report.Inputs) != len(order) {
+				if a.machine {
+					a.emit(map[string]any{"error": e.Error(), "status": "error", "landing_apply": v.Outcome})
+					return 2
+				}
+				return a.fail(fmt.Errorf("integration ref not published: %w (completed object import: %t)", e, v.Outcome.ObjectsImported))
+			}
+			applyExit = gate.Exit(v.Report.Gate)
+			if applyExit == 0 {
+				applyExit = 2
 			}
 		} else {
 			applied = &v
@@ -125,7 +136,7 @@ func (a *app) land(o options) int {
 			return a.fail(err)
 		}
 	}
-	g := gateReport{Configuration: configuration.Inputs, BaseRef: base, Report: report, Landing: plan, ConflictBrief: brief, IntegrationRef: applied, Attribution: map[string]gateAttribution{}}
+	g := gateReport{Configuration: configuration.Inputs, BaseRef: base, Report: report, Landing: plan, ConflictBrief: brief, IntegrationRef: applied, LandingApply: applyOutcome, Attribution: map[string]gateAttribution{}}
 	for i, ref := range order {
 		changed, e := a.branchChanges(sha, report.Inputs[i])
 		if e != nil {
@@ -165,6 +176,9 @@ func (a *app) land(o options) int {
 			fmt.Fprintln(w, "Use --json for bounded base/branch excerpts and conflict hunks.")
 		}
 		renderGate(w, g, false)
+		if applyOutcome != nil && !applyOutcome.Published {
+			fmt.Fprintf(w, "Integration ref not published: %s\nCompleted candidate object import: %t\n", applyOutcome.Reason, applyOutcome.ObjectsImported)
+		}
 		if applied != nil {
 			fmt.Fprintf(w, "Integration ref: %s\n", applied.Ref)
 			if len(applied.FastForward) > 0 {
@@ -174,5 +188,8 @@ func (a *app) land(o options) int {
 			}
 		}
 	})
+	if applyExit >= 0 {
+		return applyExit
+	}
 	return gate.Exit(report.Gate)
 }

@@ -51,7 +51,7 @@ func Brief(ctx context.Context, root, base, left, right string) (ConflictBrief, 
 	b.Base = c.Base
 	b.Left = c.Inputs[0]
 	b.Right = c.Inputs[1]
-	b.Reproduction = []string{"radar", "land", "--base", b.Base, b.Left, b.Right, "--json"}
+	b.Reproduction = []string{"radar", "land", "--base", b.Base, b.Left, b.Right, "--conflict-brief", "--json"}
 	snapshots := []model.Snapshot{}
 	for _, ref := range c.Inputs {
 		s, err := checkpoint.Index(ctx, root, ref)
