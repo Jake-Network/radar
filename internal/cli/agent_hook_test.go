@@ -66,8 +66,8 @@ func TestAgentHookExplicitCombinedConflictAndDefaultScope(t *testing.T) {
 	}
 	before := watchSourceFingerprint(t, root)
 	r := hookInvoke(t, root, hookEvent(t, root), "--base", "main", "--branches", "a,b")
-	if r.Decision != "block" || !strings.Contains(r.Reason, "backend.py") {
-		t.Fatalf("missing combined conflict: %+v", r)
+	if r.Decision != "" || !strings.Contains(r.Message, "backend.py") || !strings.Contains(r.Message, "restack") {
+		t.Fatalf("committed conflict should warn: %+v", r)
 	}
 	if watchSourceFingerprint(t, root) != before {
 		t.Fatal("combined hook mutated source")
@@ -223,5 +223,91 @@ func TestStaticGateWithTestPolicySuggestsRun(t *testing.T) {
 		if !strings.Contains(out, "Next: radar gate --run") {
 			t.Fatalf("%s: next step should run tests:\n%s", id, out)
 		}
+	}
+}
+
+func TestAgentHookCacheInvalidation(t *testing.T) {
+	root, _ := checkoutRepo(t)
+	event := hookEvent(t, root)
+	invoke := func() agentHookResponse { return hookInvoke(t, root, event, "--base", "main") }
+	first := invoke()
+	if strings.Contains(first.Message, "reused") {
+		t.Fatal(first)
+	}
+	second := invoke()
+	if !strings.Contains(second.Message, "reused") {
+		t.Fatal("unchanged preview not cached", second)
+	}
+	put(t, root, "backend.py", "def price():\n    return 22\n")
+	if r := invoke(); strings.Contains(r.Message, "reused") {
+		t.Fatal("dirty bytes did not invalidate", r)
+	}
+	if r := invoke(); !strings.Contains(r.Message, "reused") {
+		t.Fatal("dirty preview not cached", r)
+	}
+	put(t, root, "backend.py", "def price():\n    return 23\n")
+	if r := invoke(); strings.Contains(r.Message, "reused") {
+		t.Fatal("dirty edit did not invalidate", r)
+	}
+	gitTest(t, root, "add", "backend.py")
+	gitTest(t, root, "commit", "-qm", "change HEAD")
+	if r := invoke(); strings.Contains(r.Message, "reused") {
+		t.Fatal("HEAD did not invalidate", r)
+	}
+	if r := hookInvoke(t, root, event, "--base", "HEAD^"); strings.Contains(r.Message, "reused") {
+		t.Fatal("base did not invalidate", r)
+	}
+	if r := hookInvoke(t, root, event, "--base", "HEAD^", "--branches", "main"); strings.Contains(r.Message, "reused") {
+		t.Fatal("selected branch did not invalidate", r)
+	}
+	savedVersion := Version
+	Version = "different-version"
+	defer func() { Version = savedVersion }()
+	if r := invoke(); strings.Contains(r.Message, "reused") {
+		t.Fatal("version did not invalidate", r)
+	}
+	path, err := hookCachePath(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cached hookCacheRecord
+	if err := json.Unmarshal(data, &cached); err != nil {
+		t.Fatal(err)
+	}
+	cached.Response.Message = "unverified forged success"
+	data, err = json.Marshal(cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if r := invoke(); strings.Contains(r.Message, "reused") {
+		t.Fatal("corrupt cache reused", r)
+	}
+}
+
+func TestAgentHookDirtyIntroducesTextualConflict(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	a := agent("a", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	b := agent("b", map[string]string{"other.py": "def other():\n    return 3\n"})
+	put(t, b, "backend.py", "def price():\n    return 3\n")
+	r := hookInvoke(t, root, hookEvent(t, a), "--base", "main", "--branches", "a,b")
+	if r.Decision != "block" || !strings.Contains(r.Reason, "backend.py") {
+		t.Fatalf("new dirty conflict must block: %+v", r)
+	}
+}
+
+func TestAgentHookDirtyCreatesMigrationHeads(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	a := agent("a", map[string]string{"db/env.py": "# alembic\n", "db/versions/r0.py": "revision = 'r0'\ndown_revision = None\n", "db/versions/r1.py": "revision = 'r1'\ndown_revision = 'r0'\n"})
+	put(t, a, "db/versions/r2.py", "revision = 'r2'\ndown_revision = 'r0'\n")
+	r := hookInvoke(t, root, hookEvent(t, a), "--base", "main", "--branches", "a")
+	if r.Decision != "block" || !strings.Contains(r.Reason, "migration_multiple_heads") {
+		t.Fatal(r)
 	}
 }

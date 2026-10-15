@@ -130,7 +130,32 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 		return unavailable(err.Error())
 	}
 	in := state.Value.(watchInput)
-	candidate, err := integration.BuildDirtyCandidate(ctx, root, in.Base, in.SHAs, in.Snapshots)
+	cacheKey := hookCacheKey(ctx, root, state.Key)
+	if cached, ok := loadHookCache(root, cacheKey); ok {
+		latest, err := b.observeWatch(ctx, o)
+		if err == nil && latest.Key == state.Key && ctx.Err() == nil {
+			cached.Message = strings.TrimSpace(cached.Message + " Radar reused the unchanged static preview cache; tests were not run.")
+			return respond(cached)
+		}
+		return unavailable("inputs changed while reading cached preview")
+	}
+	finish := func(r agentHookResponse) int {
+		latest, err := b.observeWatch(ctx, o)
+		if err != nil || latest.Key != state.Key {
+			return unavailable("inputs changed during analysis; rerun after saving changes")
+		}
+		if ctx.Err() != nil {
+			return unavailable("static analysis deadline exceeded")
+		}
+		saveHookCache(root, cacheKey, r)
+		return respond(r)
+	}
+	var candidate *integration.Candidate
+	if len(in.Snapshots) == 0 {
+		candidate, err = integration.BuildCandidate(ctx, root, in.Base, in.SHAs)
+	} else {
+		candidate, err = integration.BuildDirtyCandidate(ctx, root, in.Base, in.SHAs, in.Snapshots)
+	}
 	if candidate != nil {
 		defer candidate.Close()
 	}
@@ -142,12 +167,35 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 		return unavailable(err.Error())
 	}
 	in.config.applyIntegration(&report)
-	latest, err := b.observeWatch(ctx, o)
-	if err != nil || latest.Key != state.Key {
-		return unavailable("inputs changed during analysis; rerun after saving changes")
-	}
-	if ctx.Err() != nil {
-		return unavailable("static analysis deadline exceeded")
+	// Committed merge conflicts need restacking, not another agent turn. When
+	// dirty content is present, compare the committed candidate so only newly
+	// introduced conflict paths request a repair. Other supported failures
+	// (including committed migration heads) remain actionable.
+	if len(report.Conflicts) > 0 {
+		committedConflicts := report.Conflicts
+		if len(in.Snapshots) > 0 {
+			committed, err := integration.BuildCandidate(ctx, root, in.Base, in.SHAs)
+			if committed != nil {
+				defer committed.Close()
+			}
+			if err != nil {
+				return unavailable("committed conflict comparison unavailable: " + err.Error())
+			}
+			committedConflicts = committed.Conflicts
+		}
+		prior := map[string]bool{}
+		for _, path := range committedConflicts {
+			prior[path] = true
+		}
+		newConflict := false
+		for _, path := range report.Conflicts {
+			if !prior[path] {
+				newConflict = true
+			}
+		}
+		if !newConflict {
+			return finish(agentHookResponse{Message: hookText("Radar NOT VERIFIED: committed integration has textual conflicts; restack or reconcile these branches before landing: " + strings.Join(report.Conflicts, ", ") + ". Saved changes introduced no new conflicted paths. No tests were run.")})
+		}
 	}
 	if report.Gate.Verdict == gate.Fail {
 		lines := []string{"Radar found a supported static failure in the selected saved-change candidate. Fix the findings before completing, then rerun Radar. No tests or repository commands were executed."}
@@ -163,20 +211,20 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			}
 			lines = append(lines, finding.Code+": "+finding.Explanation)
 		}
-		return respond(agentHookResponse{Decision: "block", Reason: hookText(strings.Join(lines, "\n"))})
+		return finish(agentHookResponse{Decision: "block", Reason: hookText(strings.Join(lines, "\n"))})
 	}
 	if report.Gate.Verdict != gate.Pass {
 		for _, c := range report.Gate.Required {
 			if c.Status != model.StatusPassed {
-				return unavailable(string(report.Gate.Verdict) + ": required check " + c.ID + " is " + string(c.Status) + ": " + c.Explanation)
+				return finish(agentHookResponse{Message: "Radar NOT VERIFIED: " + hookText(string(report.Gate.Verdict)+": required check "+c.ID+" is "+string(c.Status)+": "+c.Explanation)})
 			}
 		}
-		return unavailable(string(report.Gate.Verdict) + ": " + report.Gate.Explanation)
+		return finish(agentHookResponse{Message: "Radar NOT VERIFIED: " + hookText(string(report.Gate.Verdict)+": "+report.Gate.Explanation)})
 	}
 	if len(report.Changed) == 0 {
-		return unavailable("no selected changes relative to base; no development verification was performed")
+		return finish(agentHookResponse{Message: "Radar NOT VERIFIED: no selected changes relative to base; no development verification was performed"})
 	}
-	return respond(agentHookResponse{Message: fmt.Sprintf("Radar static preview complete: %d changed files in selected %s; supported static checks only. Tests were not run; undeclared contracts and runtime compatibility remain unverified.", len(report.Changed), hookText(strings.Join(refs, ",")))})
+	return finish(agentHookResponse{Message: fmt.Sprintf("Radar static preview complete: %d changed files in selected %s; supported static checks only. Tests were not run; undeclared contracts and runtime compatibility remain unverified.", len(report.Changed), hookText(strings.Join(refs, ",")))})
 }
 
 func hookText(s string) string {

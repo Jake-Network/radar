@@ -78,6 +78,18 @@ The hook builds a private saved-change candidate. It runs no repository tests,
 hooks or dependency installation, fetches nothing and changes no source branch.
 
 Supported static failures return Stop JSON requesting investigation and repair.
+Committed textual conflicts produce an informational `systemMessage`: restack or
+reconcile those branches before landing. New conflicted paths introduced by saved
+changes still block. Other supported failures, including committed migration
+heads, remain repairable in the current branch and still block.
+
+Unchanged previews reuse the last result for that worktree. The key includes
+HEAD, base and selected commits, saved content and index digests, configuration,
+Radar version and executable identity. Changes invalidate it; malformed cache
+records are ignored. Cache files use the existing run/coverage state directory
+(`RADAR_STATE_DIR`, otherwise the user cache directory's `radar/hook-previews`),
+so an uninitialized checkout does not acquire untracked cache inputs. Cached
+previews remain static checks and never count as test evidence.
 One hook-induced continuation is allowed: when `stop_hook_active` is true, Radar
 skips the check to prevent a loop. **After repair, explicitly rerun Radar**;
 the continuation does not automatically validate the fix. For saved previews,
