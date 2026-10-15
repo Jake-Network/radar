@@ -115,15 +115,20 @@ func TestGateObservesAFailureAlreadyOnTheBase(t *testing.T) {
 	})
 	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 1\n\ndef tax():\n    return 0\n"})
 	agent("agent-docs", map[string]string{"NOTES.md": "notes\n"})
-	a := executionFailure(t, invoke(t, root, 1, "gate", "--run", "--attribution-runs", "8"))
-	if a["observed"].(map[string]any)["outcome"] != "base" || len(a["leads"].([]any)) != 0 {
-		t.Fatal("a failure on the base names no branch", a)
+	r := invoke(t, root, 1, "gate", "--run", "--attribution-runs", "8")
+	if r["gate"].(map[string]any)["verdict"] != "blocked" {
+		t.Fatal(r["gate"])
 	}
-	if got := results(a["observed"].(map[string]any)); strings.Join(got, ",") != "reproduced" {
-		t.Fatal("the base run reproduces it and the search stops", got)
+	for _, raw := range r["findings"].([]any) {
+		f := raw.(map[string]any)
+		if f["code"] == "integration_base_failure" {
+			if r["attribution"].(map[string]any)[f["id"].(string)] != nil {
+				t.Fatal("base failure has a lead", r["attribution"])
+			}
+		}
 	}
-	if _, out, _ := run(t, root, "gate", "--run", "--attribution-runs", "8"); !strings.Contains(out, "observed: already fails on main without any branch") {
-		t.Fatal("human report", out)
+	if _, out, _ := run(t, root, "gate", "--run"); strings.Contains(out, "look at") || !strings.Contains(out, "already fails on base") {
+		t.Fatal(out)
 	}
 }
 
@@ -186,7 +191,12 @@ func TestGateBaseRunThatWritesSourceIsNotABaseFailure(t *testing.T) {
 	})
 	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	agent("agent-docs", map[string]string{"NOTES.md": "notes\n"})
-	a := executionFailure(t, invoke(t, root, 1, "gate", "--run", "--attribution-runs", "8"))
+	report := invoke(t, root, 1, "gate", "--run", "--attribution-runs", "8")
+	comparison := report["executions"].([]any)[0].(map[string]any)["base_comparison"].(map[string]any)
+	if comparison["all_existing"] != false || comparison["execution"].(map[string]any)["source_after_execution"] != "modified" {
+		t.Fatal("automatic base check trusted mutated source", comparison)
+	}
+	a := executionFailure(t, report)
 	o := a["observed"].(map[string]any)
 	if o["outcome"] == "base" || results(o)[0] != "not_comparable" {
 		t.Fatal("a source-modifying base run is not comparable", o)
@@ -212,16 +222,16 @@ func TestGateBaseFailureDoesNotHideABranchFailure(t *testing.T) {
 	}
 }
 
-func TestGateAttributionDefaultsToNoAdditionalExecutions(t *testing.T) {
+func TestGateAttributionDefaultsToOnlyAutomaticBaseExecution(t *testing.T) {
 	requirePython(t)
 	for _, tc := range []struct {
 		name       string
 		args       []string
 		executions int
 	}{
-		{"default", nil, 1},
-		{"explicit zero", []string{"--attribution-runs", "0"}, 1},
-		{"opt in", []string{"--attribution-runs", "8"}, 2},
+		{"default", nil, 2},
+		{"explicit zero", []string{"--attribution-runs", "0"}, 2},
+		{"opt in", []string{"--attribution-runs", "8"}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			counter := filepath.Join(t.TempDir(), "executions")
@@ -234,7 +244,7 @@ func TestGateAttributionDefaultsToNoAdditionalExecutions(t *testing.T) {
 			report := invoke(t, root, 1, args...)
 			lead := executionFailure(t, report)
 			observed := lead["observed"] != nil
-			if observed != (tc.executions > 1) {
+			if observed != (tc.executions > 2) {
 				t.Fatalf("observed attribution = %v, report: %v", observed, lead)
 			}
 			if !observed && !strings.Contains(lead["basis"].(string), "inferred") {
@@ -255,5 +265,28 @@ func TestGateAttributionDefaultsToNoAdditionalExecutions(t *testing.T) {
 				t.Fatalf("rerun command: %v", report["next"])
 			}
 		})
+	}
+}
+
+func TestAutomaticBaseFailureLeadsOnlyNameNewFailingTest(t *testing.T) {
+	requirePython(t)
+	root, agent := agentRepo(t, map[string]string{
+		"old.py":      "VALUE = 0\n",
+		"new.py":      "VALUE = 1\n",
+		"test_old.py": "import unittest\nfrom old import VALUE\nclass Old(unittest.TestCase):\n def test_old(self): self.assertEqual(VALUE, 1)\n",
+		"test_new.py": "import unittest\nfrom new import VALUE\nclass New(unittest.TestCase):\n def test_new(self): self.assertEqual(VALUE, 1)\n",
+	})
+	agent("agent-old", map[string]string{"old.py": "VALUE = 0\n# harmless change\n"})
+	agent("agent-new", map[string]string{"new.py": "VALUE = 2\n"})
+	r := invoke(t, root, 1, "gate", "--run")
+	a := executionFailure(t, r)
+	if got := strings.Join(leadBranches(a), ","); got != "agent-new" {
+		t.Fatalf("base-existing test blamed a branch: %v", a)
+	}
+	for _, raw := range r["findings"].([]any) {
+		f := raw.(map[string]any)
+		if f["code"] == "integration_execution_failed" && strings.Contains(f["explanation"].(string), "test_old") {
+			t.Fatal("old case retained in candidate failure", f)
+		}
 	}
 }

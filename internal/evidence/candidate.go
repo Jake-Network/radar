@@ -134,8 +134,38 @@ func observeCandidateReport(ctx context.Context, root, cwd string, argv []string
 	return r, nil
 }
 
+// Parameterized IDs and arbitrary failure text are deliberately omitted: only
+// bounded repository-relative Python test identities are persisted.
+var pytestFailedCase = regexp.MustCompile(`(?m)^(?:FAILED|ERROR) ([A-Za-z0-9_./-]+\.py(?:::[A-Za-z_][A-Za-z0-9_]*)*)(?: -|$)`)
+
 func decorateCandidateObservation(r *CandidateObservation, argv []string, data []byte, root, dir, cwd string) {
 	var e error
+	if r.TestsFailed > 0 && r.Harness == "pytest" {
+		for _, m := range pytestFailedCase.FindAllStringSubmatch(ansi.ReplaceAllString(string(data), ""), -1) {
+			parts := strings.SplitN(m[1], "::", 2)
+			p := parts[0]
+			if cwd != "" && cwd != "." {
+				p = filepath.ToSlash(filepath.Join(cwd, p))
+			}
+			if _, err := pathutil.RepoRelative(p); err != nil {
+				continue
+			}
+			if _, err := pathutil.ResolveInside(root, p); err != nil {
+				continue
+			}
+			name := p
+			if len(parts) > 1 {
+				name += "::" + parts[1]
+			}
+			if len(name) > 512 {
+				continue
+			}
+			r.FailedCases = append(r.FailedCases, name)
+			if len(r.FailedCases) >= 20 {
+				break
+			}
+		}
+	}
 	if r.TestsFailed > 0 && isUnittest(argv) {
 		text := string(data)
 		for _, match := range failedCase.FindAllStringSubmatch(text, -1) {

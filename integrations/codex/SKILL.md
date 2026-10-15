@@ -18,7 +18,10 @@ user first. Repair on the attributed branch, commit and rerun; results for
 individual branches never prove the combination works. After `--run`, an
 `attribution` whose `basis` starts with `observed` comes from rerunning the
 failed test on fewer branches; `inferred` comes from imports. Gate and watch
-default to zero diagnostic reruns. After execution is authorized, opt in with
+default to zero optional subset diagnostic reruns. Failed commands automatically
+receive one budgeted base comparison; base-existing cases are not branch leads,
+and all-base failures leave verification incomplete. Inspect `base_comparison`
+without treating its base execution as candidate proof. After execution is authorized, opt in with
 `--run --attribution-runs 8` when diagnostic subset observations are needed.
 
 Reading the result: `gate.verdict` is `pass`, `fail`, `blocked` or `error`

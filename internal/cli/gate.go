@@ -332,6 +332,9 @@ func (g *gateReport) attribute() {
 				paths = append(paths, p, model.PathFromID(p))
 			}
 		}
+		if f.Code == "integration_base_failure" {
+			continue
+		}
 		if f.Code == "integration_textual_conflict" {
 			paths = append(paths, r.Conflicts...)
 		}
@@ -340,7 +343,7 @@ func (g *gateReport) attribute() {
 			for _, ev := range r.Executions {
 				// integration names the command and directory exactly this way.
 				if strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
-					paths = append(paths, testFiles[ev.SelectionID]...)
+					paths = append(paths, ev.FailurePaths(testFiles[ev.SelectionID])...)
 					environment = environment || ev.Observation.Diagnosis.Environment()
 				}
 			}

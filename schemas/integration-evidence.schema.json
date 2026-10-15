@@ -51,7 +51,7 @@
         },
         "inputs": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "items": {
             "type": "string"
           }
@@ -170,6 +170,31 @@
         },
         "execution_error": {
           "type": "string"
+        },
+        "base_comparison": {
+          "type": "object",
+          "required": [
+            "explanation",
+            "all_existing"
+          ],
+          "properties": {
+            "execution": {
+              "$ref": "#/$defs/execution"
+            },
+            "explanation": {
+              "type": "string"
+            },
+            "all_existing": {
+              "type": "boolean"
+            },
+            "existing_cases": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

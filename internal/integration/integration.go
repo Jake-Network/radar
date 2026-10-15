@@ -82,7 +82,17 @@ type Check = gate.Check
 
 // ExecutionEvidence binds an observation to the combined tree and ordered
 // inputs. Individual branch evidence is deliberately never consumed.
+// BaseComparison records the automatic, budgeted baseline check of a failed
+// command. The original candidate observation is retained without alteration.
+type BaseComparison struct {
+	Execution     *ExecutionEvidence `json:"execution,omitempty"`
+	ExistingCases []string           `json:"existing_cases,omitempty"`
+	Explanation   string             `json:"explanation"`
+	AllExisting   bool               `json:"all_existing"`
+}
+
 type ExecutionEvidence struct {
+	BaseComparison       *BaseComparison               `json:"base_comparison,omitempty"`
 	PlanRecord           *evidence.Record              `json:"plan_record,omitempty"`
 	ExecutionError       string                        `json:"execution_error,omitempty"`
 	SelectionID          string                        `json:"selection_id,omitempty"`

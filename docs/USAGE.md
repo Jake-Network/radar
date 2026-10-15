@@ -41,8 +41,10 @@ it does not combine branches. Its `--suite` previews selection without execution
 metadata to a new file; candidate construction leaves source refs and files alone.
 
 `gate --run` authorizes selected test execution with a default balanced suite,
-10-minute budget and 16-command limit. Gate and watch default to zero diagnostic
-reruns; `--run --attribution-runs 8` opts into smaller branch-subset executions.
+10-minute budget and 16-command limit. Gate and watch default to zero optional subset
+diagnostic reruns. Failed commands receive one automatic base comparison
+within the shared command/time budget; failures reproduced there leave
+verification incomplete. `--run --attribution-runs 8` opts into smaller branch-subset executions.
 These observations are repair leads, do not change the verdict, and are not
 available in `merge-check`. Selection modes, omitted-command handling, policies,
 contract obligations and exit codes are in [VERIFICATION](VERIFICATION.md).

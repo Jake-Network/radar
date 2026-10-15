@@ -181,6 +181,14 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		if isolated != nil {
 			_ = isolated.Close()
 		}
+		if ev.Status == model.StatusFailed {
+			var profile *runners.Profile
+			if o.Suite != "" && !planSelected(selection) {
+				profile = profiles.Match(selection.CWD)
+			}
+			ev.BaseComparison = compareBase(executionCtx, temp, *r, ev, executionOptions, profile, profiles.MaxCacheBytes)
+			r.Limitations = append(r.Limitations, ev.BaseComparison.Explanation)
+		}
 		ev.SelectionID = selection.ID
 		// Selection identity is also bound into the serialized artifact digest.
 		ev.ID = ""
@@ -194,29 +202,44 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			r.Execution = &r.Executions[len(r.Executions)-1]
 		}
 		if selection.ID != "" {
-			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.Status, Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
+			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.IntegrationStatus(), Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
 		}
-		executionStatus = aggregateExecution(executionStatus, ev.Status)
+		executionStatus = aggregateExecution(executionStatus, ev.IntegrationStatus())
 		if ev.Status != model.StatusPassed {
 			f := model.NewFinding("integration_execution_"+string(ev.Status), fmt.Sprintf("Combined verification command %q in %q returned %s (exit %d).", executionOptions.Command, executionOptions.CWD, ev.Status, ev.ExitCode), model.ObservedTest)
 			f.Severity = model.SeverityError
+			if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+				f.Code = "integration_base_failure"
+				f.Explanation = "The selected command already fails on base. " + ev.BaseComparison.Explanation
+				f.Severity = model.SeverityWarning
+			}
 			if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
 				f.Severity = model.SeverityWarning
 			}
 			// Finding revisions must not mutate locations already hashed into
 			// immutable execution evidence.
-			f.Locations = append([]model.Provenance(nil), ev.Observation.Locations...)
+			for _, l := range ev.Observation.Locations {
+				if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+					continue
+				}
+				if len(ev.FailurePaths([]string{l.Path})) > 0 {
+					f.Locations = append(f.Locations, l)
+				}
+			}
 			for i := range f.Locations {
 				f.Locations[i].Revision = r.CandidateCommit
 			}
-			if len(ev.Observation.FailedCases) > 0 {
-				f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
+			if len(ev.NewFailedCases()) > 0 {
+				f.Explanation += " Failed cases: " + strings.Join(ev.NewFailedCases(), ", ")
 			}
 			if d := ev.Observation.Diagnosis; d != nil {
 				f.Explanation += " Cause: " + d.Message + "."
 			}
 			f.ID = model.StableID(r.CandidateTree, executionOptions.CWD, strings.Join(executionOptions.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
 			f.Remediation = executionRemediation(ev)
+			if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+				f.Remediation = "Repair the failures on base, then rerun verification; existing base failures cannot prove this integration."
+			}
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
 

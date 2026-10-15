@@ -269,6 +269,19 @@ with apparent compile errors. Source locations must be repository-relative and
 validated inside the candidate. Missing headers receive `module_missing`, which
 may mean either a system dependency or a branch-renamed header.
 
+After a recognized command failure, verification automatically repeats only that
+command once on a fresh private base candidate, sharing the selected-command
+budget and total timeout (including declared runner setup). The original
+candidate observation stays intact; `base_comparison` records the bound base
+execution and matching failed-case identities. If every candidate failure also
+fails on unchanged base, `integration_execution` is `incomplete` (NOT VERIFIED),
+with no branch repair lead. With mixed failures only candidate-only cases receive
+leads. A passing base keeps candidate failures as FAIL. Unavailable, unidentified,
+source-mutating or budget-exhausted baseline comparisons retain FAIL and explain
+the gap. Case identities are bounded; omitted or truncated identities cannot
+clear the whole command. Pytest parameter IDs are omitted to avoid persisting
+parameter values. These are single observations; flakiness can affect the comparison.
+
 Optional `--attribution-runs N` diagnoses source failures on base/subset candidates
 under execution authorization; default is 0. `isolated` means all smaller
 combinations passed, `base` means the original failure also exists on base, and

@@ -106,7 +106,9 @@ cannot substitute for verification of final commits.
 
 When a finding appears, inspect its remediation and named files, repair, commit
 and rerun the same command. Attribution is an investigation lead, not proof of
-blame. Diagnostic reruns default to zero; opt in with `--run --attribution-runs 8`.
+blame. Failed commands automatically receive one budgeted base comparison; base-existing
+failures leave verification incomplete and have no branch lead. Optional subset
+diagnostic reruns default to zero; opt in with `--run --attribution-runs 8`.
 Never remove tests, contracts or plan criteria to make a result pass.
 
 ## Reading results and agent access

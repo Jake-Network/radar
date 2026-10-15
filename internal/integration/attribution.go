@@ -45,7 +45,7 @@ func RunObservedAttribution(ctx context.Context, c *Candidate, r Report, o Optio
 		if ev.SourceAfterExecution != "unchanged" {
 			return nil, errors.New("observed attribution requires unchanged candidate execution source")
 		}
-		if ev.Status != model.StatusFailed {
+		if ev.IntegrationStatus() != model.StatusFailed {
 			continue
 		}
 		if o.Suite == "" && (!slices.Equal(ev.Command, o.Command) || (o.CWD != "" && ev.CWD != o.CWD)) {

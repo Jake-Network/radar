@@ -96,8 +96,12 @@ Details: add --json. Radar never touches your branches; the combination is built
 
 </details>
 
-`look at` is an import-based repair lead, not proof of blame. Extra diagnostic
-reruns are off by default. Use `radar gate --run --attribution-runs 8` to look
+`look at` is an import-based repair lead, not proof of blame. Failed commands
+are automatically checked once on base within the shared command/time budget.
+Failures already present there leave verification NOT VERIFIED and have no
+branch lead; additional candidate failures still FAIL. If the base check cannot
+run or compare identities, the candidate failure remains FAIL. Optional subset
+diagnostic reruns are off by default. Use `radar gate --run --attribution-runs 8` to look
 for a smaller branch combination that reproduces the failure; `observed` lines
 describe those bounded reruns and remain repair leads. The
 `reproduce` line rebuilds the same commits in a throwaway worktree under a
