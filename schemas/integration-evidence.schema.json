@@ -144,7 +144,8 @@
                     "runner_missing",
                     "command_missing",
                     "module_missing",
-                    "build_failed"
+                    "build_failed",
+                    "python_import_unverified"
                   ]
                 },
                 "name": {

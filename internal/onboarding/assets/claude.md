@@ -206,6 +206,9 @@ covers only the checks and supported scope listed in the report.
 
 `.radar/runners.json` declares runner prefixes and setup argv; only explicit
 execution opt-in can run them. Dependency cache hits are not test evidence.
+Python first-party imports outside the candidate produce environment diagnostics,
+not test evidence or branch leads. Follow the repair hint to create a candidate-local
+environment with runner prefix/setup, or deactivate the external virtual environment.
 `.radar/generated.json` declares sources, outputs and generator argv. Static
 observations are warnings; --run regenerates in a separate private copy.
 Contract bindings may declare `generate` argv, also execution-only. Generated

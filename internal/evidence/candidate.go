@@ -99,6 +99,10 @@ func observeCandidateReport(ctx context.Context, root, cwd string, argv []string
 	defer cancel()
 	var out output
 	env := environment(home, nil)
+	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		r.Diagnosis = diagnosis
+		return r, nil
+	}
 	if observed != nil {
 		env, e = prepareFileObservation(root, home, argv, env)
 		if e != nil {

@@ -71,3 +71,16 @@ func TestGateKeepsLeadsForFailedTestsAndAmbiguousImports(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestGateExternalPythonImportHasNoLeadOrMissingRunnerClaim(t *testing.T) {
+	g := gateWithExecution(model.StatusError, &evidence.Diagnosis{Kind: "python_import_unverified", Name: "backend", Message: "Python resolves first-party package backend outside the private candidate"})
+	if len(g.Attribution) != 0 {
+		t.Fatalf("external import blamed branch: %+v", g.Attribution)
+	}
+	var out bytes.Buffer
+	renderGate(&out, g, true)
+	text := out.String()
+	if strings.Contains(text, "look at") || strings.Contains(text, "not installed") || !strings.Contains(text, "outside the private candidate") {
+		t.Fatal(text)
+	}
+}

@@ -817,7 +817,7 @@ func readableExplanation(text string, executions []integration.ExecutionEvidence
 func missingRunner(executions []integration.ExecutionEvidence) string {
 	names := []string{}
 	for _, ev := range executions {
-		if d := ev.Observation.Diagnosis; d.Environment() && !slices.Contains(names, d.Name) {
+		if d := ev.Observation.Diagnosis; d != nil && (d.Kind == "runner_missing" || d.Kind == "command_missing") && !slices.Contains(names, d.Name) {
 			names = append(names, d.Name)
 		}
 	}

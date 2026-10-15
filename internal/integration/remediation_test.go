@@ -19,6 +19,7 @@ func TestExecutionRemediationFollowsObservation(t *testing.T) {
 		not  string
 	}{
 		{"failed test", ev(model.StatusFailed, nil, ""), "reconcile producer/consumer", ""},
+		{"external Python", ev(model.StatusError, &evidence.Diagnosis{Kind: "python_import_unverified", Name: "shared_modules"}, ""), "runner profile prefix", "reconcile"},
 		{"missing runner", ev(model.StatusError, &evidence.Diagnosis{Kind: "runner_missing", Name: "pytest"}, ""), "Install or activate pytest", "reconcile"},
 		{"missing module", ev(model.StatusError, &evidence.Diagnosis{Kind: "module_missing", Name: "click"}, ""), "renamed or removed it", "reconcile"},
 		{"timeout", ev(model.StatusTimeout, nil, ""), "--timeout", "reconcile"},

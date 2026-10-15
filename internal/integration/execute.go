@@ -488,6 +488,8 @@ func executionRemediation(ev ExecutionEvidence) string {
 		return "The branches do not compile together. Open the reported location in a checkout of the combined branches, then either update the branch that still uses the old code or restore what another branch renamed or removed. Commit and rerun the same gate."
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
+	case d != nil && d.Kind == "python_import_unverified":
+		return "Use a runner profile prefix and declared setup to create a Python environment inside the candidate, or deactivate the external virtual environment, then rerun the same gate. The combined source was not tested."
 	case d.Environment():
 		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies committed files; dependency installation requires declared setup and execution opt-in), then rerun the same gate. The combined source was not tested.", d.Name)
 	case d != nil:

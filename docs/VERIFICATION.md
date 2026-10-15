@@ -261,8 +261,18 @@ account's `~/.m2`; Gradle user-home properties remain visible to builds.
 | Python `ImportError` for a removed name | `failed`. |
 | Missing modules/toolchains/headers/libraries, checksum/registry errors, unresolved JVM dependencies, CMake configuration errors | Environment `error`. |
 | Compiler location outside candidate, generated/dependency source or nonexistent file | Environment `error`. |
+| First-party Python package resolves outside the candidate, or import preflight cannot verify it | Environment `error` (`python_import_unverified`); no branch lead. |
 | Missing runner/command, timeout or output limit | `error`. |
 | Exit 0 without recognized tests | `unknown`. |
+
+Before Python test execution, Radar probes conventional flat/src packages at
+`pyproject.toml` boundaries using the same interpreter, runner prefix, CWD and
+scrubbed environment. Namespace search paths are checked too. This preflight
+shares the command timeout and does not inject `PYTHONPATH`. An external editable
+install cannot certify the combined tree. Use runner profile `prefix`/`setup`
+to build a candidate-local environment, or deactivate the external environment.
+Packages in custom layouts and imports added dynamically by tests remain outside
+this bounded preflight; it is not a full runtime import trace.
 
 Dependency/toolchain diagnostics prevent source attribution, even when mixed
 with apparent compile errors. Source locations must be repository-relative and

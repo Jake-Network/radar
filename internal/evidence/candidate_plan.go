@@ -404,6 +404,11 @@ func RunCandidateBudget(ctx context.Context, root string, c CandidateCheckpoint,
 			return finish(model.StatusError), nil
 		}
 	}
+	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		result := finish(model.StatusError)
+		result.Observation.Diagnosis = diagnosis
+		return result, nil
+	}
 	r.Phase = "test"
 	out = output{}
 	state, startErr := execute(runCtx, argv, dir, env, &out)
