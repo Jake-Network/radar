@@ -169,7 +169,7 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 		if s := r.Report.Selection; g.ran && s != nil {
 			fmt.Fprintf(w, "      tests (%s): ran %d of %s\n", s.Mode, len(r.Report.Executions), plural(len(s.Commands), "selected command", "selected commands"))
 			for _, ev := range r.Report.Executions {
-				fmt.Fprintf(w, "        %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
+				fmt.Fprintf(w, "        %s %s  %s\n", p.mark(gateMark(ev.IntegrationStatus())), p.cyan(displayCommand(ev.Command)), p.dim(executionDetail(ev)))
 			}
 			for _, b := range s.Blocking {
 				fmt.Fprintf(w, "        %s not run: %s\n", p.mark("?"), b)

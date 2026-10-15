@@ -160,8 +160,9 @@ during execution invalidate passing evidence.
 `gate --landing` adds a pair matrix and deterministic landing estimate; it keeps
 the gate v1 verdict contract. A pair result cannot replace the separately built
 N-way candidate. `land --apply` publishes an immutable private integration ref
-only after its required static checks pass; it grants no test execution or branch
-update. Structural merge drivers require their own explicit execution opt-in and
+only after the selected policy and configuration-stability checks pass, using
+the same captured `--policy`/`--plan` inputs as gate; it grants no test execution
+or branch update. Structural merge drivers require their own explicit execution opt-in and
 record which files they resolved. Conflict-brief symbol/test links are inferred.
 
 `gate --overlap` and watch/hook drift reuse supported detectors on saved snapshots.
@@ -286,23 +287,29 @@ account's `~/.m2`; Gradle user-home properties remain visible to builds.
 | Missing runner/command, timeout or output limit | `error`. |
 | Exit 0 without recognized tests | `unknown`. |
 
-Before Python test execution, Radar probes conventional flat/src packages at
-`pyproject.toml` boundaries using the same interpreter, runner prefix, CWD and
-scrubbed environment. Namespace search paths are checked too. This preflight
+Before Python test execution, Radar probes conventional flat/src packages in the
+command's project and statically related workspace members using the same
+interpreter, runner prefix, CWD and scrubbed environment. Python versioned
+executables, pytest console entry points and supported `uv run` forms are
+checked; unresolved launcher provenance or aggregate workspace package scope is
+an environment problem. Test/tooling
+directories are not treated as installed application packages. Namespace search paths are checked too. This preflight
 shares the command timeout and does not inject `PYTHONPATH`. An external editable
 install cannot certify the combined tree. Use runner profile `prefix`/`setup`
 to build a candidate-local environment, or deactivate the external environment.
-Packages in custom layouts and imports added dynamically by tests remain outside
-this bounded preflight; it is not a full runtime import trace.
+Packages in custom layouts remain outside this bounded preflight; detected
+dynamic import patterns that prevent scope verification leave it unverified.
+This is not a full runtime import trace.
 
 Dependency/toolchain diagnostics prevent source attribution, even when mixed
 with apparent compile errors. Source locations must be repository-relative and
 validated inside the candidate. Missing headers receive `module_missing`, which
 may mean either a system dependency or a branch-renamed header.
 
-After a recognized command failure, verification automatically repeats only that
-command once on a fresh private base candidate, sharing the selected-command
-budget and total timeout (including declared runner setup). The original
+After candidate commands finish, verification automatically repeats failed
+commands once on one private base candidate, reusing each declared runner setup.
+Only the remaining selected-command budget and total timeout are available to
+these comparisons, so baseline diagnostics cannot displace candidate commands. The original
 candidate observation stays intact; `base_comparison` records the bound base
 execution and matching failed-case identities. If every candidate failure also
 fails on unchanged base, `integration_execution` is `incomplete` (NOT VERIFIED),

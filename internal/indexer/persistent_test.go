@@ -2,6 +2,8 @@ package indexer
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -134,5 +136,74 @@ func TestCachedSyntaxRebuildsManifestResolutionAndDeletedFiles(t *testing.T) {
 		if n.ID == model.FileID("libs/pkg/b.ts") {
 			t.Fatal("deleted file survived cache")
 		}
+	}
+}
+
+func TestDiskCacheBuildIdentityInvalidatesWithoutManualVersionBump(t *testing.T) {
+	if fingerprintForBuild("extractor-A") == fingerprintForBuild("extractor-B") {
+		t.Fatal("extractor build absent from cache identity")
+	}
+	name := filepath.Join(t.TempDir(), "syntax.json")
+	cache := NewParseCache()
+	cache.put(parserFingerprint()+"\x00fixture", languages.Result{}, 1)
+	if err := cache.Save(name); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var disk diskCache
+	if err := json.Unmarshal(raw, &disk); err != nil {
+		t.Fatal(err)
+	}
+	disk.Version = fingerprintForBuild("different extractor build")
+	raw, _ = json.Marshal(disk)
+	if err := os.WriteFile(name, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadParseCache(name)
+	if err == nil || loaded.Stats().Entries != 0 {
+		t.Fatal("cross-build syntax accepted")
+	}
+}
+func TestLoadedCacheAccountsSourceBytesAndEvictsForNewSyntax(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "syntax.json")
+	cache := NewParseCache()
+	prefix := parserFingerprint() + "\x00"
+	result := languages.Result{}
+	for i := 0; i < 40; i++ {
+		cache.put(fmt.Sprintf("%sfile-%02d", prefix, i), result, MaxSourceBytes)
+	}
+	if cache.Stats().Evictions == 0 || cache.Stats().Bytes > MaxTotalSourceBytes {
+		t.Fatal("cache never evicted at source byte budget", cache.Stats())
+	}
+	if err := cache.Save(name); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadParseCache(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Stats().Bytes != cache.Stats().Bytes {
+		t.Fatalf("loaded source bytes lost: %v -> %v", cache.Stats(), loaded.Stats())
+	}
+	oldSize := loaded.Stats().Entries
+	loaded.put(prefix+"new", result, MaxSourceBytes)
+	if loaded.Stats().Evictions == 0 || loaded.Stats().Entries != oldSize {
+		t.Fatal("full loaded cache failed to evict for new syntax", loaded.Stats())
+	}
+	if err := loaded.Save(name); err != nil {
+		t.Fatal(err)
+	}
+	again, err := LoadParseCache(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := again.get(prefix+"new", "repo", "head"); !ok {
+		t.Fatal("new entry silently omitted from full persisted cache")
+	}
+	if _, ok := again.get(prefix+"file-09", "repo", "head"); ok {
+		t.Fatal("least recently used syntax retained instead of new entry")
 	}
 }

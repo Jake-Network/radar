@@ -151,7 +151,7 @@ func parseHunks(text string) []Hunk {
 			state = 1
 			a.Reset()
 			b.Reset()
-		case state == 1 && strings.HasPrefix(line, "======="):
+		case state == 1 && strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") == "=======":
 			state = 2
 		case state == 2 && strings.HasPrefix(line, ">>>>>>> "):
 			out = append(out, Hunk{a.String(), b.String()})

@@ -128,3 +128,29 @@ func TestConflictBriefMCPRejectsExecution(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestLandingUsesSelectedGatePolicy(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("feature", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	for _, required := range []string{"future_capability", "integration_execution", "configuration_stability"} {
+		t.Run(required, func(t *testing.T) {
+			put(t, root, ".radar/landing-policy.json", `{"version":1,"require":["textual_merge","`+required+`"]}`)
+			want := 1
+			if required == "configuration_stability" {
+				want = 0
+			}
+			g := invoke(t, root, want, "gate", "feature", "--base", "main", "--policy", ".radar/landing-policy.json")
+			before := gitTest(t, root, "for-each-ref", "--format=%(refname):%(objectname)", "refs/radar/integration/")
+			l := invoke(t, root, want, "land", "feature", "--base", "main", "--apply", "--policy", ".radar/landing-policy.json")
+			if g["gate"].(map[string]any)["verdict"] != l["gate"].(map[string]any)["verdict"] {
+				t.Fatalf("gate and landing disagree: gate=%v land=%v", g["gate"], l["gate"])
+			}
+			if want != 0 && (l["integration_ref"] != nil || before != gitTest(t, root, "for-each-ref", "--format=%(refname):%(objectname)", "refs/radar/integration/")) {
+				t.Fatal("blocked policy published an integration ref", l)
+			}
+			if inputs, ok := l["configuration_inputs"].([]any); !ok || len(inputs) != 1 || inputs[0].(map[string]any)["status"] != "passed" {
+				t.Fatal("landing lost selected configuration provenance", l)
+			}
+		})
+	}
+}

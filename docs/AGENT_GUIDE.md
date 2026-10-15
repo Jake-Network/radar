@@ -83,10 +83,13 @@ reconcile those branches before landing. New conflict hunks introduced by saved 
 hunks in an already conflicted file. Marker labels and unrelated context edits
 do not count as new hunks. Binary conflicts compare unmerged index blob IDs. Other supported failures, including committed migration
 heads, remain repairable in the current branch and still block.
+If an earlier merge stops before a later input is inspected, the hook reports
+that scope as NOT VERIFIED; it cannot claim the saved changes introduced no conflict.
 
 Unchanged previews reuse the last result for that worktree. The key includes
 HEAD, base and selected commits, saved content and index digests, configuration,
-Radar version and executable identity. Changes invalidate it; malformed cache
+Radar version and Go linker build identity, read from bounded executable metadata.
+Changes invalidate it; malformed cache
 records are ignored. Cache files use the existing run/coverage state directory
 (`RADAR_STATE_DIR`, otherwise the user cache directory's `radar/hook-previews`),
 so an uninitialized checkout does not acquire untracked cache inputs. Cached
@@ -102,7 +105,9 @@ introduced by the current worktree's saved changes blocks Stop; pre-existing
 peer drift produces an informational `systemMessage`. The cache also binds peer
 state, so another agent's saved changes invalidate the preview. A bounded syntax
 cache reuses unchanged parses while import resolution and manifests are checked
-again; cache hits never become test evidence.
+again; cache hits never become test evidence. Stop checks only current-to-peer
+pairs (at most 11); full overlap scans inspect at most 66 pairs. Larger sets
+retain the ordinary preview and explicitly report omitted pair scope as unverified.
 
 Unknown or incomplete results remain informational. A successful static check
 does not prove runtime compatibility; final reports must list remaining gaps.

@@ -81,7 +81,7 @@ func isUnittest(argv []string) bool {
 		return false
 	}
 	name := filepath.Base(argv[0])
-	return (name == "python" || name == "python3") && len(argv) > 2 && argv[1] == "-m" && argv[2] == "unittest"
+	return pythonExecutableName.MatchString(strings.ToLower(name)) && len(argv) > 2 && argv[1] == "-m" && argv[2] == "unittest"
 }
 
 func uses(argv []string, tool string) bool {

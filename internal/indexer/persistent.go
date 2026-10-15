@@ -8,17 +8,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/Jake-Network/radar/internal/languages"
+	"github.com/Jake-Network/radar/internal/buildidentity"
 )
 
-// Increment this version whenever adapter extraction semantics change. Grammar
-// dependency versions also participate, so a changed binary cannot reuse old syntax.
-const parseCacheVersion = "radar-syntax-2"
+// The format version is separate from the automatic linker build identity. A new
+// extractor binary invalidates disk syntax without a manual developer bump.
+const parseCacheVersion = "radar-syntax-3"
 
 var parserIdentity struct {
 	sync.Once
@@ -26,26 +25,20 @@ var parserIdentity struct {
 }
 
 func parserFingerprint() string {
-	parserIdentity.Do(func() {
-		parts := []string{parseCacheVersion}
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, dep := range info.Deps {
-				if strings.Contains(dep.Path, "tree-sitter") {
-					parts = append(parts, dep.Path+"@"+dep.Version+"/"+dep.Sum)
-				}
-			}
-		}
-		sort.Strings(parts)
-		sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-		parserIdentity.value = hex.EncodeToString(sum[:])
-	})
+	parserIdentity.Do(func() { parserIdentity.value = fingerprintForBuild(buildidentity.Identity()) })
 	return parserIdentity.value
+}
+func fingerprintForBuild(build string) string {
+	sum := sha256.Sum256([]byte(parseCacheVersion + "\x00" + build))
+	return hex.EncodeToString(sum[:])
 }
 
 type CacheStats struct {
-	Hits    uint64 `json:"hits"`
-	Misses  uint64 `json:"misses"`
-	Entries int    `json:"entries"`
+	Hits      uint64 `json:"hits"`
+	Misses    uint64 `json:"misses"`
+	Entries   int    `json:"entries"`
+	Bytes     int64  `json:"bytes"`
+	Evictions uint64 `json:"evictions"`
 }
 
 func (c *ParseCache) Stats() CacheStats {
@@ -54,13 +47,13 @@ func (c *ParseCache) Stats() CacheStats {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return CacheStats{c.hits, c.misses, len(c.entries)}
+	return CacheStats{Hits: c.hits, Misses: c.misses, Entries: len(c.entries), Bytes: c.bytes, Evictions: c.evictions}
 }
 
 type diskCache struct {
-	Version string                      `json:"version"`
-	Digest  string                      `json:"digest"`
-	Entries map[string]languages.Result `json:"entries"`
+	Version string                `json:"version"`
+	Digest  string                `json:"digest"`
+	Entries map[string]cacheEntry `json:"entries"`
 }
 
 // LoadParseCache loads syntax only. Callers must rebuild file inventory, imports,
@@ -108,7 +101,13 @@ func LoadParseCache(name string) (*ParseCache, error) {
 	for k := range disk.Entries {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := disk.Entries[keys[i]], disk.Entries[keys[j]]
+		if a.Used != b.Used {
+			return a.Used < b.Used
+		}
+		return keys[i] < keys[j]
+	})
 	if len(keys) > MaxSourceFiles {
 		return c, fmt.Errorf("parse cache entry limit exceeded")
 	}
@@ -116,7 +115,11 @@ func LoadParseCache(name string) (*ParseCache, error) {
 		if !strings.HasPrefix(k, disk.Version+"\x00") {
 			return NewParseCache(), fmt.Errorf("parse cache key version mismatch")
 		}
-		c.put(k, disk.Entries[k], 0)
+		entry := disk.Entries[k]
+		if entry.SourceBytes < 0 || entry.SourceBytes > MaxSourceBytes {
+			return NewParseCache(), fmt.Errorf("invalid cached source byte count")
+		}
+		c.put(k, entry.Result, entry.SourceBytes)
 	}
 	return c, nil
 }
@@ -128,9 +131,10 @@ func (c *ParseCache) Save(name string) error {
 		return nil
 	}
 	c.mu.Lock()
-	entries := make(map[string]languages.Result, len(c.entries))
+	entries := make(map[string]cacheEntry, len(c.entries))
 	for k, v := range c.entries {
-		entries[k] = cloneParseResult(v, "", "")
+		v.Result = cloneParseResult(v.Result, "", "")
+		entries[k] = v
 	}
 	c.mu.Unlock()
 	raw, err := json.Marshal(entries)

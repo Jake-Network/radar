@@ -20,12 +20,29 @@ import (
 // explicitly authorized driver as its pair matrix. Execution authorization is
 // restricted to that installed driver; selected tests remain proposals.
 func PreviewWithOptions(ctx context.Context, root string, o Options) (integration.Report, error) {
+	analysis, err := analysisOptions(o)
+	if err != nil {
+		return integration.Report{}, err
+	}
 	c, _, err := build(ctx, root, o.Base, o.Branches, o)
 	defer c.Close()
 	if err != nil {
 		return integration.Report{}, err
 	}
-	return integration.Analyze(ctx, c, integration.Options{SuggestTests: true})
+	r, err := integration.Analyze(ctx, c, analysis)
+	if err == nil && o.Finalize != nil {
+		err = o.Finalize(ctx, &r)
+	}
+	return r, err
+}
+
+func analysisOptions(o Options) (integration.Options, error) {
+	a := o.Analysis
+	if a.Verify || a.AllowExecution || len(a.Command) > 0 || a.Suite != "" || a.ObserveCoverage || a.AttributionRuns != 0 {
+		return a, errors.New("landing analysis is static; use a separate gate for repository execution")
+	}
+	a.SuggestTests = true
+	return a, nil
 }
 
 // A driver is an explicitly authorized installed program, never a repository

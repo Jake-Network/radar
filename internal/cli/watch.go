@@ -262,6 +262,7 @@ func (a *app) watch(o options) int {
 			}
 			r.Drift = drift.Findings
 			r.Limitations = append(r.Limitations, drift.Limitations...)
+			watchOverlapCoverage(&r, drift, in.Refs)
 		}
 		if !configurationUnstable(in.config.Inputs) {
 			cachedKey = semanticKey
@@ -445,4 +446,21 @@ func watchTime(t time.Time) string {
 		return "never"
 	}
 	return t.Format("15:04:05")
+}
+
+// Pairwise drift is supplemental to the complete candidate check. Preserve its
+// verdict, while making omitted pair analysis visible to machine consumers.
+func watchOverlapCoverage(report *integration.Report, drift overlap.Report, refs []string) {
+	gaps := []string{}
+	for _, limitation := range drift.Limitations {
+		if strings.HasPrefix(limitation, "Overlap incomplete:") {
+			gaps = append(gaps, limitation)
+		}
+	}
+	if len(gaps) == 0 {
+		return
+	}
+	check := gate.Check{ID: "worktree_overlap", Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: strings.Join(gaps, " ")}
+	report.Checks = append(report.Checks, check)
+	report.Coverage = append(report.Coverage, gate.Coverage{Analyzer: check.ID, Status: check.Status, Scope: append([]string{}, refs...), Excluded: []string{}, Unavailable: append([]string{}, gaps...), Uncertainty: []string{"Unchecked pairs are not evidence of compatibility."}})
 }

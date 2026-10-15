@@ -156,6 +156,11 @@ func editableAdvisories(root, environment string) []doctorResource {
 			if !ok {
 				continue
 			}
+			// These exact conventional bootstrap lines do not declare editable
+			// paths. This only classifies text; it does not trust their modules.
+			if knownPythonBootstrap(filepath.Base(name), string(b)) {
+				continue
+			}
 			for _, line := range strings.Split(string(b), "\n") {
 				line = strings.TrimSpace(line)
 				if line == "" || strings.HasPrefix(line, "#") {
@@ -180,4 +185,15 @@ func editableAdvisories(root, environment string) []doctorResource {
 		}
 	}
 	return out
+}
+
+func knownPythonBootstrap(name, contents string) bool {
+	line := strings.TrimSpace(contents)
+	switch name {
+	case "_virtualenv.pth":
+		return line == "import _virtualenv"
+	case "distutils-precedence.pth":
+		return line == "import os; var = 'SETUPTOOLS_USE_DISTUTILS'; enabled = os.environ.get(var, 'local') == 'local'; enabled and __import__('_distutils_hack').add_shim();"
+	}
+	return false
 }

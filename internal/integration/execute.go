@@ -74,6 +74,11 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	}
 	prepared := map[string]evidence.RunnerPreparation{}
 	artifacts := []string{}
+	type executedCommand struct {
+		selection testselection.Command
+		options   Options
+	}
+	executed := []executedCommand{}
 	for i, selection := range selections {
 		if executionCtx.Err() != nil {
 			skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
@@ -181,25 +186,37 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		if isolated != nil {
 			_ = isolated.Close()
 		}
+		r.Executions = append(r.Executions, ev)
+		executed = append(executed, executedCommand{selection: selection, options: executionOptions})
+		if ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged" {
+			confirmExecutedRunner(r.Selection, selection)
+		}
+		if ev.SourceAfterExecution != "unchanged" {
+			break
+		}
+	}
+
+	// Complete candidate verification before spending anything on baseline
+	// diagnostics. Baselines share only the remaining timeout and commands.
+	baselines := baseVerifier{}
+	defer baselines.close()
+	for i, command := range executed {
+		selection, executionOptions := command.selection, command.options
+		ev := r.Executions[i]
 		if ev.Status == model.StatusFailed {
 			var profile *runners.Profile
 			if o.Suite != "" && !planSelected(selection) {
 				profile = profiles.Match(selection.CWD)
 			}
-			ev.BaseComparison = compareBase(executionCtx, temp, *r, ev, executionOptions, profile, profiles.MaxCacheBytes)
+			ev.BaseComparison = baselines.compare(executionCtx, temp, *r, ev, executionOptions, profile, profiles.MaxCacheBytes)
 			r.Limitations = append(r.Limitations, ev.BaseComparison.Explanation)
 		}
-		ev.SelectionID = selection.ID
-		// Selection identity is also bound into the serialized artifact digest.
 		ev.ID = ""
 		data, _ := json.Marshal(ev)
 		ev.ID = model.StableID("integration-evidence-v1", string(data))
-		r.Executions = append(r.Executions, ev)
-		if ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged" {
-			confirmExecutedRunner(r.Selection, selection)
-		}
+		r.Executions[i] = ev
 		if o.Suite == "" {
-			r.Execution = &r.Executions[len(r.Executions)-1]
+			r.Execution = &r.Executions[i]
 		}
 		if selection.ID != "" {
 			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.IntegrationStatus(), Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
@@ -243,9 +260,6 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
 
-		}
-		if ev.SourceAfterExecution != "unchanged" {
-			break
 		}
 	}
 

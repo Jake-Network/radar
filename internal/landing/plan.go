@@ -20,6 +20,14 @@ type Options struct {
 	MaxPairs       int
 	Driver         string
 	AllowExecution bool
+	// Analysis carries the same selected policy/plan as gate. Landing remains
+	// static: execution flags in Analysis are rejected independently of driver
+	// authorization above.
+	Analysis integration.Options
+	// Finalize checks invocation-bound configuration immediately before a ref
+	// is published. It may add checks or reject the observation, never authorize
+	// repository execution. CLI callers use their shared gate evaluator here.
+	Finalize func(context.Context, *integration.Report) error
 }
 type Branch struct {
 	Name    string   `json:"name"`

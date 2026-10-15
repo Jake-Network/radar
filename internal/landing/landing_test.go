@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
 )
 
@@ -20,6 +22,83 @@ func git(t *testing.T, root string, args ...string) string {
 		t.Fatalf("git %v: %v %s", args, e, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func TestApplyEnforcesSelectedPolicyAndFinalConfigurationBeforePublication(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "a", "baseline", "a.md", "a\n")
+	git(t, root, "checkout", "-q", "baseline")
+	plan, err := Plan(context.Background(), root, Options{Base: "baseline", Branches: []string{"a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := gate.Policy{Version: 1, Name: "requires-runtime", Require: []string{"textual_merge", "integration_execution"}}
+	applied, err := ApplyWithOptions(context.Background(), root, plan, Options{Analysis: integration.Options{Policy: &policy}})
+	if err == nil || applied.Report.Gate.Verdict != gate.Blocked {
+		t.Fatalf("custom required policy bypassed: %+v %v", applied, err)
+	}
+	if refs := git(t, root, "for-each-ref", "--format=%(refname)", "refs/radar/integration/"); refs != "" {
+		t.Fatalf("blocked policy published %s", refs)
+	}
+	calls := 0
+	applied, err = ApplyWithOptions(context.Background(), root, plan, Options{Finalize: func(ctx context.Context, r *integration.Report) error {
+		calls++
+		// Finalization occurs after object import and before public ref visibility.
+		git(t, root, "cat-file", "-e", r.CandidateCommit)
+		if refs := git(t, root, "for-each-ref", "--format=%(refname)", "refs/radar/integration/"); refs != "" {
+			t.Fatalf("finalizer ran after publication: %s", refs)
+		}
+		check := gate.Check{ID: "configuration_stability", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: "Selected policy changed after capture."}
+		r.Checks = append(r.Checks, check)
+		p := r.Gate.Policy
+		p.Require = append(p.Require, check.ID)
+		r.Gate = gate.Evaluate(p, r.Checks)
+		return nil
+	}})
+	if calls != 1 || err == nil || applied.Report.Gate.Verdict != gate.Blocked {
+		t.Fatalf("unstable config published: calls=%d report=%+v err=%v", calls, applied, err)
+	}
+	if refs := git(t, root, "for-each-ref", "--format=%(refname)", "refs/radar/integration/"); refs != "" {
+		t.Fatalf("unstable config published %s", refs)
+	}
+	stablePolicy := gate.Policy{Version: 1, Require: []string{"textual_merge", "configuration_stability"}}
+	applied, err = ApplyWithOptions(context.Background(), root, plan, Options{Analysis: integration.Options{Policy: &stablePolicy}, Finalize: func(ctx context.Context, r *integration.Report) error {
+		calls++
+		r.Checks = append(r.Checks, gate.Check{ID: "configuration_stability", Status: model.StatusPassed, Evidence: model.VerifiedStatic})
+		r.Gate = gate.Evaluate(stablePolicy, r.Checks)
+		return nil
+	}})
+	if err != nil || applied.Ref == "" || calls != 2 {
+		t.Fatalf("stable finalizer rejected: %+v %v calls=%d", applied, err, calls)
+	}
+}
+
+func TestParseHunksRequiresExactSeparator(t *testing.T) {
+	hunks := parseHunks("<<<<<<< HEAD\n=======not a separator\nleft\n=======\nright\n>>>>>>> branch\n")
+	if len(hunks) != 1 || hunks[0].Left != "=======not a separator\nleft\n" || hunks[0].Right != "right\n" {
+		t.Fatalf("hunks: %+v", hunks)
+	}
+	crlf := parseHunks("<<<<<<< HEAD\r\nleft\r\n=======\r\nright\r\n>>>>>>> branch\r\n")
+	if len(crlf) != 1 || crlf[0].Left != "left\r\n" {
+		t.Fatalf("CRLF hunks: %+v", crlf)
+	}
+}
+
+func TestLandingAnalysisCannotAuthorizeRepositoryExecution(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "a", "baseline", "a.md", "a\n")
+	plan, err := Plan(context.Background(), root, Options{Base: "baseline", Branches: []string{"a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, analysis := range []integration.Options{{Verify: true, AllowExecution: true, Command: []string{"python3", "-c", "raise Exception('must not run')"}}, {AllowExecution: true}, {Command: []string{"echo"}}, {Suite: "balanced"}, {ObserveCoverage: true}, {AttributionRuns: 1}} {
+		if _, err = ApplyWithOptions(context.Background(), root, plan, Options{Analysis: analysis}); err == nil {
+			t.Fatalf("accepted execution options: %+v", analysis)
+		}
+		if _, err = PreviewWithOptions(context.Background(), root, Options{Base: "baseline", Branches: []string{"a"}, Analysis: analysis}); err == nil {
+			t.Fatalf("preview accepted execution options: %+v", analysis)
+		}
+	}
 }
 func put(t *testing.T, root, path, text string) {
 	t.Helper()

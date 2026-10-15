@@ -98,7 +98,9 @@ def package(output, version):
         stage = pathlib.Path(temporary) / ("radar-" + target)
         stage.mkdir()
         binary = stage / ("radar.exe" if target.startswith("windows_") else "radar")
-        flags = "-buildid="
+        # Preserve Go's content-bound build ID for cross-process cache
+        # invalidation. -trimpath still removes checkout-specific paths.
+        flags = ""
         if version:
             flags += " -X github.com/Jake-Network/radar/internal/cli.Version=" + version
         if target.startswith("windows_"):

@@ -86,3 +86,28 @@ func TestDoctorResourcesRefuseLargeAndLinkedFiles(t *testing.T) {
 		t.Fatal("allowed parent traversal")
 	}
 }
+
+func TestDoctorKnownPythonBootstrapIsNotEditableLoader(t *testing.T) {
+	root, env := t.TempDir(), t.TempDir()
+	site := filepath.Join(env, "lib", "python3.12", "site-packages")
+	if e := os.MkdirAll(site, 0700); e != nil {
+		t.Fatal(e)
+	}
+	for name, line := range map[string]string{"_virtualenv.pth": "import _virtualenv\n", "distutils-precedence.pth": "import os; var = 'SETUPTOOLS_USE_DISTUTILS'; enabled = os.environ.get(var, 'local') == 'local'; enabled and __import__('_distutils_hack').add_shim();\n"} {
+		if e := os.WriteFile(filepath.Join(site, name), []byte(line), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if got := editableAdvisories(root, env); len(got) != 0 {
+		t.Fatalf("bootstrap mislabelled editable: %+v", got)
+	}
+	if e := os.WriteFile(filepath.Join(site, "_virtualenv.pth"), []byte("import _virtualenv; arbitrary()\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if got := editableAdvisories(root, env); len(got) != 1 || got[0].Kind != "editable_loader" || got[0].Status != "unknown" {
+		t.Fatalf("modified loader trusted: %+v", got)
+	}
+	if knownPythonBootstrap("custom.pth", "import _virtualenv") {
+		t.Fatal("arbitrary filename exempted")
+	}
+}

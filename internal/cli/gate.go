@@ -657,7 +657,7 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	if ran && r.Selection != nil {
 		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Tests ("+r.Selection.Mode+"):"), len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 		for _, ev := range r.Executions {
-			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
+			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.IntegrationStatus())), p.cyan(displayCommand(ev.Command)), p.dim(executionDetail(ev)))
 		}
 		renderGaps(w, gateGaps(r), p)
 		fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("Test files: %d inventoried, %d selected (relationships are not behavioral coverage)", r.Selection.Inventory, r.Selection.TestFiles)))
@@ -969,6 +969,18 @@ func gateMark(s model.Status) string {
 	return "?"
 }
 
+func executionDetail(ev integration.ExecutionEvidence) string {
+	detail := fmt.Sprintf("in %s; %s", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))
+	if ev.BaseComparison != nil {
+		if ev.BaseComparison.AllExisting {
+			detail += "; already fails on base; integration not verified"
+		} else if n := len(ev.BaseComparison.ExistingCases); n > 0 {
+			detail += fmt.Sprintf("; %d failed cases already fail on base; %d remaining candidate failures", n, len(ev.NewFailedCases()))
+		}
+	}
+	return "(" + detail + ")"
+}
+
 // gateCheckName names a required check for people; IDs stay in --json.
 func gateCheckName(id string) string {
 	switch id {
@@ -1026,7 +1038,7 @@ func gateLabel(c gate.Check, r integration.Report) string {
 		if c.ID == "integration_execution" && len(r.Executions) > 0 {
 			failed := 0
 			for _, ev := range r.Executions {
-				if gateMark(ev.Status) == "✗" {
+				if gateMark(ev.IntegrationStatus()) == "✗" {
 					failed++
 				}
 			}
@@ -1045,6 +1057,15 @@ func gateLabel(c gate.Check, r integration.Report) string {
 			return "incomplete — " + strings.Join(gaps, "; ")
 		}
 	case c.ID == "integration_execution" && r.Selection != nil && c.Status == model.StatusIncomplete:
+		existing := 0
+		for _, ev := range r.Executions {
+			if ev.Status == model.StatusFailed && ev.IntegrationStatus() == model.StatusIncomplete {
+				existing++
+			}
+		}
+		if existing > 0 {
+			return fmt.Sprintf("incomplete — %d of %s already fail on base; integration not verified", existing, plural(len(r.Executions), "test command", "test commands"))
+		}
 		return fmt.Sprintf("incomplete — ran %d of %s; required verification has gaps", len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 	}
 	if !ok {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/overlap"
 )
@@ -36,6 +37,24 @@ func hookHasNewConflicts(ctx context.Context, candidate, committed *integration.
 				return true, nil
 			}
 			counts[hunk]--
+		}
+	}
+	return false, nil
+}
+
+// BuildCandidate stops at its first failed merge. Inputs after MERGE_HEAD were
+// never inspected, even though Candidate.Inputs contains all pinned inputs.
+func hookAllInputsInspected(ctx context.Context, candidate *integration.Candidate) (bool, error) {
+	if len(candidate.Conflicts) == 0 {
+		return true, nil
+	}
+	stopped, err := gitrepo.Resolve(ctx, candidate.Dir, "MERGE_HEAD")
+	if err != nil {
+		return false, err
+	}
+	for i, input := range candidate.Inputs {
+		if input == stopped {
+			return i == len(candidate.Inputs)-1, nil
 		}
 	}
 	return false, nil

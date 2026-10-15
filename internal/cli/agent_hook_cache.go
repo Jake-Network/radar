@@ -2,14 +2,12 @@ package cli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 
+	"github.com/Jake-Network/radar/internal/buildidentity"
 	"github.com/Jake-Network/radar/internal/composition"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/project"
@@ -24,23 +22,6 @@ type hookCacheRecord struct {
 	Digest   string            `json:"digest"`
 }
 
-var hookExecutableDigest = sync.OnceValue(func() string {
-	path, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(h.Sum(nil))
-})
-
 func hookCacheKey(ctx context.Context, root, state string) string {
 	head, err := gitrepo.Resolve(ctx, root, "HEAD")
 	if err != nil {
@@ -54,11 +35,11 @@ func hookCacheKey(ctx context.Context, root, state string) string {
 	if err != nil {
 		return ""
 	}
-	digest := hookExecutableDigest()
+	digest := buildidentity.Identity()
 	if digest == "" {
 		return ""
 	}
-	data, _ := json.Marshal([]any{"hook-preview-v1", Version, digest, executable, st.Size(), st.ModTime().UnixNano(), root, head, state})
+	data, _ := json.Marshal([]any{"hook-preview-v2", Version, digest, executable, st.Size(), st.ModTime().UnixNano(), root, head, state})
 	return configurationDigest(data)
 }
 

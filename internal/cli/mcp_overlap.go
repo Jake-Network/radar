@@ -32,7 +32,7 @@ func (a *app) overlap(o options) int {
 	}
 	filtered := report.Findings[:0]
 	for _, f := range report.Findings {
-		match := o.symbol == "" || strings.Contains(f.Explanation, o.symbol)
+		match := o.symbol == "" || overlapFindingSymbol(f) == o.symbol
 		if o.file != "" {
 			matchFile := false
 			for _, p := range f.Locations {
@@ -152,4 +152,38 @@ func (a *app) observeHook(ctx context.Context, o options) (watch.State, error) {
 	state.Key = configurationDigest(data)
 	state.Value = in
 	return state, nil
+}
+
+// The supported symbol detectors have a fixed diagnostic grammar. Extract only
+// their declaration/reference name; prose, paths and partial names are not
+// symbol matches. Unsupported finding kinds deliberately do not match.
+func overlapFindingSymbol(f model.Finding) string {
+	text := strings.TrimPrefix(f.Explanation, "Cross-worktree drift: ")
+	switch f.Code {
+	case "symbol_dangling_reference":
+		_, name, ok := strings.Cut(text, " newly references removed name ")
+		if ok {
+			name, _, ok = strings.Cut(name, " from ")
+			if ok {
+				return name
+			}
+		}
+	case "symbol_argument_count":
+		_, name, ok := strings.Cut(text, " newly calls ")
+		if ok {
+			name, _, ok = strings.Cut(name, " with ")
+			if ok {
+				return name
+			}
+		}
+	case "symbol_duplicate_definition":
+		name, ok := strings.CutPrefix(text, "New duplicate declaration ")
+		if ok {
+			name, ok = strings.CutSuffix(name, " in the combined tree.")
+			if ok {
+				return name[strings.LastIndex(name, ":")+1:]
+			}
+		}
+	}
+	return ""
 }

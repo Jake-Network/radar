@@ -31,6 +31,10 @@ func Apply(ctx context.Context, root string, r Report) (Applied, error) {
 // ApplyWithOptions repeats explicit authorization for external merge drivers.
 func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Applied, error) {
 	a := Applied{FastForward: []string{}}
+	analysis, e := analysisOptions(o)
+	if e != nil {
+		return a, e
+	}
 	if len(r.Order) != len(r.Branches) || len(r.Order) == 0 {
 		return a, errors.New("invalid landing order")
 	}
@@ -69,14 +73,16 @@ func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Ap
 	if e != nil {
 		return a, e
 	}
-	a.Report, e = integration.Analyze(ctx, c, integration.Options{})
+	a.Report, e = integration.Analyze(ctx, c, analysis)
 	if e != nil {
 		return a, e
 	}
 	if len(c.Conflicts) > 0 {
 		return a, errors.New("landing candidate has textual conflicts")
 	}
-	if a.Report.Gate.Verdict != gate.Pass {
+	// A selected policy may require a check supplied by Finalize (for example
+	// configuration_stability). Defer that verdict until the final boundary.
+	if o.Finalize == nil && a.Report.Gate.Verdict != gate.Pass {
 		return a, errors.New("landing candidate has failing or unverified required static checks")
 	}
 	a.Commit = c.Commit
@@ -108,6 +114,20 @@ func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (Ap
 	ce := consumer.Wait()
 	if pe != nil || ce != nil {
 		return a, errors.New("unable to import private integration objects")
+	}
+	// Configuration belongs to the invocation, not the Git candidate. Check its
+	// final boundary after object import and before making any integration ref
+	// visible. A failed finalizer may leave immutable objects, never a new ref.
+	if e = ctx.Err(); e != nil {
+		return a, e
+	}
+	if o.Finalize != nil {
+		if e = o.Finalize(ctx, &a.Report); e != nil {
+			return a, e
+		}
+	}
+	if a.Report.Gate.Verdict != gate.Pass {
+		return a, errors.New("landing configuration or selected requirements are unverified; no integration ref published")
 	}
 	// Create-only compare-and-swap: concurrent invocations cannot replace a ref.
 	if existing, err := gitrepo.Resolve(ctx, root, a.Ref); err == nil {

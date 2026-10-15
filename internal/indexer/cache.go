@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"sync"
 
 	"github.com/Jake-Network/radar/internal/languages"
@@ -16,12 +17,45 @@ import (
 // It is safe to share among concurrent builds; returned values never alias it.
 type ParseCache struct {
 	mu           sync.Mutex
-	entries      map[string]languages.Result
+	entries      map[string]cacheEntry
+	clock        uint64
 	bytes        int64
 	hits, misses uint64
+	evictions    uint64
 }
 
-func NewParseCache() *ParseCache { return &ParseCache{entries: map[string]languages.Result{}} }
+type cacheEntry struct {
+	Result      languages.Result `json:"result"`
+	SourceBytes int64            `json:"source_bytes"`
+	Used        uint64           `json:"used"`
+	Cost        int64            `json:"-"`
+}
+
+func NewParseCache() *ParseCache { return &ParseCache{entries: map[string]cacheEntry{}} }
+func entryCost(key string, e cacheEntry) int64 {
+	if e.Cost != 0 {
+		return e.Cost
+	}
+	e.Used = 0
+	raw, _ := json.Marshal(e)
+	return e.SourceBytes + max(parseResultBytes(e.Result), int64(len(raw))) + int64(len(key)*6+256)
+}
+
+// evictOldestLocked discards the least recently used syntax, never source evidence.
+func (c *ParseCache) evictOldestLocked() {
+	var oldest string
+	var used uint64
+	for key, e := range c.entries {
+		if oldest == "" || e.Used < used || (e.Used == used && key < oldest) {
+			oldest, used = key, e.Used
+		}
+	}
+	if oldest != "" {
+		c.bytes -= entryCost(oldest, c.entries[oldest])
+		delete(c.entries, oldest)
+		c.evictions++
+	}
+}
 func (c *ParseCache) get(key, repository, revision string) (languages.Result, bool) {
 	if c == nil {
 		return languages.Result{}, false
@@ -34,7 +68,10 @@ func (c *ParseCache) get(key, repository, revision string) (languages.Result, bo
 		return languages.Result{}, false
 	}
 	c.hits++
-	return cloneParseResult(result, repository, revision), true
+	c.clock++
+	result.Used = c.clock
+	c.entries[key] = result
+	return cloneParseResult(result.Result, repository, revision), true
 }
 func (c *ParseCache) put(key string, result languages.Result, sourceBytes int64) {
 	if c == nil {
@@ -45,14 +82,23 @@ func (c *ParseCache) put(key string, result languages.Result, sourceBytes int64)
 	if _, ok := c.entries[key]; ok {
 		return
 	}
-	cost := sourceBytes + parseResultBytes(result) + int64(len(key)+64)
-	if len(c.entries) >= MaxSourceFiles || c.bytes+cost > MaxTotalSourceBytes {
+	if sourceBytes < 0 {
 		return
 	}
-	if c.entries == nil {
-		c.entries = map[string]languages.Result{}
+	c.clock++
+	entry := cacheEntry{Result: cloneParseResult(result, "", ""), SourceBytes: sourceBytes, Used: c.clock}
+	cost := entryCost(key, entry)
+	entry.Cost = cost
+	if cost > MaxTotalSourceBytes-1024 {
+		return
 	}
-	c.entries[key] = cloneParseResult(result, "", "")
+	for len(c.entries) >= MaxSourceFiles || c.bytes+cost > MaxTotalSourceBytes-1024 {
+		c.evictOldestLocked()
+	}
+	if c.entries == nil {
+		c.entries = map[string]cacheEntry{}
+	}
+	c.entries[key] = entry
 	c.bytes += cost
 }
 func parseResultBytes(result languages.Result) int64 {

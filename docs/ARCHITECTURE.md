@@ -63,8 +63,10 @@ and private dirty-candidate analysis for one static preview. Onboarding writes
 project-local hook configuration; portable plugin packages supply the same
 command. They do not execute tests or control agent permissions. Their result
 cache binds local/peer saved state and analysis configuration. A separate bounded
-syntax cache reuses parse results by path/content/version; manifests, import
-resolution and source safety checks run again for each tree.
+syntax cache reuses parse results by path/content/Go build identity; manifests,
+import resolution and source safety checks run again for each tree. Loaded
+entries retain source-byte costs and LRU eviction leaves room for fresh syntax.
+Builds without an available linker ID disable cross-process cache reuse.
 
 Landing reuses `integration.Analyze` for pairs and reanalyzes the complete
 ordered candidate before publishing a private ref. Pair results cannot authorize

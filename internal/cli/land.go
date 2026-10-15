@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,10 +15,12 @@ import (
 )
 
 func landCommand() command {
-	return command{name: "land", usage: "radar land [BRANCH ...] [--base REF] [--apply] [--conflict-brief] [--driver mergiraf|weave --allow-execution]", summary: "Plan branch landing order and publish an opt-in private integration ref.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "land", usage: "radar land [BRANCH ...] [--base REF] [--policy PATH] [--plan PATH] [--apply] [--conflict-brief] [--driver mergiraf|weave --allow-execution]", summary: "Plan branch landing order and publish an opt-in private integration ref.", flags: func(fs *flag.FlagSet, o *options) {
 		fs.Var(baseFlag{o}, "base", "integration base (REF, or REPO=REF in a workspace)")
 		fs.Var(listFlag{&o.with}, "with", "also inspect a repository path (repeatable)")
 		fs.Var(listFlag{&o.only}, "only", "limit workspace repositories (repeatable)")
+		policyFlag(fs, o)
+		planFlag(fs, o)
 		fs.BoolVar(&o.apply, "apply", false, "publish only refs/radar/integration/<id>; never update a branch")
 		fs.BoolVar(&o.conflictBrief, "conflict-brief", false, "return repair material for exactly two branches")
 		fs.StringVar(&o.driver, "driver", "", "explicit installed structural merge driver")
@@ -26,8 +29,8 @@ func landCommand() command {
 }
 
 func (a *app) land(o options) int {
-	if o.verify || o.trailer || o.observeCoverage || o.plan != "" || o.policy != "" || o.suite != "" || o.again || o.replay != "" {
-		return a.fail(errors.New("landing is static; run a separate gate for test execution, policy or plan verification"))
+	if o.verify || o.trailer || o.observeCoverage || o.suite != "" || o.again || o.replay != "" {
+		return a.fail(errors.New("landing is static; run a separate gate for test execution"))
 	}
 	if err := a.repository(); err != nil {
 		return a.fail(err)
@@ -44,6 +47,10 @@ func (a *app) land(o options) int {
 		if inv != nil {
 			return a.workspaceLanding(o, inv)
 		}
+	}
+	configuration, err := a.captureConfiguration(o)
+	if err != nil {
+		return a.fail(err)
 	}
 	base := o.base
 	if base == "" {
@@ -63,7 +70,13 @@ func (a *app) land(o options) int {
 	if o.conflictBrief && (len(refs) != 2 || o.apply || o.driver != "" || o.allow) {
 		return a.fail(errors.New("--conflict-brief requires exactly two branches and no apply or driver"))
 	}
-	lopts := landing.Options{Base: sha, Branches: refs, Driver: o.driver, AllowExecution: o.allow}
+	lopts := landing.Options{Base: sha, Branches: refs, Driver: o.driver, AllowExecution: o.allow,
+		Analysis: integration.Options{Policy: configuration.Policy, Plan: configuration.Plan},
+		Finalize: func(_ context.Context, report *integration.Report) error {
+			configuration.applyIntegration(report)
+			return nil
+		},
+	}
 	var plan *landing.Report
 	var brief *landing.ConflictBrief
 	order := append([]string{}, refs...)
@@ -96,9 +109,12 @@ func (a *app) land(o options) int {
 	if o.apply {
 		v, e := landing.ApplyWithOptions(a.ctx, a.root, *plan, lopts)
 		if e != nil {
-			return a.fail(e)
+			if v.Report.Gate.Verdict != gate.Blocked && v.Report.Gate.Verdict != gate.Fail && v.Report.Gate.Verdict != gate.Error {
+				return a.fail(e)
+			}
+		} else {
+			applied = &v
 		}
-		applied = &v
 		report = v.Report
 		report.Limitations = append(report.Limitations, "Integration ref covers this repository only; cross-repository contracts require a separate workspace gate.")
 	} else {
@@ -109,7 +125,7 @@ func (a *app) land(o options) int {
 			return a.fail(err)
 		}
 	}
-	g := gateReport{BaseRef: base, Report: report, Landing: plan, ConflictBrief: brief, IntegrationRef: applied, Attribution: map[string]gateAttribution{}}
+	g := gateReport{Configuration: configuration.Inputs, BaseRef: base, Report: report, Landing: plan, ConflictBrief: brief, IntegrationRef: applied, Attribution: map[string]gateAttribution{}}
 	for i, ref := range order {
 		changed, e := a.branchChanges(sha, report.Inputs[i])
 		if e != nil {

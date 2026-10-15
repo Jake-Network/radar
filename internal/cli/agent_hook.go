@@ -142,13 +142,13 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	}
 	parseCache, saveParseCache := savedSyntaxCache(root)
 	defer saveParseCache()
-	drift, err := overlap.Analyze(ctx, root, in.Base, in.OverlapInputs, parseCache)
-	if err != nil {
-		return unavailable("cross-worktree inspection: " + err.Error())
-	}
 	current, err := gitrepo.InspectWorktree(ctx, root)
 	if err != nil {
 		return unavailable(err.Error())
+	}
+	drift, err := overlap.AnalyzeCurrent(ctx, root, in.Base, current.Branch, in.OverlapInputs, parseCache)
+	if err != nil {
+		return unavailable("cross-worktree inspection: " + err.Error())
 	}
 	newDrift, err := overlap.NewWithDirty(ctx, root, in.Base, current.Branch, in.OverlapInputs, drift, parseCache)
 	if err != nil {
@@ -182,6 +182,11 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			}
 			r.Message = hookText(strings.Join(lines, "\n"))
 		}
+		for _, limitation := range drift.Limitations {
+			if strings.HasPrefix(limitation, "Overlap incomplete:") {
+				r.Message = hookText(r.Message + " Radar NOT VERIFIED: " + limitation)
+			}
+		}
 		saveHookCache(root, cacheKey, r)
 		return respond(r)
 	}
@@ -196,6 +201,15 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	}
 	if err != nil {
 		return unavailable(err.Error())
+	}
+	if len(candidate.Conflicts) > 0 {
+		inspected, err := hookAllInputsInspected(ctx, candidate)
+		if err != nil {
+			return unavailable("candidate input inspection unavailable: " + err.Error())
+		}
+		if !inspected {
+			return finish(agentHookResponse{Message: "Radar NOT VERIFIED: merge stopped before all selected inputs were inspected; saved changes in later inputs remain unchecked. Reconcile the earlier committed conflict and rerun."})
+		}
 	}
 	report, err := integration.Analyze(ctx, candidate, integration.Options{Base: in.Base, Branches: in.SHAs, Policy: in.config.Policy, ParseCache: parseCache})
 	if err != nil {

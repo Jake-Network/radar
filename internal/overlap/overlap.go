@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/indexer"
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
@@ -23,20 +24,51 @@ type Report struct {
 	Limitations []string        `json:"limitations"`
 }
 
-// Analyze checks every pair up to twelve inputs. More inputs are explicitly
-// incomplete rather than silently interpreting unchecked pairs as independent.
+// Analyze checks a bounded number of pairs. Omitted pairs remain explicitly
+// incomplete rather than silently being treated as independent.
 func Analyze(ctx context.Context, root, base string, inputs []Input, caches ...*indexer.ParseCache) (Report, error) {
+	return analyzePairs(ctx, root, base, inputs, "", caches...)
+}
+
+// AnalyzeCurrent checks only pairs involving the current worktree. Stop hooks
+// do not need peer-to-peer findings and must not pay their quadratic cost.
+func AnalyzeCurrent(ctx context.Context, root, base, current string, inputs []Input, caches ...*indexer.ParseCache) (Report, error) {
+	if current == "" {
+		return Report{Findings: []model.Finding{}, Limitations: []string{"Overlap incomplete: detached current worktree has no named peer pair scope."}}, nil
+	}
+	return analyzePairs(ctx, root, base, inputs, current, caches...)
+}
+
+func analyzePairs(ctx context.Context, root, base string, inputs []Input, current string, caches ...*indexer.ParseCache) (Report, error) {
 	cache := indexer.NewParseCache()
 	if len(caches) > 0 && caches[0] != nil {
 		cache = caches[0]
 	}
 	out := Report{Findings: []model.Finding{}, Limitations: []string{"Supported static detectors only; absent drift is not proof of compatibility. Dynamic references and runtime behavior remain unverified."}}
-	if len(inputs) > 12 {
-		return out, fmt.Errorf("overlap supports at most 12 worktrees; select fewer branches")
+	budget := 66 // all pairs for twelve worktrees
+	if current != "" {
+		budget = 11
+	}
+	eligible := 0
+	for i := range inputs {
+		for j := i + 1; j < len(inputs); j++ {
+			if current == "" || inputs[i].Branch == current || inputs[j].Branch == current {
+				eligible++
+			}
+		}
+	}
+	if eligible > budget {
+		out.Limitations = append(out.Limitations, fmt.Sprintf("Overlap incomplete: %d of %d eligible pairs omitted by the %d-pair inspection limit.", eligible-budget, eligible, budget))
 	}
 	standalone := map[int]map[string]bool{}
 	for i := 0; i < len(inputs); i++ {
 		for j := i + 1; j < len(inputs); j++ {
+			if current != "" && inputs[i].Branch != current && inputs[j].Branch != current {
+				continue
+			}
+			if out.Pairs >= budget {
+				continue
+			}
 			if err := ctx.Err(); err != nil {
 				return out, err
 			}
@@ -45,6 +77,11 @@ func Analyze(ctx context.Context, root, base string, inputs []Input, caches ...*
 				return out, err
 			}
 			out.Pairs++
+			for _, limitation := range pair.Limitations {
+				if strings.HasPrefix(limitation, "Overlap incomplete:") {
+					out.Limitations = append(out.Limitations, fmt.Sprintf("%s (%s + %s)", limitation, inputs[i].Branch, inputs[j].Branch))
+				}
+			}
 			relevant := []model.Finding{}
 			for _, f := range pair.Findings {
 				if supported(f) {
@@ -86,7 +123,12 @@ func Analyze(ctx context.Context, root, base string, inputs []Input, caches ...*
 func supported(f model.Finding) bool {
 	return f.Severity == model.SeverityError && (f.Code == "worktree_textual_conflict" || f.Code == "duplicate_unique_key" || f.Code == "duplicate_route" || strings.HasPrefix(f.Code, "symbol_") || strings.HasPrefix(f.Code, "migration_") || strings.HasPrefix(f.Code, "unique_"))
 }
-func identity(f model.Finding) string { return f.Code + "\x00" + f.Explanation }
+func identity(f model.Finding) string {
+	if f.Code == "worktree_textual_conflict" {
+		return f.ID
+	}
+	return f.Code + "\x00" + f.Explanation
+}
 
 func analyze(ctx context.Context, root, base string, inputs []Input, cache *indexer.ParseCache) (integration.Report, error) {
 	heads := []string{}
@@ -99,7 +141,13 @@ func analyze(ctx context.Context, root, base string, inputs []Input, cache *inde
 			snaps = append(snaps, s)
 		}
 	}
-	c, err := integration.BuildDirtyCandidate(ctx, root, base, heads, snaps)
+	var c *integration.Candidate
+	var err error
+	if len(snaps) == 0 {
+		c, err = integration.BuildCandidate(ctx, root, base, heads)
+	} else {
+		c, err = integration.BuildDirtyCandidate(ctx, root, base, heads, snaps)
+	}
 	if c != nil {
 		defer c.Close()
 	}
@@ -111,6 +159,18 @@ func analyze(ctx context.Context, root, base string, inputs []Input, cache *inde
 		return r, err
 	}
 	if len(c.Conflicts) > 0 {
+		stopped, err := gitrepo.Resolve(ctx, c.Dir, "MERGE_HEAD")
+		if err != nil {
+			return r, err
+		}
+		for i, input := range c.Inputs {
+			if input == stopped {
+				if i < len(c.Inputs)-1 {
+					r.Limitations = append(r.Limitations, "Overlap incomplete: merge stopped before the later pair input was inspected.")
+				}
+				break
+			}
+		}
 		for _, p := range c.Conflicts {
 			hunks, e := ConflictHunks(ctx, c, p)
 			if e != nil {
@@ -144,7 +204,7 @@ func NewWithDirty(ctx context.Context, root, base, current string, inputs []Inpu
 	if !hasDirty || len(observed.Findings) == 0 {
 		return nil, nil
 	}
-	before, err := Analyze(ctx, root, base, baseline, caches...)
+	before, err := AnalyzeCurrent(ctx, root, base, current, baseline, caches...)
 	if err != nil {
 		return nil, err
 	}

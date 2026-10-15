@@ -3,6 +3,11 @@ package integration
 import (
 	"context"
 	"fmt"
+	"github.com/Jake-Network/radar/internal/evidence"
+	"github.com/Jake-Network/radar/internal/runners"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -114,5 +119,126 @@ func TestIncompleteFailureIdentitiesCannotClearCandidateFailure(t *testing.T) {
 	ev := r.Executions[0]
 	if r.Gate.Verdict != gate.Fail || ev.BaseComparison.AllExisting || ev.Observation.TestsFailed != 21 || !strings.Contains(ev.BaseComparison.Explanation, "lack recorded identities") {
 		t.Fatalf("gate=%+v ev=%+v baseline=%+v", r.Gate, ev, ev.BaseComparison)
+	}
+}
+
+func TestFailurePathsRequireExactCaseModule(t *testing.T) {
+	ev := ExecutionEvidence{CWD: ".", Observation: evidence.CandidateObservation{FailedCases: []string{"pkg.test_old.Case.test_old", "other.test_api.Case.test_new", "tests/test_foobar.py::test_new"}}, BaseComparison: &BaseComparison{ExistingCases: []string{"pkg.test_old.Case.test_old"}}}
+	paths := []string{"test_api.py", "test_foo.py", "tests/test_foo.py", "other/test_api.py", "tests/test_foobar.py"}
+	if got := ev.FailurePaths(paths); !slices.Equal(got, []string{"other/test_api.py", "tests/test_foobar.py"}) {
+		t.Fatalf("unrelated suffix/prefix files became leads: %v", got)
+	}
+	ev.CWD = "other"
+	ev.Observation.FailedCases = []string{"test_api.Case.test_new"}
+	if got := ev.FailurePaths([]string{"test_api.py", "other/test_api.py", "other/test_api/extra.py"}); !slices.Equal(got, []string{"other/test_api.py"}) {
+		t.Fatalf("CWD module match=%v", got)
+	}
+	ev.CWD = "."
+	ev.Command = []string{"python3", "-m", "unittest", "discover", "-s", "other"}
+	if got := ev.FailurePaths([]string{"test_api.py", "other/test_api.py"}); !slices.Equal(got, []string{"other/test_api.py"}) {
+		t.Fatalf("discover module match=%v", got)
+	}
+}
+
+func TestBaseComparisonsDoNotConsumeCandidateCommandBudget(t *testing.T) {
+	root := t.TempDir()
+	gitTest(t, root, "init", "-q")
+	for _, name := range []string{"a", "b"} {
+		put(t, root, "source_"+name+".py", "VALUE = 1\n")
+		put(t, root, "test_"+name+".py", "import unittest\nfrom source_"+name+" import VALUE\nclass Cases(unittest.TestCase):\n def test_failure(self): self.assertEqual(VALUE, 0)\n")
+	}
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "base")
+	gitTest(t, root, "branch", "baseline")
+	gitTest(t, root, "checkout", "-qb", "change")
+	for _, name := range []string{"a", "b"} {
+		put(t, root, "source_"+name+".py", "VALUE = 2\n")
+	}
+	gitTest(t, root, "commit", "-qam", "changes")
+	o := opts("change")
+	o.Command = nil
+	o.Suite = "full"
+	o.MaxCommands = 2
+	r, err := Preview(context.Background(), root, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Executions) != 2 || len(r.Selection.Omitted) != 0 {
+		t.Fatalf("baseline reruns displaced selected candidate commands: executions=%d selection=%+v", len(r.Executions), r.Selection)
+	}
+	for _, ev := range r.Executions {
+		if ev.BaseComparison == nil || ev.BaseComparison.Execution != nil || !strings.Contains(ev.BaseComparison.Explanation, "budget exhausted") {
+			t.Fatalf("%+v", ev.BaseComparison)
+		}
+	}
+}
+
+func TestBaseVerifierReusesCheckoutAndPreparation(t *testing.T) {
+	root := fixture(t)
+	base := gitTest(t, root, "rev-parse", "baseline")
+	r := Report{Base: base}
+	ev := ExecutionEvidence{Status: model.StatusFailed, SourceAfterExecution: "unchanged", Observation: evidence.CandidateObservation{Status: model.StatusFailed, TestsFailed: 1, FailedCases: []string{"test_failure.Cases.test_failure"}}}
+	// Add a failing test to the baseline, and count declared setup outside the
+	// private source tree so reuse is directly observable.
+	gitTest(t, root, "checkout", "baseline")
+	put(t, root, "test_failure.py", "import unittest\nfrom pathlib import Path\nclass Cases(unittest.TestCase):\n def test_failure(self):\n  Path('report.xml').write_text('<testsuite tests=\"1\" failures=\"1\"><testcase name=\"test_failure\"><failure/></testcase></testsuite>')\n  self.fail('existing')\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "existing failure")
+	r.Base = gitTest(t, root, "rev-parse", "HEAD")
+	setupLog := filepath.Join(t.TempDir(), "setup-count")
+	t.Setenv("RADAR_STATE_DIR", t.TempDir())
+	profile := &runners.Profile{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", fmt.Sprintf("from pathlib import Path; p=Path(%q); p.write_text(p.read_text()+'run\\n' if p.exists() else 'run\\n')", setupLog)}}}
+	o := opts()
+	o.Command = []string{"python3", "-m", "unittest", "test_failure"}
+	o.CWD = "."
+	o.report = "report.xml"
+	o.budget = &commandBudget{left: 3}
+	v := baseVerifier{}
+	defer v.close()
+	first := v.compare(context.Background(), root, r, ev, o, profile, 1<<20)
+	if first.Execution == nil || !first.AllExisting {
+		t.Fatalf("first=%+v", first)
+	}
+	candidate := v.candidate
+	second := v.compare(context.Background(), root, r, ev, o, profile, 1<<20)
+	if second.Execution == nil || !second.AllExisting || v.candidate != candidate {
+		t.Fatalf("second=%+v reused=%v", second, v.candidate == candidate)
+	}
+	data, err := os.ReadFile(setupLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "run\n" || o.budget.left != 0 {
+		t.Fatalf("setup=%q remaining budget=%d", data, o.budget.left)
+	}
+}
+
+func TestBaseVerifierRejectsLaterRunsAfterSourceMutation(t *testing.T) {
+	root := fixture(t)
+	gitTest(t, root, "checkout", "baseline")
+	put(t, root, "test_failure.py", "import unittest\nfrom pathlib import Path\nclass Cases(unittest.TestCase):\n def test_failure(self):\n  Path('backend.py').write_text('changed')\n  self.fail('existing')\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "mutating base failure")
+	r := Report{Base: gitTest(t, root, "rev-parse", "HEAD")}
+	ev := ExecutionEvidence{Status: model.StatusFailed, SourceAfterExecution: "unchanged"}
+	o := opts()
+	o.Command = []string{"python3", "-m", "unittest", "test_failure"}
+	o.budget = &commandBudget{left: 2}
+	v := baseVerifier{}
+	defer v.close()
+	first := v.compare(context.Background(), root, r, ev, o, nil, 1<<20)
+	second := v.compare(context.Background(), root, r, ev, o, nil, 1<<20)
+	if first.Execution == nil || first.Execution.SourceAfterExecution != "modified" || second.Execution != nil || o.budget.left != 1 {
+		t.Fatalf("first=%+v second=%+v budget=%d", first, second, o.budget.left)
+	}
+}
+
+func TestFailurePathsPytestIDsRespectCWD(t *testing.T) {
+	for _, id := range []string{"tests/test_x.py::Case::test_new", "apps/svc/tests/test_x.py::Case::test_new"} {
+		ev := ExecutionEvidence{CWD: "apps/svc", Observation: evidence.CandidateObservation{FailedCases: []string{id}}, BaseComparison: &BaseComparison{ExistingCases: []string{"tests/test_old.py::test_old"}}}
+		paths := []string{"tests/test_x.py", "apps/svc/tests/test_x.py", "apps/svc2/tests/test_x.py", "apps/svc/tests/test_x_extra.py"}
+		if got := ev.FailurePaths(paths); !slices.Equal(got, []string{"apps/svc/tests/test_x.py"}) {
+			t.Fatalf("id=%s paths=%v", id, got)
+		}
 	}
 }

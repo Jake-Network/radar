@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/overlap"
 	"github.com/Jake-Network/radar/internal/watch"
 )
@@ -264,5 +268,115 @@ func TestWatchBranchRenameInvalidatesDriftLabels(t *testing.T) {
 	})
 	if completed != 2 {
 		t.Fatalf("wanted two checks, got %d", completed)
+	}
+}
+
+func TestHookEarlyMergeFailureLeavesLaterDirtyInputUnchecked(t *testing.T) {
+	root, agent := agentRepo(t, map[string]string{"backend.py": "VALUE = 1\n"})
+	agent("early", map[string]string{"backend.py": "VALUE = 2\n"})
+	put(t, root, "backend.py", "VALUE = 3\n")
+	gitTest(t, root, "add", "backend.py")
+	gitTest(t, root, "commit", "-qm", "base advanced")
+	current := agent("current", nil)
+	put(t, current, "new.py", "VALUE = 4\n")
+	result := hookInvoke(t, root, hookEvent(t, current), "--base", "main", "--branches", "early,current")
+	if result.Decision != "" || !strings.Contains(result.Message, "later inputs remain unchecked") || strings.Contains(result.Message, "introduced no new") {
+		t.Fatalf("skipped dirty input fabricated an unchanged-conflict claim: %+v", result)
+	}
+}
+
+func TestOverlapCurrentScopeUsesBoundedPeerPairs(t *testing.T) {
+	root, _ := agentRepo(t, map[string]string{"backend.py": "VALUE = 1\n"})
+	head := gitTest(t, root, "rev-parse", "HEAD")
+	inputs := []overlap.Input{}
+	for i := 0; i < 13; i++ {
+		inputs = append(inputs, overlap.Input{Branch: fmt.Sprintf("branch-%d", i), Head: head})
+	}
+	focused, err := overlap.AnalyzeCurrent(context.Background(), root, head, "branch-12", inputs)
+	if err != nil || focused.Pairs != 11 || !strings.Contains(strings.Join(focused.Limitations, " "), "1 of 12 eligible pairs omitted") {
+		t.Fatalf("current scope was not bounded and incomplete: %+v %v", focused, err)
+	}
+}
+
+func TestOverlapSymbolFilterMatchesNamesOnly(t *testing.T) {
+	tests := []struct{ code, text, want string }{
+		{"symbol_dangling_reference", "Cross-worktree drift: client.py newly references removed name charge from backend.py.", "charge"},
+		{"symbol_argument_count", "client.py newly calls charge with 2 arguments; the combined declaration now accepts 1.", "charge"},
+		{"symbol_duplicate_definition", "New duplicate declaration go:api:server:charge in the combined tree.", "charge"},
+		{"worktree_textual_conflict", "Saved branch snapshots have a textual conflict in charge.py.", ""},
+	}
+	for _, tt := range tests {
+		got := overlapFindingSymbol(model.Finding{Code: tt.code, Explanation: tt.text})
+		if got != tt.want {
+			t.Fatalf("%s: got %q want %q", tt.code, got, tt.want)
+		}
+	}
+}
+
+func TestWatchMoreThanTwelveInputsRetainsCandidatePreview(t *testing.T) {
+	root, agent := agentRepo(t, map[string]string{"backend.py": "VALUE = 1\n"})
+	refs := []string{}
+	for i := 0; i < 13; i++ {
+		name := fmt.Sprintf("agent-%02d", i)
+		refs = append(refs, name)
+		agent(name, map[string]string{fmt.Sprintf("docs/note-%02d.md", i): "documentation\n"})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	writer := &driftEventWriter{cancel: cancel}
+	cli := &app{ctx: ctx, root: root, out: writer, errout: &bytes.Buffer{}}
+	code := cli.watch(options{base: "main", args: refs, jsonl: true, interval: time.Second, timeout: time.Minute, maxCommands: 16})
+	if code != 0 {
+		t.Fatalf("watch exit %d: %s", code, writer.out.String())
+	}
+	var report *integration.Report
+	for _, line := range strings.Split(strings.TrimSpace(writer.out.String()), "\n") {
+		var event struct {
+			Type   string `json:"type"`
+			Error  string `json:"error"`
+			Result *struct {
+				Value integration.Report `json:"value"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type == "error" {
+			t.Fatalf("overlap limit killed candidate preview: %s", event.Error)
+		}
+		if event.Type == "completed" && event.Result != nil {
+			report = &event.Result.Value
+		}
+	}
+	if report == nil || report.CandidateTree == "" || len(report.Changed) != 13 || report.Gate.Verdict != gate.Pass {
+		t.Fatalf("complete static candidate preview missing: %+v", report)
+	}
+	foundCheck, foundCoverage := false, false
+	for _, check := range report.Checks {
+		if check.ID == "worktree_overlap" {
+			foundCheck = check.Status == model.StatusUnknown
+		}
+	}
+	for _, coverage := range report.Coverage {
+		if coverage.Analyzer == "worktree_overlap" {
+			foundCoverage = coverage.Status == model.StatusUnknown && len(coverage.Unavailable) > 0
+		}
+	}
+	for _, required := range report.Gate.Required {
+		if required.ID == "worktree_overlap" {
+			t.Fatal("supplemental pair gap changed candidate requirements")
+		}
+	}
+	if !strings.Contains(strings.Join(report.Limitations, " "), "12 of 78 eligible pairs omitted") {
+		t.Fatalf("all-pair limit was not reported precisely: %+v", report.Limitations)
+	}
+	if !foundCheck || !foundCoverage {
+		t.Fatalf("pair omissions missing machine-readable unknown check/coverage: %+v", report)
+	}
+	// No omission means no additional public check or coverage.
+	beforeChecks, beforeCoverage := len(report.Checks), len(report.Coverage)
+	watchOverlapCoverage(report, overlap.Report{}, refs)
+	if len(report.Checks) != beforeChecks || len(report.Coverage) != beforeCoverage {
+		t.Fatal("complete pair reports gained unknown coverage")
 	}
 }

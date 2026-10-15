@@ -154,3 +154,263 @@ func TestPythonImportProbeFlatNamespaces(t *testing.T) {
 		t.Fatalf("external editable flat namespace accepted: %+v %v", got, err)
 	}
 }
+
+func TestPythonConsoleAndVersionedLaunchers(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip(err)
+	}
+	root, external, venv := t.TempDir(), t.TempDir(), t.TempDir()
+	put := func(base, name, data string) {
+		t.Helper()
+		p := filepath.Join(base, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(root, "pyproject.toml", "[project]\nname='sample'\n")
+	put(root, "src/shared_modules/__init__.py", "VALUE = 'candidate'\n")
+	put(external, "shared_modules/__init__.py", "VALUE = 'external'\n")
+	if out, e := exec.Command(python, "-m", "venv", "--without-pip", venv).CombinedOutput(); e != nil {
+		t.Fatalf("%s %v", out, e)
+	}
+	interpreter := filepath.Join(venv, "bin/python")
+	site, e := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
+	if e != nil {
+		t.Fatal(e)
+	}
+	pth := filepath.Join(strings.TrimSpace(string(site)), "editable.pth")
+	if e = os.WriteFile(pth, []byte(external+"\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	put(venv, "bin/pytest", "#!"+interpreter+"\nimport shared_modules\nprint('1 passed in 0.01s')\n")
+	if e = os.Symlink(interpreter, filepath.Join(venv, "bin/python3.12")); e != nil {
+		t.Skip(e)
+	}
+	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	env := environment(t.TempDir(), nil)
+	for _, argv := range [][]string{{"pytest"}, {"python3.12", "-m", "pytest"}} {
+		if d := pythonImportCheck(context.Background(), root, root, argv, env); d == nil || d.Name != "shared_modules" {
+			t.Fatalf("external %v: %+v", argv, d)
+		}
+	}
+	// The uv context uses its own PATH, rather than the parent interpreter.
+	uvbin := t.TempDir()
+	put(uvbin, "uv", "#!/bin/sh\nshift\nPATH='"+filepath.Join(venv, "bin")+":'$PATH\nexport PATH\nexec \"$@\"\n")
+	argv := []string{filepath.Join(uvbin, "uv"), "run", "pytest"}
+	if d := pythonImportCheck(context.Background(), root, root, argv, env); d == nil || d.Name != "shared_modules" {
+		t.Fatalf("uv external: %+v", d)
+	}
+	if e = os.WriteFile(pth, []byte(filepath.Join(root, "src")+"\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	for _, cmd := range [][]string{{"pytest"}, argv} {
+		got, e := ObserveCandidate(context.Background(), root, cmd, time.Minute)
+		if e != nil || got.Status != model.StatusPassed || got.TestsRun != 1 {
+			t.Fatalf("candidate local %v: %+v %v", cmd, got, e)
+		}
+	}
+	put(venv, "bin/pytest", "#!/bin/sh\nprintf '1 passed in 0.01s\\n'\n")
+	if d := pythonImportCheck(context.Background(), root, root, []string{"pytest"}, env); d == nil {
+		t.Fatal("unsupported wrapper granted provenance")
+	}
+}
+
+func TestPythonCommandProjectScopeAndTransitiveMembers(t *testing.T) {
+	root := t.TempDir()
+	put := func(name, data string) {
+		t.Helper()
+		p := filepath.Join(root, name)
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	put("pyproject.toml", "[tool.uv.workspace]\nmembers=['apps/*','libs/*']\n")
+	for _, project := range []string{"apps/selected", "apps/unrelated", "libs/shared", "libs/leaf"} {
+		put(project+"/pyproject.toml", "[project]\nname='sample'\n")
+	}
+	put("apps/selected/app/__init__.py", "import shared_modules\n")
+	put("apps/selected/tests/__init__.py", "")
+	put("apps/selected/tests/test_selected.py", "from app import example\n")
+	put("apps/unrelated/app/__init__.py", "")
+	put("apps/unrelated/utils/__init__.py", "")
+	put("libs/shared/src/shared_modules/__init__.py", "import leaf_modules\n")
+	put("libs/leaf/src/leaf_modules/__init__.py", "")
+	if d := pythonImportCheck(context.Background(), root, root, []string{"uv", "run", "pytest"}, os.Environ()); d == nil || d.Kind != "python_import_unverified" {
+		t.Fatal("aggregate workspace command claimed empty package scope", d)
+	}
+	names, e := firstPartyPythonForCommand(root, root, []string{"python3", "-m", "pytest", "apps/selected/tests/test_selected.py"})
+	if e != nil || strings.Join(names, ",") != "app,leaf_modules,shared_modules" {
+		t.Fatalf("scope %v %v", names, e)
+	}
+	put("libs/leaf/src/leaf_modules/__init__.py", "import importlib\nimportlib.import_module('hidden')\n")
+	if _, e = firstPartyPythonForCommand(root, filepath.Join(root, "apps/selected"), []string{"pytest", "tests/test_selected.py"}); e == nil {
+		t.Fatal("dynamic transitive import marked verified")
+	}
+}
+
+func TestPythonTestsOutsideMemberProject(t *testing.T) {
+	root := t.TempDir()
+	for name, data := range map[string]string{
+		"backend/pyproject.toml":          "[project]\nname='backend'\n",
+		"backend/src/service/__init__.py": "VALUE = 1\n",
+		"integration/test_http.py":        "import unittest\nclass T(unittest.TestCase):\n def test_http(self): self.assertTrue(True)\n",
+	} {
+		p := filepath.Join(root, name)
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	argv := []string{"python3", "-m", "unittest", "discover", "-s", "integration"}
+	if names, e := firstPartyPythonForCommand(root, root, argv); e != nil || len(names) != 0 {
+		t.Fatal("unrelated member packages contaminated explicit integration tests", names, e)
+	}
+	if e := os.WriteFile(filepath.Join(root, "integration/test_http.py"), []byte("import service\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if names, e := firstPartyPythonForCommand(root, root, argv); e != nil || strings.Join(names, ",") != "service" {
+		t.Fatal("test import did not establish member scope", names, e)
+	}
+}
+
+func TestPythonWorkspaceCommandModulesAndCommaImports(t *testing.T) {
+	root := t.TempDir()
+	put := func(name, data string) {
+		t.Helper()
+		p := filepath.Join(root, name)
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	put("pyproject.toml", "[tool.uv.workspace]\nmembers=['libs/*']\n")
+	put("libs/shared/pyproject.toml", "[project]\nname='shared'\n")
+	put("libs/shared/src/shared_modules/__init__.py", "")
+	for _, argv := range [][]string{{"pytest", "--pyargs", "shared_modules"}, {"python3", "-m", "unittest", "shared_modules.tests.test_example"}} {
+		names, e := firstPartyPythonForCommand(root, root, argv)
+		if e != nil || strings.Join(names, ",") != "shared_modules" {
+			t.Fatalf("module command %v: %v %v", argv, names, e)
+		}
+	}
+	for _, source := range []string{"import os, shared_modules\n", "import os, \\\n shared_modules\n", "import os; import shared_modules\n", "if True: import shared_modules\n"} {
+		put("test_root.py", source)
+		names, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_root.py"})
+		if e != nil || strings.Join(names, ",") != "shared_modules" {
+			t.Fatalf("comma import %q: %v %v", source, names, e)
+		}
+	}
+	put("test_root.py", "from importlib import import_module as load\nload('shared_modules')\n")
+	if _, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_root.py"}); e == nil {
+		t.Fatal("dynamic alias import granted provenance")
+	}
+}
+
+func TestPythonUnknownWrappersCannotBypassWorkspaceProvenance(t *testing.T) {
+	root := t.TempDir()
+	if e := os.MkdirAll(filepath.Join(root, "libs/member/src/example"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	for name, data := range map[string]string{"pyproject.toml": "[tool.uv.workspace]\nmembers=['libs/*']\n", "libs/member/pyproject.toml": "[project]\nname='example'\n", "libs/member/src/example/__init__.py": ""} {
+		if e := os.WriteFile(filepath.Join(root, name), []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	for _, argv := range [][]string{{"uv", "run", "--python", "3.12", "pytest"}, {"poetry", "run", "pytest"}, {"py", "-m", "pytest"}} {
+		if d := pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil)); d == nil || d.Kind != "python_import_unverified" {
+			t.Fatalf("unsupported %v granted verification", argv)
+		}
+	}
+}
+
+func TestPythonDeclaredStdlibNameDoesNotBypassProvenance(t *testing.T) {
+	if _, e := exec.LookPath("python3"); e != nil {
+		t.Skip(e)
+	}
+	root := t.TempDir()
+	if e := os.WriteFile(filepath.Join(root, "pyproject.toml"), []byte("[project]\nname='sample'\n"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.MkdirAll(filepath.Join(root, "src/sys"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(root, "src/sys/__init__.py"), nil, 0600); e != nil {
+		t.Fatal(e)
+	}
+	if d := pythonImportCheck(context.Background(), root, root, []string{"python3", "-m", "pytest"}, environment(t.TempDir(), nil)); d == nil || d.Name != "sys" {
+		t.Fatalf("declared package silently hidden by stdlib: %+v", d)
+	}
+}
+
+func TestPythonScopeIgnoresCommentsAndLiteralStrings(t *testing.T) {
+	root := t.TempDir()
+	put := func(name, data string) {
+		t.Helper()
+		p := filepath.Join(root, name)
+		if e := os.MkdirAll(filepath.Dir(p), 0700); e != nil {
+			t.Fatal(e)
+		}
+		if e := os.WriteFile(p, []byte(data), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	put("pyproject.toml", "[tool.uv.workspace]\nmembers=['libs/*']\n")
+	put("libs/member/pyproject.toml", "[project]\nname='shared'\n")
+	put("libs/member/src/shared_modules/__init__.py", "")
+	for _, source := range []string{
+		"# do not eval, __import__, importlib, exec, or runpy\nVALUE = 'do not eval'\n",
+		"'''Module docs\nimport shared_modules\n__import__('hidden')\n'''\nVALUE = 1\n",
+		"VALUE = r'''import shared_modules\neval('hidden')\n'''\n",
+		"VALUE = \"import shared_modules; eval('hidden')\"\n",
+		"VALUE = f'literal without interpolation'\n",
+		"VALUE = f'{name}'\n",
+		"VALUE = f'{name:eval}'\n",
+		"VALUE = f'{name:{width}}'\n",
+		"VALUE = f'{\"eval literal\"}'\n",
+	} {
+		put("test_root.py", source)
+		names, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_root.py"})
+		if e != nil || len(names) != 0 {
+			t.Fatalf("literal source incorrectly changed scope %q: %v %v", source, names, e)
+		}
+	}
+	for _, source := range []string{"VALUE = f'{eval(\"hidden\")}'\n", "VALUE = '''unterminated\n", "__import__('shared_modules')\n", "VALUE = f'{name:{__import__(\"shared_modules\")}}'\n"} {
+		put("test_root.py", source)
+		if _, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_root.py"}); e == nil {
+			t.Fatalf("uncertain code silently masked: %q", source)
+		}
+	}
+	put("test_root.py", "'''import nonexistent'''\nimport os, shared_modules # eval only in comment\n")
+	names, e := firstPartyPythonForCommand(root, root, []string{"pytest", "test_root.py"})
+	if e != nil || strings.Join(names, ",") != "shared_modules" {
+		t.Fatalf("real import lost: %v %v", names, e)
+	}
+}
+
+func TestPythonScopeSyntaxBudgetsAndCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, e := pythonExecutableSourceContext(ctx, []byte("value = 1\n")); e == nil {
+		t.Fatal("cancelled parser proceeded")
+	}
+	if _, e := firstPartyPythonForCommandContext(ctx, t.TempDir(), t.TempDir(), []string{"pytest"}); e == nil {
+		t.Fatal("cancelled scope proceeded")
+	}
+	nested := "value = " + strings.Repeat("[", 300) + "0" + strings.Repeat("]", 300) + "\n"
+	if _, e := pythonExecutableSource([]byte(nested)); e == nil {
+		t.Fatal("unbounded AST depth accepted")
+	}
+	if _, e := pythonExecutableSource([]byte(strings.Repeat("value = 0\n", 40000))); e == nil {
+		t.Fatal("unbounded AST node count accepted")
+	}
+}
