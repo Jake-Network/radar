@@ -467,7 +467,7 @@ func TestCandidateSourceStreamsLargeTrackedFiles(t *testing.T) {
 		}
 	}
 	git(t, root, "add", ".")
-	git(t, root, "commit", "-qm", "large source")
+	git(t, root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "large source")
 	cp := candidateCheckpoint(t, root)
 	before, err := InspectCandidateSource(context.Background(), root, cp, nil)
 	if err != nil || !before.Matches {
