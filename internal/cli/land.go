@@ -114,7 +114,7 @@ func (a *app) land(o options) int {
 		if e != nil {
 			if len(v.Report.Inputs) != len(order) {
 				if a.machine {
-					a.emit(map[string]any{"error": e.Error(), "status": "error", "landing_apply": v.Outcome})
+					a.emit(map[string]any{"error": e.Error(), "status": "error", "landing_apply": v.Outcome, "landing": plan})
 					return 2
 				}
 				return a.fail(fmt.Errorf("integration ref not published: %w (completed object import: %t)", e, v.Outcome.ObjectsImported))
@@ -131,7 +131,11 @@ func (a *app) land(o options) int {
 	} else {
 		previewOptions := lopts
 		previewOptions.Branches = pinned
-		report, err = landing.PreviewWithOptions(a.ctx, a.root, previewOptions)
+		if plan != nil {
+			report, err = landing.PreviewPlan(a.ctx, a.root, *plan, previewOptions)
+		} else {
+			report, err = landing.PreviewWithOptions(a.ctx, a.root, previewOptions)
+		}
 		if err != nil {
 			return a.fail(err)
 		}
@@ -148,6 +152,9 @@ func (a *app) land(o options) int {
 	a.report(g, func(w io.Writer) {
 		if plan != nil {
 			fmt.Fprintln(w, "Land order: "+strings.Join(plan.Order, " → "))
+			for _, b := range plan.RestackFirst {
+				fmt.Fprintf(w, "? Restack first: %s (conflicts with base: %s)\n", b.Name, strings.Join(b.Conflicts, ", "))
+			}
 			if len(plan.Independent) > 0 {
 				fmt.Fprintln(w, "Any time: "+strings.Join(plan.Independent, ", "))
 			}

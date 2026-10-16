@@ -6,7 +6,8 @@ const related: string[] | undefined = report.conflict_brief?.files[0]?.tests;
 const evidence: Evidence | undefined = report.drift?.[0]?.evidence;
 const verdict: Verdict = summarize(report).verdict;
 const component: HTMLElement = createSummary(report, document);
-void [order, related, evidence, verdict, component];
+const excludedCommit: string | undefined = report.landing?.restack_first?.[0]?.commit;
+void [order, related, evidence, verdict, component, excludedCommit];
 // @ts-expect-error Unsupported future verdicts cannot be accepted as success.
 const future: Verdict = 'success';
 // @ts-expect-error Pair analysis coverage is a boolean, separate from verdict.

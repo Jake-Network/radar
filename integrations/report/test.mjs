@@ -41,3 +41,17 @@ test('current public single-repo golden reports satisfy the consumer contract', 
     if (input.gate) assert.equal(parseReport(input).gate.verdict, input.gate.verdict, name);
   }
 });
+
+test('restack exclusions survive rendering and cannot recommend a full merge', () => {
+  const excluded = {name:'needs-restack', commit:'a'.repeat(40), conflicts:['api.py']};
+  const r = {...report(), landing:{restack_first:[excluded]}};
+  assert.equal(summarize(r).mergeRecommended, false);
+  assert.throws(() => parseReport(r), /excludes selected landing inputs/);
+  r.gate.verdict = 'blocked';
+  assert.deepEqual(parseReport(r).landing.restack_first, [excluded]);
+  assert.ok(summarize(r).notVerified.some(row => row.includes('needs-restack')));
+  for (const invalid of [null, {}, [{...excluded, behind:-1}], [{...excluded, conflicts:'api.py'}]]) {
+    assert.equal(summarize({...r, landing:{restack_first:invalid}}).verdict, 'error');
+  }
+  assert.equal(summarize({...report(), landing:{restack_first:[]}}).mergeRecommended, true);
+});

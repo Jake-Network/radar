@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix="radar-native-smoke-") as tmp:
     def git(*args):
         subprocess.run(["git", *args], cwd=root, check=True, stdout=subprocess.DEVNULL)
     def radar(*args):
-        result = subprocess.run([binary, *args, "--root", str(root), "--json"], cwd=root, text=True, capture_output=True)
+        result = subprocess.run([binary, *args, "--root", str(root), "--json"], cwd=root, text=True, encoding="utf-8", capture_output=True)
         assert result.returncode == 0, (args, result.returncode, result.stdout, result.stderr)
         return result.stdout
     git("init", "-q")
@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix="radar-native-smoke-") as tmp:
         assert any(n.get("name") == symbol and n["provenance"].get("path") == path and n.get("language") for n in nodes), (path, symbol, nodes)
     summary = json.loads(radar("index", "--ref", "HEAD", "--summary"))
     assert summary["entities"] == len(nodes) and summary["entities"] > 4
-    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True, encoding="utf-8").strip()
     git("checkout", "-qb", "smoke/feature")
     (root / "api.py").write_text("def answer():\n    return 43\n", encoding="utf-8")
     git("add", "api.py")

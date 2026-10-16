@@ -79,11 +79,18 @@ func (v *baseVerifier) compare(ctx context.Context, temp string, r Report, ev Ex
 			v.artifacts = append(v.artifacts, prep.Artifacts...)
 			inspection, inspectErr := evidence.InspectCandidateSource(ctx, c.Dir, evidence.CandidateCheckpoint{Repository: identity, Base: c.Base, Revision: c.Commit, Tree: c.Tree, Inputs: c.Inputs}, v.artifacts)
 			if inspectErr != nil || !inspection.Matches {
-				v.unavailable = "Declared runner preparation changed base source or source integrity is unknown."
+				if inspectErr != nil {
+					v.unavailable = "Base source inspection unavailable: " + evidence.PreparationDiagnostic(c.Dir, inspectErr)
+				} else {
+					v.unavailable = "Declared runner preparation changed base source."
+				}
 				b.Explanation += " " + v.unavailable
 				return b
 			}
 			ready = err == nil && prep.Status == model.StatusPassed
+			if !ready && prep.Error != "" {
+				b.Explanation += " " + prep.Error
+			}
 			v.prepared[profile.Root] = ready
 		}
 		if !ready {

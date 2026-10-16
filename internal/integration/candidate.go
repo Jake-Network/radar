@@ -35,6 +35,10 @@ func validateTree(ctx context.Context, root, sha string) error {
 	if e != nil {
 		return e
 	}
+	return validateTreeEntries(entries)
+}
+
+func validateTreeEntries(entries []gitrepo.TreeEntry) error {
 	for _, v := range entries {
 		if _, e := pathutil.RepoRelative(v.Path); e != nil {
 			return &UnsupportedEntryError{Path: v.Path, Unsafe: e}
@@ -59,6 +63,7 @@ type Candidate struct {
 	Commit    string
 	Tree      string
 	Conflicts []string
+	shallow   bool
 }
 
 // Close removes the private repository. It is safe to call more than once.
@@ -76,6 +81,17 @@ func (c *Candidate) Close() error {
 // the candidate is the base itself. Textual conflicts are reported in
 // Conflicts rather than as an error. The caller must Close the candidate.
 func BuildCandidate(ctx context.Context, root, base string, branches []string) (*Candidate, error) {
+	c, err := prepareCandidate(ctx, root, base, branches)
+	if err != nil {
+		return c, err
+	}
+	return mergeCandidate(ctx, c)
+}
+
+// prepareCandidate owns one disposable object store and a pristine base
+// checkout. Dirty previews can materialize several immutable input commits in
+// its private index without copying or checking out the source tree again.
+func prepareCandidate(ctx context.Context, root, base string, branches []string) (*Candidate, error) {
 	c := &Candidate{Source: root, Inputs: []string{}, Conflicts: []string{}}
 	var e error
 	c.Base, e = gitrepo.Resolve(ctx, root, base)
@@ -89,10 +105,15 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 		}
 		c.Inputs = append(c.Inputs, sha)
 	}
+	validated := map[string]bool{}
 	for _, sha := range append([]string{c.Base}, c.Inputs...) {
+		if validated[sha] {
+			continue
+		}
 		if e = validateTree(ctx, root, sha); e != nil {
 			return c, e
 		}
+		validated[sha] = true
 	}
 	temp, e := os.MkdirTemp("", "radar-integration-")
 	if e != nil {
@@ -166,6 +187,7 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 	if e != nil {
 		return fail(e)
 	}
+	c.shallow = len(boundary) > 0
 	if len(boundary) > 0 {
 		if e = os.WriteFile(filepath.Join(temp, ".git", "shallow"), []byte(strings.Join(boundary, "\n")+"\n"), 0o644); e != nil {
 			return fail(e)
@@ -174,6 +196,13 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 	if _, e = gitrepo.RunPrivate(ctx, temp, "checkout", "--quiet", "--detach", c.Base); e != nil {
 		return fail(e)
 	}
+	return c, nil
+}
+
+func mergeCandidate(ctx context.Context, c *Candidate) (*Candidate, error) {
+	temp := c.Dir
+	fail := func(err error) (*Candidate, error) { c.Close(); return c, err }
+	var e error
 	for _, sha := range c.Inputs {
 		out, mergeErr := gitrepo.RunPrivate(ctx, temp, "merge", "--no-ff", "--no-edit", "--no-verify", sha)
 		if mergeErr != nil {
@@ -190,7 +219,7 @@ func BuildCandidate(ctx context.Context, root, base string, branches []string) (
 				if line := lastLine(out); line != "" {
 					mergeErr = fmt.Errorf("%w: %s", mergeErr, line)
 				}
-				if len(boundary) > 0 {
+				if c.shallow {
 					mergeErr = &gitrepo.ShallowHistoryError{Err: mergeErr}
 				}
 				return fail(mergeErr)

@@ -38,6 +38,7 @@ FIX = re.compile(r'\b(fix|fixes|fixed|revert|reverts|hotfix|broken|repair|unbrea
 PR_NUMBER = re.compile(r'\(#([1-9][0-9]{0,8})\)\s*$')
 DJANGO_MERGE = re.compile(r'(^|/)migrations/[0-9]+_merge[^/]*\.py$')
 ALEMBIC_MERGE = re.compile(r'^\s*down_revision\s*(?::[^=]*)?=\s*[\(\[]', re.M)
+ERROR_KINDS = ('unsupported_repository_layout', 'radar_error_response', 'invalid_json_response', 'timeout')
 CAUSES = ('symbol', 'migration', 'lockfile', 'generated', 'route', 'runtime', 'other', 'none')
 
 
@@ -189,8 +190,14 @@ def replay(candidates, repo, radar, timeout=300):
                 report = json.loads(out)
             except json.JSONDecodeError:
                 report = None
-            if report is None or 'gate' not in report:
-                row.update(verdict='error', error=(err.strip().splitlines() or ['no JSON report'])[-1][:300], checks={}, problems=[])
+            if not isinstance(report, dict) or 'gate' not in report:
+                error_kind = 'timeout' if code is None else 'invalid_json_response'
+                if isinstance(report, dict) and report.get('status') == 'error':
+                    message = str(report.get('error', ''))
+                    error_kind = ('unsupported_repository_layout' if 'preview refuses symlink or submodule:' in message
+                                  else 'radar_error_response')
+                row.update(verdict='error', error=error_kind, error_kind=error_kind,
+                           response_digest=hashlib.sha256(out.encode()).hexdigest(), checks={}, problems=[])
             else:
                 row.update(verdict=report['gate']['verdict'],
                            checks={x['id']: x['status'] for x in report['gate'].get('required_checks', [])},

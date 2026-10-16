@@ -5,13 +5,13 @@ Run `radar setup codex` (or `radar setup --agent codex`) inside the project to i
 For manual skill installation:
 
 ```sh
-mkdir -p .agents/skills/radar-architecture
-cp /path/to/radar/integrations/codex/SKILL.md .agents/skills/radar-architecture/SKILL.md
+mkdir -p .agents/skills/radar
+cp /path/to/radar/integrations/codex/SKILL.md .agents/skills/radar/SKILL.md
 ```
 
 Add this repository instruction when useful:
 
-> For shared-contract or architectural changes, use the radar-architecture
+> For shared-contract or architectural changes, use the radar
 > skill. Inspect Radar diagnostics and source evidence, create a structured
 > plan, run preflight, and verify the implementation. Keep unresolved runtime
 > and security claims explicit. Honor the user's existing task authorization.

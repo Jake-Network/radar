@@ -15,7 +15,7 @@ import (
 // This proves only this branch-local static failure, never combined validity.
 func hookSavedFailure(ctx context.Context, root string, in watchInput, cache *indexer.ParseCache) (agentHookResponse, error) {
 	for _, snapshot := range in.Snapshots {
-		if snapshot.Worktree != root {
+		if !hookSamePath(snapshot.Worktree, root) {
 			continue
 		}
 		snapshot.InputIndex = 0

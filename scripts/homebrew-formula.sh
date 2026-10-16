@@ -63,6 +63,9 @@ class Radar < Formula
   end
 
   test do
+    # Homebrew's PATH shim can exec Git from a locator loop with redirected
+    # stdin. Pin its resolved executable so cat-file --batch keeps its pipe.
+    ENV["HOMEBREW_GIT"] = Utils.safe_popen_read("git", "--homebrew=print-path").strip
     assert_match version.to_s, shell_output("#{bin}/radar version")
     repo = testpath/"repo"
     system "git", "init", "-q", "-b", "main", repo.to_s

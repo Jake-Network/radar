@@ -16,6 +16,37 @@ func requirePython(t *testing.T) {
 	}
 }
 
+func TestGateSkippedTestsDoNotBlameChangedBranches(t *testing.T) {
+	requirePython(t)
+	root, agent := agentRepo(t, map[string]string{
+		"backend.py":      "VALUE = 1\n",
+		"test_backend.py": "import unittest\nfrom backend import VALUE\nclass Backend(unittest.TestCase):\n @unittest.skip('service unavailable')\n def test_backend(self): self.assertEqual(VALUE, 1)\n",
+	})
+	agent("agent-backend", map[string]string{"backend.py": "VALUE = 2\n"})
+	report := invoke(t, root, 1, "gate", "--run")
+	if report["gate"].(map[string]any)["verdict"] != "blocked" {
+		t.Fatal("skipped tests verified the candidate", report["gate"])
+	}
+	unknown := false
+	for _, raw := range report["findings"].([]any) {
+		finding := raw.(map[string]any)
+		if finding["code"] != "integration_execution_unknown" {
+			continue
+		}
+		unknown = true
+		if attribution, ok := report["attribution"].(map[string]any); ok && attribution[finding["id"].(string)] != nil {
+			t.Fatal("unobserved source failure blamed a changed branch", attribution)
+		}
+	}
+	if !unknown {
+		t.Fatal("missing unverified execution finding", report["findings"])
+	}
+	code, output, _ := run(t, root, "gate", "--run")
+	if code != 1 || strings.Contains(output, "look at: agent-backend") {
+		t.Fatal("human output blamed a branch for skipped tests", output)
+	}
+}
+
 // executionFailure returns the attribution of the gate's failed test command.
 func executionFailure(t *testing.T, r map[string]any) map[string]any {
 	t.Helper()
@@ -254,7 +285,7 @@ func TestGateAttributionDefaultsToOnlyAutomaticBaseExecution(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Count(string(data), "run\n"); got != tc.executions {
+			if got := strings.Count(strings.ReplaceAll(string(data), "\r\n", "\n"), "run\n"); got != tc.executions {
 				t.Fatalf("executions = %d, want %d", got, tc.executions)
 			}
 			want := "radar gate --run"

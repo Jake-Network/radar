@@ -111,3 +111,36 @@ func TestDoctorKnownPythonBootstrapIsNotEditableLoader(t *testing.T) {
 		t.Fatal("arbitrary filename exempted")
 	}
 }
+
+func TestDoctorResourcesMergeGroupsAndUncertainty(t *testing.T) {
+	got := mergeDoctorResources([]doctorResource{
+		{"shared_resource", "warning", "PORT", []string{"a", "b"}},
+		{"shared_resource", "unknown", "PORT", []string{"b", "c"}},
+		{"resource_expression", "unknown", "PORT", []string{"d"}},
+	})
+	if len(got) != 2 {
+		t.Fatalf("%+v", got)
+	}
+	for _, item := range got {
+		if item.Kind == "shared_resource" && (item.Status != "unknown" || strings.Join(item.Worktrees, ",") != "a,b,c") {
+			t.Fatalf("%+v", item)
+		}
+	}
+}
+
+func TestDoctorDiscoveryDistinguishesOversizeSourceAndTests(t *testing.T) {
+	for _, file := range []string{"app.py", "test_app.py"} {
+		t.Run(file, func(t *testing.T) {
+			root, _ := agentRepo(t, map[string]string{file: strings.Repeat("#", (1<<20)+1)})
+			project := doctorProjectOf(t, root)
+			problems := strings.Join(project.Problems, "\n")
+			if file == "app.py" {
+				if strings.Contains(problems, "inventory as incomplete") || !strings.Contains(problems, "does not block") {
+					t.Fatal(problems)
+				}
+			} else if !strings.Contains(problems, "inventory as incomplete") {
+				t.Fatal(problems)
+			}
+		})
+	}
+}

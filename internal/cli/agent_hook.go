@@ -31,9 +31,10 @@ type agentHookEvent struct {
 }
 
 type agentHookResponse struct {
-	Decision string `json:"decision,omitempty"`
-	Reason   string `json:"reason,omitempty"`
-	Message  string `json:"systemMessage,omitempty"`
+	Decision string           `json:"decision,omitempty"`
+	Reason   string           `json:"reason,omitempty"`
+	Message  string           `json:"systemMessage,omitempty"`
+	Radar    *hookDiagnostics `json:"radar,omitempty"`
 }
 
 func (a *app) agentHook(o options) int { return a.runAgentHook(o.args, os.Stdin) }
@@ -41,13 +42,28 @@ func (a *app) agentHook(o options) int { return a.runAgentHook(o.args, os.Stdin)
 // The protocol always exits zero: a supported failure is a JSON block decision,
 // while missing evidence remains informational rather than an agent retry loop.
 func (a *app) runAgentHook(args []string, input io.Reader) int {
+	started := time.Now()
+	diagnostics := &hookDiagnostics{StagesMS: map[string]int64{}}
+	detailed := a.machine
+	for _, arg := range args {
+		if arg == "--json" {
+			detailed = true
+		}
+	}
 	respond := func(r agentHookResponse) int {
+		if detailed {
+			diagnostics.StagesMS["total"] = time.Since(started).Milliseconds()
+			r.Radar = diagnostics
+		}
 		if err := json.NewEncoder(a.out).Encode(r); err != nil {
 			return 2
 		}
 		return 0
 	}
 	unavailable := func(reason string) int {
+		if diagnostics.Self == "" {
+			diagnostics.Self = "unavailable"
+		}
 		return respond(agentHookResponse{Message: "Radar NOT VERIFIED: " + hookText(reason)})
 	}
 	if len(args) == 0 || args[0] != "stop" {
@@ -57,6 +73,7 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	fs.SetOutput(io.Discard)
 	var agent, base, branches, cwd string
 	var timeout time.Duration
+	fs.BoolVar(&detailed, "json", detailed, "include Radar static-preview diagnostics")
 	fs.StringVar(&agent, "agent", "", "agent protocol")
 	fs.StringVar(&base, "base", "", "integration base")
 	fs.StringVar(&branches, "branches", "", "explicit branch list")
@@ -69,6 +86,7 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, timeout)
 	defer cancel()
+	ctx = overlap.WithAnalysisCache(gitrepo.WithTreeCache(ctx))
 	// Stop hooks normally close stdin after the event. Bound the wait as well
 	// as its size, so a broken host cannot keep the agent waiting indefinitely.
 	type readResult struct {
@@ -125,77 +143,65 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 			refs = append(refs, ref)
 		}
 	}
-	o := options{base: base, args: refs, includeDirty: true}
-	state, err := b.observeHook(ctx, o)
+	o := options{base: base, args: refs, includeDirty: true, timeout: timeout}
+	stageStarted := time.Now()
+	state, err := b.observeHookSelf(ctx, o)
+	diagnostics.StagesMS["input"] = time.Since(stageStarted).Milliseconds()
 	if err != nil {
 		return unavailable(err.Error())
 	}
-	in := state.Value.(watchInput)
+	observed := state.Value.(hookObservation)
+	in := observed.input
 	cacheKey := hookCacheKey(ctx, root, state.Key)
-	if cached, ok := loadHookCache(root, cacheKey); ok {
-		latest, err := b.observeHook(ctx, o)
-		if err == nil && latest.Key == state.Key && ctx.Err() == nil {
-			cached.Message = strings.TrimSpace(cached.Message + " Radar reused the unchanged static preview cache; tests were not run.")
-			return respond(cached)
-		}
-		return unavailable("inputs changed while reading cached preview")
-	}
-	parseCache, saveParseCache := savedSyntaxCache(root)
-	defer saveParseCache()
-	current, err := gitrepo.InspectWorktree(ctx, root)
-	if err != nil {
-		return unavailable(err.Error())
-	}
-	drift, err := overlap.AnalyzeCurrent(ctx, root, in.Base, current.Branch, in.OverlapInputs, parseCache)
-	if err != nil {
-		return unavailable("cross-worktree inspection: " + err.Error())
-	}
-	newDrift, err := overlap.NewWithDirty(ctx, root, in.Base, current.Branch, in.OverlapInputs, drift, parseCache)
-	if err != nil {
-		return unavailable("dirty drift comparison: " + err.Error())
-	}
+	parseCache, saveParseCache := savedSyntaxCacheWithLimit(root, 4<<20)
 	finish := func(r agentHookResponse) int {
-		latest, err := b.observeHook(ctx, o)
+		stageStarted := time.Now()
+		latest, err := b.observeHookSelf(ctx, o, observed)
+		diagnostics.StagesMS["self_revalidation"] = time.Since(stageStarted).Milliseconds()
 		if err != nil || latest.Key != state.Key {
 			return unavailable("inputs changed during analysis; rerun after saving changes")
 		}
 		if ctx.Err() != nil {
 			return unavailable("static analysis deadline exceeded")
 		}
-		if len(newDrift) > 0 {
-			lines := []string{"Radar found cross-worktree drift introduced by your saved changes. Reconcile these changes before completing; static inference only."}
-			for _, f := range newDrift {
-				lines = append(lines, f.Code+": "+f.Explanation+" ["+strings.Join(f.Branches, ", ")+"]")
-				for _, p := range f.Locations {
-					lines = append(lines, fmt.Sprintf("%s:%d", p.Path, p.Line))
-				}
-			}
-			r.Decision = "block"
-			r.Reason = hookText(strings.Join(lines, "\n"))
-		} else if len(drift.Findings) > 0 {
-			lines := []string{r.Message, "Radar peer worktree drift (informational; your saved changes did not introduce it):"}
-			for _, f := range drift.Findings {
-				lines = append(lines, f.Code+": "+f.Explanation+" ["+strings.Join(f.Branches, ", ")+"]")
-				for _, p := range f.Locations {
-					lines = append(lines, fmt.Sprintf("%s:%d", p.Path, p.Line))
-				}
-			}
-			r.Message = hookText(strings.Join(lines, "\n"))
+		if diagnostics.Self == "" {
+			diagnostics.Self = "complete"
 		}
-		for _, limitation := range drift.Limitations {
-			if strings.HasPrefix(limitation, "Overlap incomplete:") {
-				r.Message = hookText(r.Message + " Radar NOT VERIFIED: " + limitation)
-			}
+		diagnostics.StagesMS["self"] = time.Since(started).Milliseconds()
+		// Publish the completed self result before spending the remaining budget
+		// on peers. A slow peer cannot erase the current worktree's findings.
+		if diagnostics.Self != "reused" {
+			saveHookCache(root, cacheKey, r)
 		}
-		saveHookCache(root, cacheKey, r)
+		peerStart := time.Now()
+		r = b.hookPeers(ctx, o, in, r, parseCache, diagnostics)
+		diagnostics.StagesMS["peers"] = time.Since(peerStart).Milliseconds()
+		if diagnostics.PeersTotal > 0 {
+			stageStarted = time.Now()
+			latest, err = b.observeHookSelf(ctx, o, observed)
+			diagnostics.StagesMS["final_revalidation"] = time.Since(stageStarted).Milliseconds()
+		}
+		if err != nil || latest.Key != state.Key || ctx.Err() != nil {
+			return unavailable("inputs changed or revalidation unavailable after peer analysis; rerun after saving changes")
+		}
+		cacheStart := time.Now()
+		saveParseCache()
+		diagnostics.StagesMS["syntax_cache"] = time.Since(cacheStart).Milliseconds()
 		return respond(r)
 	}
+	if cached, ok := loadHookCache(root, cacheKey); ok {
+		diagnostics.Self = "reused"
+		cached.Message = strings.TrimSpace(cached.Message + " Radar reused the unchanged static preview cache; tests were not run.")
+		return finish(cached)
+	}
+	stageStarted = time.Now()
 	var candidate *integration.Candidate
 	if len(in.Snapshots) == 0 {
 		candidate, err = integration.BuildCandidate(ctx, root, in.Base, in.SHAs)
 	} else {
 		candidate, err = integration.BuildDirtyCandidate(ctx, root, in.Base, in.SHAs, in.Snapshots)
 	}
+	diagnostics.StagesMS["candidate"] = time.Since(stageStarted).Milliseconds()
 	if candidate != nil {
 		defer candidate.Close()
 	}
@@ -203,9 +209,26 @@ func (a *app) runAgentHook(args []string, input io.Reader) int {
 		return unavailable(err.Error())
 	}
 
+	stageStarted = time.Now()
 	report, err := integration.Analyze(ctx, candidate, integration.Options{Base: in.Base, Branches: in.SHAs, Policy: in.config.Policy, ParseCache: parseCache})
+	diagnostics.StagesMS["analysis"] = time.Since(stageStarted).Milliseconds()
 	if err != nil {
 		return unavailable(err.Error())
+	}
+	if len(in.SHAs) == 1 && in.config.Policy == nil {
+		for _, worktree := range in.Worktrees {
+			if hookSamePath(worktree.Path, root) && worktree.Commit == in.SHAs[0] {
+				own := overlap.Input{Branch: worktree.Branch, Head: worktree.Commit}
+				for i := range in.Snapshots {
+					if hookSamePath(in.Snapshots[i].Worktree, root) {
+						own.Snapshot = &in.Snapshots[i]
+						break
+					}
+				}
+				overlap.PrimeSingleInput(ctx, root, in.Base, own, report)
+				break
+			}
+		}
 	}
 	in.config.applyIntegration(&report)
 	// Committed merge conflicts need restacking, not another agent turn. When

@@ -23,16 +23,32 @@ func TestAutomaticBaseComparison(t *testing.T) {
 		budget            int
 		verdict           gate.Verdict
 		allExisting       bool
+		large             bool
 		existing, fresh   int
 	}{
-		{"base failure", true, false, 16, gate.Blocked, true, 1, 0},
-		{"candidate failure", false, true, 16, gate.Fail, false, 0, 1},
-		{"mixed failures", true, true, 16, gate.Fail, false, 1, 1},
-		{"no budget", true, false, 1, gate.Fail, false, 0, 1},
+		{"base failure", true, false, 16, gate.Blocked, true, false, 1, 0},
+		{"candidate failure", false, true, 16, gate.Fail, false, false, 0, 1},
+		{"mixed failures", true, true, 16, gate.Fail, false, false, 1, 1},
+		{"no budget", true, false, 1, gate.Fail, false, false, 0, 1},
+		{"large base failure", true, false, 16, gate.Blocked, true, true, 1, 0},
+		{"large candidate failure", false, true, 16, gate.Fail, false, true, 0, 1},
+		{"large mixed failures", true, true, 16, gate.Fail, false, true, 1, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := fixture(t)
 			gitTest(t, root, "checkout", "baseline")
+			if tc.large {
+				f, err := os.Create(filepath.Join(root, "large.bin"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Truncate(70 << 20); err != nil {
+					t.Fatal(err)
+				}
+				if err := f.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			put(t, root, "state.py", "EXISTING = "+map[bool]string{true: "False", false: "True"}[tc.baseFail]+"\nNEW = True\n")
 			put(t, root, "test_base.py", "import unittest\nimport state\nclass Baseline(unittest.TestCase):\n def test_existing(self):\n  self.assertTrue(state.EXISTING)\n def test_new(self):\n  self.assertTrue(state.NEW)\n")
 			gitTest(t, root, "add", ".")
@@ -194,7 +210,7 @@ func TestBaseVerifierReusesCheckoutAndPreparation(t *testing.T) {
 	r.Base = gitTest(t, root, "rev-parse", "HEAD")
 	setupLog := filepath.Join(t.TempDir(), "setup-count")
 	t.Setenv("RADAR_STATE_DIR", t.TempDir())
-	profile := &runners.Profile{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", fmt.Sprintf("from pathlib import Path; p=Path(%q); p.write_text(p.read_text()+'run\\n' if p.exists() else 'run\\n')", setupLog)}}}
+	profile := &runners.Profile{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", fmt.Sprintf("from pathlib import Path; p=Path(%q); p.write_bytes(p.read_bytes()+b'run\\n' if p.exists() else b'run\\n')", setupLog)}}}
 	o := opts()
 	o.Command = []string{"python3", "-m", "unittest", "test_failure"}
 	o.CWD = "."

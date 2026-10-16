@@ -145,6 +145,10 @@ def payload(report, head, name="Radar integration gate"):
     verdict = gate.get("verdict", report.get("verdict", "error"))
     conclusion = CONCLUSIONS.get(verdict, "action_required")
     validation_errors = workspace_success_errors(report) if verdict == "pass" and "repos" in report else []
+    landing = report.get("landing", {})
+    landing_plans = [landing] if isinstance(landing, dict) and "branches" in landing else list(landing.values()) if isinstance(landing, dict) else []
+    if verdict == "pass" and any(isinstance(p, dict) and p.get("restack_first") for p in landing_plans):
+        validation_errors.append("Selected landing inputs require restack and were excluded from candidate evidence.")
     if validation_errors:
         conclusion = "action_required"
     try:

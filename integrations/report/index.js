@@ -24,6 +24,18 @@ export function parseReport(input) {
       !report.gate.required_checks.some(c => c.id === id && c.status === 'passed'))) {
     throw new TypeError('A passing report is missing a passed required check.');
   }
+  if (report.landing?.restack_first !== undefined) {
+    const restack = report.landing.restack_first;
+    if (!Array.isArray(restack) || restack.some(branch => !branch ||
+        typeof branch.name !== 'string' || !branch.name || typeof branch.commit !== 'string' ||
+        !Array.isArray(branch.conflicts) || !branch.conflicts.every(path => typeof path === 'string') ||
+        (branch.behind !== undefined && (!Number.isSafeInteger(branch.behind) || branch.behind < 0)))) {
+      throw new TypeError('Unsupported landing restack scope.');
+    }
+    if (report.gate.verdict === 'pass' && restack.length) {
+      throw new TypeError('A passing report excludes selected landing inputs.');
+    }
+  }
   if (report.landing_apply !== undefined) {
     const outcome = report.landing_apply;
     if (!outcome || typeof outcome !== 'object' || typeof outcome.published !== 'boolean' ||
@@ -46,6 +58,7 @@ export function summarize(input) {
       checked: report.gate.required_checks.filter(c => c.status === 'passed').map(c => `${c.id}: ${c.explanation}`),
       notVerified: [
         ...report.gate.required_checks.filter(c => c.status !== 'passed').map(c => `${c.id} (${c.status}): ${c.explanation}`),
+        ...(report.landing?.restack_first || []).map(branch => `Restack required: ${branch.name}; excluded from candidate evidence.`),
         ...(unpublished ? [`Integration ref not published: ${report.landing_apply.reason || 'publication unavailable'}. Completed object import: ${report.landing_apply.objects_imported}.`] : []),
       ],
       limitations: report.limitations.map(String),

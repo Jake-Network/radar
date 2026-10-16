@@ -39,7 +39,7 @@ func hookCacheKey(ctx context.Context, root, state string) string {
 	if digest == "" {
 		return ""
 	}
-	data, _ := json.Marshal([]any{"hook-preview-v2", Version, digest, executable, st.Size(), st.ModTime().UnixNano(), root, head, state})
+	data, _ := json.Marshal([]any{"hook-preview-v3-self-pair", Version, digest, executable, st.Size(), st.ModTime().UnixNano(), root, head, state})
 	return configurationDigest(data)
 }
 

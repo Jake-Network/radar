@@ -421,3 +421,36 @@ func TestSplitQualified(t *testing.T) {
 		}
 	}
 }
+
+func TestRepeatedModulesShareOnlyTheirImportStatementEdge(t *testing.T) {
+	adapter, _ := ForPath("agent.py")
+	result, err := adapter.Parse(context.Background(), Source{"repo", "sha", "agent.py", []byte("import json, os, json as alternate, json\nimport json\nfrom package import member as named\n")})
+	if err != nil || len(result.Diagnostics) != 0 {
+		t.Fatal(result.Diagnostics, err)
+	}
+	seen := map[string]bool{}
+	counts := map[string]int{}
+	lines := map[int]int{}
+	for _, edge := range result.Edges {
+		if seen[edge.ID] {
+			t.Fatal("duplicate syntax edge identity", edge)
+		}
+		seen[edge.ID] = true
+		if edge.Kind == "IMPORTS" {
+			counts[edge.To]++
+			lines[edge.Provenance.Line]++
+		}
+	}
+	if counts[model.ModuleID("python", "json")] != 2 || counts[model.ModuleID("python", "os")] != 1 || lines[1] != 2 || lines[2] != 1 || lines[3] != 1 || len(result.Imports) != 4 {
+		t.Fatal("distinct module targets or later source occurrence lost", counts, lines, result.Imports)
+	}
+	for _, imported := range result.Imports {
+		if imported.Module == "package" {
+			if len(imported.Names) != 1 || imported.Names[0] != "member" {
+				t.Fatal("aliased imported member lost", imported)
+			}
+			return
+		}
+	}
+	t.Fatal("aliased imported member relation missing")
+}

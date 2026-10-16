@@ -198,7 +198,14 @@ func (p Profile) Rewrite(argv []string) []string {
 	tail := append([]string{}, argv...)
 	first := path.Base(p.Prefix[0])
 	original := path.Base(argv[0])
-	if first == original || (first == "python" || first == "python3") && (original == "python" || original == "python3") {
+	python := func(name string) bool {
+		if runtime.GOOS == "windows" {
+			name = strings.ToLower(name)
+		}
+		name = strings.TrimSuffix(name, ".exe")
+		return name == "python" || name == "python3"
+	}
+	if first == original || python(first) && python(original) {
 		tail = tail[1:]
 	} else if (first == "pnpm" || first == "npm" || first == "yarn") && strings.Contains(argv[0], "node_modules/.bin/") {
 		tail[0] = original

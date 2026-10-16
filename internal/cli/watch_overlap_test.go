@@ -48,10 +48,11 @@ func TestWorktreeDirtySymbolDriftAndHookOwnership(t *testing.T) {
 	if !strings.Contains(cached.Message, "cache") {
 		t.Fatalf("unchanged drift not cached: %+v", cached)
 	}
-	// Peer bytes change with identical status paths: digest must invalidate cache.
+	// Peer bytes change with identical status paths: invalidate the pair result
+	// while retaining the independent unchanged self preview.
 	put(t, a, "backend.py", "def charge():\n    return 2\n")
-	repaired := hookInvoke(t, root, hookEvent(t, b), "--base", "main")
-	if repaired.Decision != "" || strings.Contains(repaired.Message, "cache") {
+	repaired := hookInvoke(t, root, hookEvent(t, b), "--base", "main", "--json")
+	if repaired.Decision != "" || repaired.Radar == nil || repaired.Radar.Self != "reused" || repaired.Radar.Checked == 0 {
 		t.Fatalf("peer edit did not invalidate cached block: %+v", repaired)
 	}
 	put(t, a, "backend.py", "def bill():\n    return 1\n")

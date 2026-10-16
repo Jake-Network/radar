@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,10 @@ func git(t *testing.T, dir string, args ...string) string {
 	b, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v %s", args, err, b)
+	}
+	// Fixture source bytes are literal; normalization tests opt in explicitly.
+	if len(args) > 0 && args[0] == "init" {
+		git(t, dir, "config", "core.autocrlf", "false")
 	}
 	return strings.TrimSpace(string(b))
 }
@@ -387,8 +392,8 @@ func TestStoreKeepsRecentRunsAndConcurrentSaves(t *testing.T) {
 }
 
 func TestSaveReportsAnUnreadableRunsDirectory(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("POSIX directory search permissions are unavailable")
 	}
 	s := Store{Dir: filepath.Join(t.TempDir(), "runs", "shop")}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {

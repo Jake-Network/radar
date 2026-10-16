@@ -19,7 +19,7 @@ def main():
         env["PATH"] = str(binary.parent) + os.pathsep + env.get("PATH", "")
 
         def run(argv, **kwargs):
-            return subprocess.run(argv, cwd=root, env=env, text=True,
+            return subprocess.run(argv, cwd=root, env=env, text=True, encoding="utf-8",
                                   capture_output=True, timeout=60, **kwargs)
 
         def git(*args):

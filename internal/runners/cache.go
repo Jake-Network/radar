@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -423,7 +424,7 @@ func relocateDirectURL(data []byte, sourceRoot string, store bool) ([]byte, erro
 // trusting a directory prefix or a Python-shaped filename.
 func currentPythonInterpreter(filename string) bool {
 	info, err := os.Stat(filename)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 {
+	if err != nil || !info.Mode().IsRegular() || runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
 		return false
 	}
 	for _, name := range []string{"python", "python3"} {

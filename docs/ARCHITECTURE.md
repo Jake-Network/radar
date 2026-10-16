@@ -61,8 +61,9 @@ execution in `evidence`, and analysis rules in the package that owns them.
 Native agent Stop adapters (`cli/agent_hook.go`) reuse the watch input observer
 and private dirty-candidate analysis for one static preview. Onboarding writes
 project-local hook configuration; portable plugin packages supply the same
-command. They do not execute tests or control agent permissions. Their result
-cache binds local/peer saved state and analysis configuration. A separate bounded
+command. They do not execute tests or control agent permissions. Self preview completes before bounded peer inspection. Separate result caches
+bind self and completed peer comparisons to saved state and analysis
+configuration; unfinished peer comparisons remain NOT VERIFIED. A separate bounded
 syntax cache reuses parse results by path/content/Go build identity; manifests,
 import resolution and source safety checks run again for each tree. Loaded
 entries retain source-byte costs and LRU eviction leaves room for fresh syntax.

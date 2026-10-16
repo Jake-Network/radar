@@ -555,7 +555,14 @@ try:
     exact = set()
     for prefix in (sys.prefix, sys.exec_prefix, sys.base_prefix, sys.base_exec_prefix):
         exact.add(real(prefix))
-        exact.add(real(os.path.join(prefix, "DLLs")))
+    if os.name == "nt":
+        # A venv still loads standard-library .pyd modules from its base
+        # interpreter's DLLs directory, outside sysconfig's Lib directory.
+        # Venv DLLs aliases must not turn arbitrary external code into stdlib.
+        for prefix in (sys.base_prefix, sys.base_exec_prefix):
+            dlls = real(os.path.join(prefix, "DLLs"))
+            if os.path.isdir(dlls) and within(dlls, real(prefix)):
+                stdlib.add(dlls)
     exact.add(real(os.path.dirname(sys.executable)))
     if paths.get("scripts"):
         exact.add(real(paths["scripts"]))

@@ -48,6 +48,7 @@ func goldenRepo(t *testing.T, branches map[string]map[string]string) (string, st
 		t.Fatal(e)
 	}
 	fixedGit(t, root, "init", "-q")
+	fixedGit(t, root, "config", "core.autocrlf", "false")
 	fixedGit(t, root, "checkout", "-q", "-b", "main")
 	for p, content := range map[string]string{"backend.py": "def price():\n    return 1\n", "frontend.ts": "export const QUANTITY = 1;\n", "test_checkout.py": checkoutTest} {
 		put(t, root, p, content)
@@ -82,7 +83,10 @@ var goldenVolatile = []*regexp.Regexp{
 }
 
 func normalizeGolden(s, base string) string {
-	s = strings.ReplaceAll(s, base, "$TMP")
+	// JSON escapes Windows separators; text/Git may use either native or slash paths.
+	for _, prefix := range []string{strings.Trim(strconv.Quote(base), `"`), base, strings.ReplaceAll(base, `\`, "/")} {
+		s = strings.ReplaceAll(s, prefix, "$TMP")
+	}
 	for _, re := range goldenVolatile {
 		s = re.ReplaceAllString(s, "$$VOLATILE")
 	}

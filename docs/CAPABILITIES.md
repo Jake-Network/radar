@@ -211,3 +211,24 @@ fetching remain out of scope.
 
 
 Configuration examples are in [Usage](USAGE.md#advanced-configuration).
+
+### Proposed release sequence
+
+This table describes follow-up work and acceptance targets, not shipped commands
+or a release schedule. Phase 0 stabilizes existing behavior for 0.3.0; publication
+still requires the native CI, benchmark and installation evidence in the release
+guide. Retracted 0.4.0/0.4.1 versions must not be reused.
+
+| Phase / target | Dependency and proposed work | Completion evidence |
+| --- | --- | --- |
+| 1 — Land / 0.4.2 | Phase 0 landing scope and restack classification; chain restack guidance and hunk-related tests. | Deterministic independent, pair-conflict, migration-chain and base-conflict fixtures; installed mergiraf/weave qualification. Rebase remains advice. |
+| 2 — Work / 0.5.0 | Hook stage measurements; incrementally update syntax, affected nodes/edges and imports; lightweight post-tool textual checks. | Saved changes reach watch drift within 5 seconds; a cold 1600-file, 12-worktree hook responds within its 20-second budget on a stated machine. |
+| 3 — Prove / 0.6.0 | Stable candidate evidence; real GitHub checks, required-check configuration and FE/BE static contract pairs. | Check attached to exact SHA; stale, excluded-input and other-candidate evidence rejected; blocked required checks prevent merge. |
+| 4 — Queue / 0.7.0 | Prove check publication; trusted `merge_group: checks_requested` helper and separate execution argv/policy requirements. | Publish to the group SHA; after removing a failing PR rerun the entire remaining combination before showing subset PASS. |
+| 5 — Split / conditional | Interviews and observed drift establish a useful prediction opportunity; task/AGENTS footprints and imports suggest parallel work. | Reproducible useful predictions with counterexamples; inferred suggestions never become compatibility evidence. |
+| 6 — ongoing foundation | Detector contribution rules, TS monorepo fixtures, opt-in SCIP, large-repository limits and native CI. | Every detector has positive and benign fixtures; Windows distribution follows native release qualification. |
+
+Queue must define deduplication of repeated attempts and avoid assigning a combined
+failure to every individual PR before implementing its attempt budget. A policy
+file never grants execution permission. GitHub's event contract is documented in
+[the official merge-group reference](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group).

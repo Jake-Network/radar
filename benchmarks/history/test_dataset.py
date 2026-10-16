@@ -88,6 +88,21 @@ class DatasetTests(unittest.TestCase):
              'verdict': 'fail', 'checks': {'no_symbol_conflicts': 'failed'}}]}]
         observed = dataset.radar_observations(data, runs)
         self.assertEqual(observed['observations'][0]['detected_causes'], ['symbol'])
+        runs[0]['results'][0]['verdict'] = 'blocked'
+        unavailable = dataset.radar_observations(data, runs)
+        self.assertEqual(unavailable['observations'][0]['detected_causes'], [])
+        self.assertEqual(unavailable['observations'][0]['status'], 'unavailable')
+        runs[0]['results'][0].update(error_kind='unsupported_repository_layout', response_digest='a' * 64)
+        explained = dataset.radar_observations(data, runs)
+        self.assertEqual(explained['observations'][0]['evidence']['error_kind'], 'unsupported_repository_layout')
+        runs[0]['results'][0]['error_kind'] = 'raw output is not an error kind'
+        with self.assertRaisesRegex(ValueError, 'unsupported replay error kind'):
+            dataset.radar_observations(data, runs)
+        runs[0]['results'][0].pop('error_kind')
+        runs[0]['results'][0]['response_digest'] = 'malformed'
+        with self.assertRaisesRegex(ValueError, 'invalid replay response digest'):
+            dataset.radar_observations(data, runs)
+        dataset.score(data, {}, [unavailable])
         runs[0]['results'][0]['branches'] = ['wrong']
         with self.assertRaises(ValueError):
             dataset.radar_observations(data, runs)

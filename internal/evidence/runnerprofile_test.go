@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,10 @@ func TestDeclaredSetupCacheAndRealVenvRelocation(t *testing.T) {
 	}
 	ctx := context.Background()
 	cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 64 << 20}
-	p := runners.Profile{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", ".venv"}, {"python3", "-c", `import os; p=os.path.abspath('.venv'); f=p+'/bin/check'; open(f,'w').write('#!'+p+'/bin/python\nimport sys; print(sys.prefix)\n'); os.chmod(f,0o755)`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
+	p := runners.Profile{Root: ".", Prefix: []string{filepath.ToSlash(pythonVenvInterpreter(".venv"))}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", ".venv"}, {"python3", "-c", `import os; p=os.path.abspath('.venv'); f=p+'/bin/check'; open(f,'w').write('#!'+p+'/bin/python\nimport sys; print(sys.prefix)\n'); os.chmod(f,0o755)`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
+	if runtime.GOOS == "windows" {
+		p.Setup[1] = []string{"python3", "-c", `from pathlib import Path; Path('.venv/Scripts/check.py').write_text('import sys; print(sys.prefix)\n')`}
+	}
 	newCandidate := func(lock string) string {
 		root := t.TempDir()
 		os.WriteFile(filepath.Join(root, "uv.lock"), []byte(lock), 0600)
@@ -40,7 +44,11 @@ func TestDeclaredSetupCacheAndRealVenvRelocation(t *testing.T) {
 	if budgetCalls != 0 {
 		t.Fatal("cache hit reserved setup budget")
 	}
-	output, err := exec.Command(filepath.Join(two, ".venv", "bin", "check")).Output()
+	check := []string{filepath.Join(two, ".venv", "bin", "check")}
+	if runtime.GOOS == "windows" {
+		check = []string{pythonVenvInterpreter(filepath.Join(two, ".venv")), filepath.Join(two, ".venv", "Scripts", "check.py")}
+	}
+	output, err := exec.Command(check[0], check[1:]...).Output()
 	if err != nil || strings.TrimSpace(string(output)) != filepath.Join(two, ".venv") {
 		t.Fatalf("venv not relocated: %q %v", output, err)
 	}
@@ -100,7 +108,7 @@ func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
 	// Standalone Python distributions can copy several large interpreter
 	// binaries. This test exercises relocation, not the artifact size limit.
 	cache := runners.Cache{Dir: t.TempDir(), MaxBytes: 256 << 20}
-	p := runners.Profile{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}, {".venv/bin/python", "-c", `import os, sysconfig; f=sysconfig.get_paths()['purelib']+'/local-editable.pth'; open(f,'w').write(os.path.abspath('libs')+'\n')`}, {".venv/bin/python", "-c", `import os, pathlib, sysconfig; d=pathlib.Path(sysconfig.get_paths()['purelib'], 'editable-0.1.dist-info'); d.mkdir(); (d/'METADATA').write_text('Metadata-Version: 2.1\nName: editable\nVersion: 0.1\n'); (d/'direct_url.json').write_text('{"url": "' + pathlib.Path(os.path.abspath('.')).as_uri() + '", "dir_info": {"editable": true}}')`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
+	p := runners.Profile{Root: ".", Prefix: []string{filepath.ToSlash(pythonVenvInterpreter(".venv"))}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}, {pythonVenvInterpreter(".venv"), "-c", `import os, sysconfig; f=sysconfig.get_paths()['purelib']+'/local-editable.pth'; open(f,'w').write(os.path.abspath('libs')+'\n')`}, {pythonVenvInterpreter(".venv"), "-c", `import os, pathlib, sysconfig; d=pathlib.Path(sysconfig.get_paths()['purelib'], 'editable-0.1.dist-info'); d.mkdir(); (d/'METADATA').write_text('Metadata-Version: 2.1\nName: editable\nVersion: 0.1\n'); (d/'direct_url.json').write_text('{"url": "' + pathlib.Path(os.path.abspath('.')).as_uri() + '", "dir_info": {"editable": true}}')`}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}
 	// Candidate roots with spaces are percent-encoded in direct_url.json.
 	makeRoot := func() string {
 		root := filepath.Join(t.TempDir(), "with space")
@@ -123,12 +131,12 @@ func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
 	}
 	// The editable install's recorded source must follow the new candidate, while
 	// the first checkout still exists.
-	if d := pythonImportCheck(context.Background(), second, second, []string{filepath.Join(second, ".venv", "bin", "python"), "-m", "pytest"}, environment(t.TempDir(), nil)); d != nil {
+	if d := pythonImportCheck(context.Background(), second, second, []string{pythonVenvInterpreter(filepath.Join(second, ".venv")), "-m", "pytest"}, environment(t.TempDir(), nil)); d != nil {
 		t.Fatalf("relocated editable install refused: %+v", d)
 	}
 	// Removing the first checkout makes stale editable paths observable.
 	os.RemoveAll(first)
-	out, err := exec.Command(filepath.Join(second, ".venv", "bin", "python"), "-c", "import editable; print(editable.VALUE)").CombinedOutput()
+	out, err := exec.Command(pythonVenvInterpreter(filepath.Join(second, ".venv")), "-c", "import editable; print(editable.VALUE)").CombinedOutput()
 	if err != nil || strings.TrimSpace(string(out)) != "7" {
 		t.Fatalf("editable path was stale: %q %v", out, err)
 	}
@@ -260,5 +268,27 @@ func TestObservedPythonRuntimeDataAndTool(t *testing.T) {
 	}
 	if got := harnessCounts([]string{"uv", "run", "--frozen", "python3", "-m", "unittest"}, []byte("Ran 2 tests in 0.1s\nOK\n"), root); got.Run != 2 {
 		t.Fatal("wrapped unittest lost counts", got)
+	}
+}
+
+func TestRunnerPreparationPreservesIntegrityFailureCause(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "source.py"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	commitRunnerFixture(t, root)
+	p := runners.Profile{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", "pass"}}}
+	if err := os.WriteFile(filepath.Join(root, "source.py"), []byte("modified"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	preparation, err := PrepareRunner(context.Background(), root, "repo", p, runners.Cache{}, time.Minute)
+	if err == nil || preparation.Status != model.StatusIncomplete || !strings.Contains(preparation.Error, "differs before setup") || preparation.SetupCommands != 0 {
+		t.Fatalf("%+v %v", preparation, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	preparation, err = PrepareRunner(ctx, root, "repo", p, runners.Cache{}, time.Minute)
+	if err == nil || preparation.Status != model.StatusIncomplete || preparation.Error == "" || strings.Contains(preparation.Error, "not pristine") || strings.Contains(preparation.Error, root) {
+		t.Fatalf("%+v %v", preparation, err)
 	}
 }

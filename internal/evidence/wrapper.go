@@ -2,11 +2,13 @@ package evidence
 
 import (
 	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -23,10 +25,15 @@ func WrapperUnavailable(dir string, argv []string) string {
 		return ""
 	}
 	var properties, homeVar, homeDefault string
-	switch filepath.Base(argv[0]) {
-	case "gradlew":
+	wrapper := filepath.Base(argv[0])
+	if runtime.GOOS == "windows" {
+		wrapper = strings.ToLower(wrapper)
+	}
+	windows := runtime.GOOS == "windows" || wrapper == "mvnw.cmd" || wrapper == "gradlew.bat"
+	switch wrapper {
+	case "gradlew", "gradlew.bat":
 		properties, homeVar, homeDefault = filepath.Join("gradle", "wrapper", "gradle-wrapper.properties"), "GRADLE_USER_HOME", ".gradle"
-	case "mvnw":
+	case "mvnw", "mvnw.cmd":
 		properties, homeVar, homeDefault = filepath.Join(".mvn", "wrapper", "maven-wrapper.properties"), "MAVEN_USER_HOME", ".m2"
 	default:
 		return ""
@@ -91,15 +98,27 @@ func WrapperUnavailable(dir string, argv []string) string {
 		// its completion marker and exactly one usable distribution root.
 		sum := md5.Sum([]byte(distributionURL))
 		dist := filepath.Join(cache, name, new(big.Int).SetBytes(sum[:]).Text(36))
-		ready = regularFile(filepath.Join(dist, archive+".ok")) && distributionRootReady(dist, "gradle")
+		ready = regularFile(filepath.Join(dist, archive+".ok")) && distributionRootReady(dist, "gradle", windows)
 	} else if props["distributionType"] == "only-script" {
+		// mvnd wrappers rewrite the platform URL, cache hash and launcher.
+		// Until that adapter is supported, an original-URL cache is not proof
+		// that the wrapper can start without downloading another distribution.
+		if strings.HasPrefix(name, "maven-mvnd-") {
+			return "wrapper Maven daemon distributions are unsupported"
+		}
 		if strings.Contains(string(data), `\:`) {
 			return "wrapper only-script properties use unsupported URL escaping"
 		}
 		// Apache's only-script wrapper stores the Maven home directly at
-		// <archive-without-bin>/<Java String.hashCode(URL)>.
-		dist := filepath.Join(cache, strings.TrimSuffix(name, "-bin"), fmt.Sprintf("%x", javaStringHash(distributionURL)))
-		ready = executableFile(filepath.Join(dist, "bin", "mvn")) && hasLauncher(dist, "maven")
+		// <archive-without-bin>/<platform-specific URL hash>.
+		hash := fmt.Sprintf("%x", javaStringHash(distributionURL))
+		if windows {
+			// The Windows only-script wrapper hashes ASCII URL bytes with
+			// PowerShell SHA256; the POSIX script uses Java String.hashCode.
+			hash = fmt.Sprintf("%x", sha256.Sum256([]byte(distributionURL)))
+		}
+		dist := filepath.Join(cache, strings.TrimSuffix(name, "-bin"), hash)
+		ready = distributionExecutable(dist, "maven", windows) && hasLauncher(dist, "maven")
 	} else if props["distributionType"] == "" || props["distributionType"] == "bin" || props["distributionType"] == "source" {
 		// JAR-based Apache wrappers use URI.hashCode rather than the shell
 		// wrapper's String.hashCode, and retain their downloaded archive.
@@ -107,7 +126,7 @@ func WrapperUnavailable(dir string, argv []string) string {
 		if jarErr == nil && regularFile(jar) {
 			hash, supported := mavenURIHash(u)
 			dist := filepath.Join(cache, name, fmt.Sprintf("%x", hash))
-			ready = supported && regularFile(filepath.Join(dist, archive)) && distributionRootReady(dist, "maven")
+			ready = supported && regularFile(filepath.Join(dist, archive)) && distributionRootReady(dist, "maven", windows)
 		}
 	} else {
 		return "wrapper distributionType is unsupported"
@@ -153,9 +172,9 @@ func regularFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func executableFile(path string) bool {
+func executableFile(path string, windows bool) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0
+	return err == nil && info.Mode().IsRegular() && (windows || info.Mode().Perm()&0111 != 0)
 }
 
 func hasLauncher(home, tool string) bool {
@@ -171,7 +190,7 @@ func hasLauncher(home, tool string) bool {
 	return err == nil && len(files) == 1 && regularFile(files[0])
 }
 
-func distributionRootReady(dir, tool string) bool {
+func distributionRootReady(dir, tool string, windows bool) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false
@@ -190,9 +209,20 @@ func distributionRootReady(dir, tool string) bool {
 			home = filepath.Join(dir, entry.Name())
 		}
 	}
+	return home != "" && distributionExecutable(home, tool, windows) && hasLauncher(home, tool)
+}
+
+func distributionExecutable(home, tool string, windows bool) bool {
 	command := "gradle"
 	if tool == "maven" {
 		command = "mvn"
 	}
-	return home != "" && executableFile(filepath.Join(home, "bin", command)) && hasLauncher(home, tool)
+	if windows {
+		if tool == "maven" {
+			command += ".cmd"
+		} else {
+			command += ".bat"
+		}
+	}
+	return executableFile(filepath.Join(home, "bin", command), windows)
 }

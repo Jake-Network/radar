@@ -28,6 +28,18 @@ uninterpreted loaders without running Python. These are configuration advisories
 not runtime isolation checks; nested settings and full Compose semantics are
 not interpreted.
 
+Candidate source integrity compares tracked blobs and files with bounded
+streaming buffers, so total tracked bytes have no integrity limit. The 10,000
+tracked-file and 20,000 filesystem-input bounds still apply; snapshot copying
+and static parsing retain separate limits. Same-length content changes, extra
+inputs and supported executable-mode changes invalidate execution proof.
+Declared runner preparation errors appear in `runner_preparations[].error` and
+human output; inspection errors remain distinct from source mismatches.
+
+Static Suggested tests show the actual targeted selection first. Conservative
+package-root fallbacks are summarized with their count and `--suite balanced`;
+JSON `verification_proposal.commands` retains the full proposal.
+
 ## Explicit inputs
 
 `gate` selects the base and worktree branches, recommends tests and supplies a
@@ -82,6 +94,14 @@ command when ancestry permits. Review the result and select the intended base
 before running that command. Tests require a separate `gate --run`.
 Pass the same `--policy PATH` and `--plan PATH` to landing as to gate; missing
 requirements or configuration changes prevent ref publication.
+Branches that conflict with base alone appear in `landing.restack_first`. Their
+names and pinned commits remain in `landing.branches`, while pairs, order, and
+candidate evidence cover the remaining inputs. The required `landing_input_scope`
+check keeps the full selection NOT VERIFIED even under a custom policy; failures
+in the remaining combination still fail. If every input needs restack, no
+candidate commit or tree is reported. `land --apply` refuses these plans before
+importing objects or creating a ref.
+
 `landing_apply` reports whether a ref was published, whether immutable candidate
 objects were imported, and the refusal reason. Imported objects may remain after
 a refusal; they do not update branches or establish verification. Existing base
@@ -443,6 +463,21 @@ means tests ran.
 ```json
 {"version":1,"profiles":[{"root":".","prefix":["uv","run","--frozen"],"setup":[["uv","sync","--frozen"]],"lockfiles":["uv.lock"],"artifacts":[".venv"],"exclude":["-m","not integration"]}]}
 ```
+
+A profile matches its `root` and descendant command directories; the most specific
+matching profile wins. Setup runs at `root`, and lockfiles and artifacts are
+relative to that directory. Selected test commands keep their own CWD, so a
+relative `prefix` executable resolves from that CWD, not from the profile root.
+For a package-local `.venv/bin/python`, declare the package directory as the
+profile root and use it as the selected command CWD. A root `uv run` profile can
+cover nested commands through uv's project lookup; it does not relocate relative
+executable paths.
+
+On Windows, candidate-relative native runners use `.exe` or `.com` files rather
+than Unix executable bits. Known `.cmd`/`.bat` build wrappers still receive the
+static distribution-cache check, but direct batch-script execution is unsupported.
+A batch runner needs an explicitly declared interpreter command; Radar does not
+construct a shell command from repository paths or arguments.
 
 Only `--run` (or the equivalent explicit merge-check opt-in) runs declared setup.
 Explicit profile setup may download dependencies from registries; it keeps the

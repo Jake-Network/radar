@@ -489,3 +489,90 @@ func TestDriverFailureDoesNotResolveAndLocalExecutableRejected(t *testing.T) {
 		t.Fatal("executed repository binary")
 	}
 }
+
+func TestRestackFirstScopesRemainingCandidateAndRefusesApply(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "stale", "baseline", "service.py", "def charge():\n return 2\n")
+	branch(t, root, "new-base", "baseline", "service.py", "def charge():\n return 3\n")
+	for _, name := range []string{"a", "b", "c"} {
+		branch(t, root, name, "new-base", name+".md", name+"\n")
+	}
+	git(t, root, "checkout", "-q", "new-base")
+	before := git(t, root, "show-ref")
+	state := git(t, root, "status", "--porcelain=v1")
+	p, err := Plan(context.Background(), root, Options{Base: "new-base", Branches: []string{"stale", "c", "b", "a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Branches) != 4 || len(p.RestackFirst) != 1 || p.RestackFirst[0].Name != "stale" || len(p.Pairs) != 3 || len(p.Order) != 3 || p.Complete {
+		t.Fatalf("plan: %+v", p)
+	}
+	policy := gate.Policy{Version: 1, Require: []string{"textual_merge"}}
+	r, err := PreviewPlan(context.Background(), root, p, Options{Analysis: integration.Options{Policy: &policy}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Verdict != gate.Blocked || len(r.Inputs) != 3 || r.CandidateCommit == "" {
+		t.Fatalf("report: %+v", r)
+	}
+	policy.OnMissing = "fail"
+	strict, err := PreviewPlan(context.Background(), root, p, Options{Analysis: integration.Options{Policy: &policy}})
+	if err != nil || strict.Gate.Verdict != gate.Blocked {
+		t.Fatalf("strict missing policy bypassed scope: %+v %v", strict, err)
+	}
+	for _, sha := range r.Inputs {
+		if sha == p.RestackFirst[0].Commit {
+			t.Fatal("excluded input in candidate")
+		}
+	}
+	applied, err := Apply(context.Background(), root, p)
+	if err == nil || applied.Outcome.ObjectsImported || applied.Outcome.Published {
+		t.Fatalf("apply: %+v %v", applied, err)
+	}
+	if before != git(t, root, "show-ref") || state != git(t, root, "status", "--porcelain=v1") {
+		t.Fatal("apply mutated source")
+	}
+	// An ancestor that conflicts alone must not exclude its repaired descendant.
+	git(t, root, "checkout", "-qB", "fixed", "stale")
+	git(t, root, "merge", "--no-ff", "-s", "ours", "-m", "resolve base", "new-base")
+	p, err = Plan(context.Background(), root, Options{Base: "new-base", Branches: []string{"stale", "fixed"}})
+	if err != nil || len(p.RestackFirst) != 1 || len(p.Order) != 1 || p.Order[0] != "fixed" {
+		t.Fatalf("descendant plan: %+v %v", p, err)
+	}
+}
+
+func TestAllRestackHasNoBaseOnlyPassingCandidate(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "stale", "baseline", "service.py", "def charge():\n return 2\n")
+	branch(t, root, "new-base", "baseline", "service.py", "def charge():\n return 3\n")
+	p, err := Plan(context.Background(), root, Options{Base: "new-base", Branches: []string{"stale"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := PreviewPlan(context.Background(), root, p, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Verdict != gate.Blocked || r.CandidateCommit != "" || r.CandidateTree != "" || len(r.Inputs) != 0 {
+		t.Fatalf("report: %+v", r)
+	}
+}
+
+func TestRestackScopePreservesRemainingFailure(t *testing.T) {
+	root := fixture(t)
+	branch(t, root, "stale", "baseline", "service.py", "def charge():\n return 2\n")
+	branch(t, root, "new-base", "baseline", "service.py", "def charge():\n return 3\n")
+	branch(t, root, "a", "new-base", "notes.md", "left\n")
+	branch(t, root, "b", "new-base", "notes.md", "right\n")
+	p, err := Plan(context.Background(), root, Options{Base: "new-base", Branches: []string{"stale", "a", "b"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := PreviewPlan(context.Background(), root, p, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Verdict != gate.Fail {
+		t.Fatalf("hidden remaining failure: %+v", r)
+	}
+}

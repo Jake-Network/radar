@@ -66,3 +66,36 @@ func TestWorkspacePairWithoutDeclarationsIsNotVerified(t *testing.T) {
 		t.Fatal(code, report)
 	}
 }
+
+func TestWorkspaceLandingRestackKeepsExcludedScopeBlocked(t *testing.T) {
+	s := stage2Shop(t)
+	s.agent(s.orders, "agent/stale", map[string]string{"collision.txt": "stale\n"})
+	put(t, s.orders, "collision.txt", "base\n")
+	gitTest(t, s.orders, "add", "collision.txt")
+	gitTest(t, s.orders, "commit", "-qm", "advance base")
+	s.agent(s.orders, "agent/clean", map[string]string{"notes.md": "clean\n"})
+	for _, refs := range [][]string{{"orders:agent/stale", "orders:agent/clean", "payments:agent/client"}, {"orders:agent/stale", "payments:agent/client"}} {
+		code, report := workspacePairTest(t, s, options{args: refs}, false)
+		if code != 1 || report["verdict"] != "blocked" {
+			t.Fatal(code, report)
+		}
+		p := report["landing"].(map[string]any)["orders"].(map[string]any)
+		if len(p["restack_first"].([]any)) != 1 {
+			t.Fatal(p)
+		}
+		for _, raw := range report["repos"].([]any) {
+			repo := raw.(map[string]any)
+			if repo["id"] != "orders" {
+				continue
+			}
+			r := repo["report"].(map[string]any)
+			if repo["verdict"] != "blocked" {
+				t.Fatal(repo)
+			}
+			if len(refs) == 2 && (r["candidate_commit"] != nil || r["candidate_tree"] != nil || len(r["inputs"].([]any)) != 0) {
+				t.Fatal(r)
+			}
+		}
+		checkStage2Schema(t, report)
+	}
+}

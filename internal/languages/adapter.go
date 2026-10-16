@@ -236,6 +236,20 @@ func (a syntaxAdapter) Parse(ctx context.Context, s Source) (Result, error) {
 			}
 		}
 		imported := importNames(n, s.Content, a.language)
+		// Repeating a module within one import statement describes the same
+		// source-to-module edge at the same syntax location. Keep later import
+		// statements separate so their own provenance and identities survive.
+		if len(imported) > 1 {
+			seenModules := map[string]bool{}
+			uniqueImports := imported[:0]
+			for _, module := range imported {
+				if !seenModules[module] {
+					seenModules[module] = true
+					uniqueImports = append(uniqueImports, module)
+				}
+			}
+			imported = uniqueImports
+		}
 		if len(imported) > 0 {
 			members := importedMembers(n, s.Content, a.language)
 			system := false

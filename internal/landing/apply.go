@@ -49,6 +49,9 @@ func ApplyWithOptions(ctx context.Context, root string, r Report, o Options) (a 
 			a.FastForward = []string{}
 		}
 	}()
+	if len(r.RestackFirst) > 0 {
+		return a, errors.New("landing inputs require restack against base; no objects imported or integration ref published")
+	}
 	analysis, e := analysisOptions(o)
 	if e != nil {
 		return a, e

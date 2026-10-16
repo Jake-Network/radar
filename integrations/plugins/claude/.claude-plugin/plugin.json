@@ -1,6 +1,6 @@
 {
   "name": "radar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Static Radar verification before an agent stops, with bounded repair feedback.",
   "author": {"name": "Radar contributors"},
   "repository": "https://github.com/Jake-Network/radar",

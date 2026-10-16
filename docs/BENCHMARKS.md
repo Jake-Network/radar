@@ -157,6 +157,31 @@ phase time unavailable. File reduction is not runtime savings.
 
 ## History replay
 
+The [400-request sampling extension](../benchmarks/history/README.md#reproducible-400-request-sample)
+pins AgenticFlict and AIDev v4 source artifacts, checks publisher checksums, and
+selects 200 requests from each with a fixed seed. Local Git binding records exact
+input commits, trees, repository identity and textual oracle results; missing
+historical anchors and unavailable clones stay unavailable. AIDev PR metadata
+alone does not prove a clean merge. Separate stratum tables preserve actual
+input and tool denominators, unavailable counts, false positives and missed
+cases. Semantic labels still require two independent humans; the 400-request
+target does not establish 400 verified or labeled cases.
+The checked-in `benchmarks/history/corpus/phase0-400-v2/` snapshot records all
+400 acquisition attempts, 217 acquired input tuples and 127 Git-bound cases
+(83 textual-conflict cases and 44 clean textual merges). The remaining 273
+inputs are unavailable, including 90 source textual labels that did not
+reproduce for their exact pinned pair. The earlier 105-case packet and its
+review CSV remain intact; V2 identifies the 22 additional cases separately.
+The development binary digest and static observations are checked in: 77 of 83
+bound textual-conflict inputs and 32 of 44 clean textual merges produced
+available tool results. Those available cases had zero textual misses and zero
+textual false positives respectively; total unavailable denominators remain
+123/200 and 168/200. The remaining bound results include five blocked, 12
+unsupported-layout errors and one timeout. Semantic recall and false-positive rates remain
+unavailable until independent human review. See the
+history guide for binary provenance, full failure counts and historical anchor
+criteria.
+
 The checked-in [history corpus](../benchmarks/history/README.md) now has
 60 exact candidates: 20 Cobra (Go), 20 Click (Python), and 20 Hono (TypeScript).
 Its public source URLs, base/head/tree SHAs and fetched Hono PR-head refs are
@@ -228,11 +253,86 @@ The two-branch migration check's final binary SHA-256 was
 (source `927d3d5`, before this documentation update).
 
 External editable Python imports and base-existing versus candidate-only test
-failures were checked with controlled fixtures. Actual Qurify pytest/DB execution,
-the historical 22-file branch selection, native macOS default `TMPDIR`, and hosted
-CI remain unverified. The Phase 0 measurement above preceded the macOS and
-Windows qualification jobs now configured in this checkout; those jobs have not
-been executed by the local Linux checks.
+failures were checked with controlled fixtures. At that 2026-10-15 snapshot, actual
+Qurify pytest/DB execution, the historical 22-file branch selection, native macOS
+default `TMPDIR`, and hosted CI were unverified. The measurement above preceded
+the qualification below; local Linux checks did not execute hosted native jobs.
+
+
+### Qurify runtime qualification (2026-10-16)
+
+A later Linux qualification used upstream commit
+`163a9246c4b614697de02b43941c074e2ba6efc9`, tree
+`aa524c3014caa56b53bdc433b791fead865719b8`: 1,629 tracked blobs totaling
+95,497,313 bytes, including the original 75,813,012-byte
+`graph_storage_test_data.json`. Disposable clones retained that file. Selected
+upstream test contents were unchanged; mode-only test changes selected commands.
+A fixture runner declaration rooted at `libs/shared-modules` completed two setup
+commands (candidate-local venv and source-path declaration) before real pytest.
+The new-defect case reused an already prepared identical candidate source tree, then ran tests.
+
+| Case | Observed selected tests | Gate and attribution |
+| --- | --- | --- |
+| Original collection rewrite and connection lock tests | 12 passed | PASS |
+| Original collection store tests, Neo4j absent | 0 run, 2 skipped | NOT VERIFIED / blocked; no branch lead |
+| Original collection store tests, isolated Neo4j present | 2 passed, 0 skipped | PASS |
+| Seeded source defect already on base | 2 run, 1 failed; same failure on unchanged base | NOT VERIFIED / blocked; failure retained, no branch lead |
+| Seeded source defect only in candidate | 450 run, 1 failed, 93 skipped; base 450 passed, 93 skipped | FAIL; new lock failure retained |
+| Existing lock defect plus new collection rewrite defect | 12 run, 2 failed, 2 skipped; base 1 failed | FAIL; only new collection failure supplies branch leads |
+
+Seeded defects are explicit mutation regressions in real source, not natural
+upstream failures or history-benchmark labels. Broader app commands selected in
+the new/mixed cases still reported missing-dependency environment errors. These
+results qualify the selected tests and baseline classification, not the full
+workspace suite. All candidate/base executions retained unchanged source;
+original checkout refs, index, status and streamed tracked contents matched before
+and after qualification. An independent reviewer checked raw reports and these
+boundaries.
+
+Dependencies were prepared separately from source using 23 pinned wheel-only
+packages with hashes from upstream `uv.lock` (SHA-256
+`6e8dbedef095b02f2beb4e0710ca12aaaf09095f2a29d6dea45dffb109703b4f`).
+Test containers used Python 3.11.12, no network, a non-root user, read-only rootfs,
+no capabilities, default seccomp, and CPU/memory/process/tmpfs limits. The service
+case shared only an isolated, no-egress Neo4j 5.26.0 container network namespace;
+no host ports or production credentials were used. The temporary service was
+stopped afterward. This was execution opt-in, not static-hook behavior.
+
+The measured Radar development binary SHA-256 was
+`b5e690e94e0da3d1e5788dd6b2fd8621a331dbd150c44aa9c18f6134f932a654`;
+test image ID was
+`sha256:be32e947f746aa4a480be724e595427d0caa94e89042cf95ec39ac1f90f562f0`.
+These identify this local acceptance snapshot, not a published release or hosted
+native CI result. After a duplicate-import extraction correction, binary
+`f50fc4dcdff8181d774e54580f15f9b6b52469fe41033252fcb4243eafd885e5`
+repeated both setup commands and the original 12 selected tests successfully.
+A data-only AST scan of all 1,423 upstream Python files found no repeated module
+within one import statement, the corrected pattern.
+
+After a further inspection-timeout classification fix, binary
+`8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0`
+again passed the two setup commands and 12 tests, with no skips and unchanged
+source. Its 379-file Go source manifest digest was
+`14d1f95ebc0ea131a595553694e373122598c080c11c07fcc39b9ad99116a80b`.
+Its static-only call executed no setup or tests and exactly matched the preceding
+binary's base/inputs, candidate tree, changed/affected paths, findings,
+diagnostics, limitations, proposals, checks and gate. Static policy passed while
+`integration_execution` remained unknown. The six-case baseline/service matrix
+above remains bound to the earlier `b5e690e9…` binary; it was not repeated for
+these two later builds.
+
+### TypeScript first-run fixtures (2026-10-16)
+
+The same `8966ecb7…` binary was checked with dependency-free, disposable Git
+repositories and Node 24.14.0. An automatically selected `.test.mjs` executed
+typed `.ts` sources: each branch passed one Node test, their combination failed
+one test, and unchanged base passed. A separate `.test.ts` repository remained
+blocked under automatic full-suite selection because that test extension is
+unsupported. Explicitly authorized `node --test --test-reporter=tap` execution
+of that TypeScript test observed the same standalone-pass/combined-fail result.
+Both fixtures retained unchanged candidate source and original refs/index/files.
+These controlled fixtures do not establish general TypeScript test-runner
+discovery or qualification of an external production repository.
 
 ## Evidence and historical verification
 

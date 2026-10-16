@@ -37,6 +37,15 @@ class CheckRunTests(unittest.TestCase):
                 checks.publish('owner/repo', self.report(), 'token', 1, HEAD, BASE, enabled, trusted, self.api)
         self.assertEqual(self.calls, [])
 
+    def test_restack_inputs_never_publish_success(self):
+        for landing in ({'branches': [], 'restack_first': [{'name': 'stale'}]},
+                        {'api': {'branches': [], 'restack_first': [{'name': 'stale'}]}}):
+            report = self.report('pass')
+            report['landing'] = landing
+            body = checks.payload(report, HEAD)
+            self.assertEqual(body['conclusion'], 'action_required')
+            self.assertIn('require restack', body['output']['summary'])
+
     def test_conclusions_preserve_missing_evidence(self):
         for verdict, conclusion in [('pass', 'success'), ('fail', 'failure'), ('blocked', 'neutral'), ('error', 'action_required'), ('unknown', 'action_required')]:
             self.publish(self.report(verdict))

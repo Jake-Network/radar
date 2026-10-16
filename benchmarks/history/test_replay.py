@@ -6,6 +6,8 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 HERE = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('replay', HERE / 'replay.py')
@@ -87,6 +89,24 @@ class HistoryFixture(unittest.TestCase):
 
     def head(self):
         return self.git('rev-parse', 'HEAD').strip()
+
+    def test_structured_error_is_unavailable_without_retaining_raw_output(self):
+        binary = pathlib.Path(self.tmp.name) / 'fixture-radar'
+        binary.write_bytes(b'not executed; mocked trusted fixture binary')
+        original = subprocess.run
+        def run(argv, **kwargs):
+            if pathlib.Path(argv[0]).name == 'radar':
+                if argv[1] == 'version':
+                    return SimpleNamespace(returncode=0, stdout='fixture\n', stderr='')
+                return SimpleNamespace(returncode=2, stdout=json.dumps({'status': 'error', 'error':
+                    'preview refuses symlink or submodule: private/path (unsupported layout)'}), stderr='')
+            return original(argv, **kwargs)
+        with patch.object(replay.subprocess, 'run', side_effect=run):
+            result = replay.replay(replay.mine(self.repo, 'main'), self.repo, binary)
+        self.assertTrue(result['results'])
+        self.assertTrue(all(row['verdict'] == 'error' and row['error_kind'] == 'unsupported_repository_layout'
+                            and len(row['response_digest']) == 64 for row in result['results']))
+        self.assertNotIn('private/path', json.dumps(result))
 
     def test_mine_pairs_merges_with_followups_deterministically(self):
         first = replay.mine(self.repo, 'main')

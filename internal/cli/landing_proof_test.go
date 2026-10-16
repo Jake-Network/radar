@@ -154,3 +154,41 @@ func TestLandingUsesSelectedGatePolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestLandingRestackScopeTextJSONAndMCP(t *testing.T) {
+	root, agent := checkoutRepo(t)
+	agent("stale", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("base-update", map[string]string{"backend.py": "def price():\n    return 3\n"})
+	gitTest(t, root, "checkout", "--detach", "-q", "base-update")
+	gitTest(t, root, "branch", "-f", "main", "base-update")
+	gitTest(t, root, "checkout", "-q", "main")
+	for _, name := range []string{"clean-a", "clean-b", "clean-c"} {
+		agent(name, map[string]string{name + ".md": name + "\n"})
+	}
+	args := []string{"land", "stale", "clean-a", "clean-b", "clean-c", "--base", "main"}
+	report := invoke(t, root, 1, args...)
+	landing := report["landing"].(map[string]any)
+	if report["gate"].(map[string]any)["verdict"] != "blocked" || len(landing["restack_first"].([]any)) != 1 || len(landing["branches"].([]any)) != 4 || len(landing["pairs"].([]any)) != 3 || len(report["inputs"].([]any)) != 3 {
+		t.Fatal(report)
+	}
+	code, out, errout := run(t, root, args...)
+	if code != 1 || !strings.Contains(out, "Restack first: stale") || !strings.Contains(out, "NOT VERIFIED") {
+		t.Fatal(code, out, errout)
+	}
+	a := &app{root: root, ctx: context.Background()}
+	result := a.callTool("radar_land", map[string]any{"branches": "stale,clean-a,clean-b,clean-c", "base": "main"})
+	data, _ := json.Marshal(result)
+	if !strings.Contains(string(data), "restack_first") || !strings.Contains(string(data), "landing_input_scope") {
+		t.Fatal(string(data))
+	}
+	before := gitTest(t, root, "show-ref")
+	refusal := invoke(t, root, 2, "land", "stale", "clean-a", "--base", "main", "--apply")
+	outcome := refusal["landing_apply"].(map[string]any)
+	if outcome["objects_imported"] != false || outcome["published"] != false || refusal["landing"] == nil || before != gitTest(t, root, "show-ref") {
+		t.Fatal(refusal)
+	}
+	all := invoke(t, root, 1, "land", "stale", "--base", "main")
+	if all["candidate_commit"] != nil || all["candidate_tree"] != nil || len(all["inputs"].([]any)) != 0 {
+		t.Fatal(all)
+	}
+}

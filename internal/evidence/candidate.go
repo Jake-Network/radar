@@ -192,7 +192,7 @@ func decorateCandidateObservation(r *CandidateObservation, argv []string, data [
 		}
 	}
 	if r.TestsFailed > 0 && isUnittest(argv) {
-		text := string(data)
+		text := normalizedHarnessOutput(data)
 		for _, match := range failedCase.FindAllStringSubmatch(text, -1) {
 			name := match[2]
 			if !strings.HasSuffix(name, "."+match[1]) {

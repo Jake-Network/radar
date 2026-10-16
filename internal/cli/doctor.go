@@ -215,6 +215,7 @@ func (a *app) doctor(_ options) int {
 		} else {
 			line("State", a.stateRoot+"/.radar")
 		}
+		line("Limits", "candidate integrity: 10000 tracked files, 20000 filesystem inputs; no total byte limit")
 		line("Privacy", "local only: no telemetry, no cloud inference; runs repository code only with --run")
 		fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(proj.Next))
 	})
@@ -262,6 +263,7 @@ func (a *app) inspectProject() *doctorProject {
 			}
 		}
 	}
+	d.Resources = mergeDoctorResources(d.Resources)
 	if files, err := gitrepo.Files(a.ctx, a.root, "HEAD"); err == nil {
 		d.Languages = detectLanguages(files)
 	}
@@ -272,8 +274,19 @@ func (a *app) inspectProject() *doctorProject {
 		for _, r := range testselection.Runners(inv) {
 			d.Tests = append(d.Tests, runnerStatus(r))
 		}
-		if len(inv.Diagnostics) > 0 {
-			d.Problems = append(d.Problems, plural(len(inv.Diagnostics), "test or configuration file was", "test or configuration files were")+" skipped by discovery; radar gate --run will report the inventory as incomplete")
+		blocking, informational := 0, 0
+		for _, diagnostic := range inv.Diagnostics {
+			if testselection.InventoryDiagnosticBlocks(diagnostic) {
+				blocking++
+			} else {
+				informational++
+			}
+		}
+		if blocking > 0 {
+			d.Problems = append(d.Problems, plural(blocking, "test or configuration file was", "test or configuration files were")+" skipped by discovery; radar gate --run will report the inventory as incomplete")
+		}
+		if informational > 0 {
+			d.Problems = append(d.Problems, plural(informational, "non-test source file was", "non-test source files were")+" skipped by discovery due to its size; this omission does not block the test inventory")
 		}
 	}
 	for _, r := range d.Tests {
@@ -283,9 +296,11 @@ func (a *app) inspectProject() *doctorProject {
 	}
 	_, err := os.Stat(filepath.Join(a.root, ".radar", "contracts.json"))
 	d.Contracts = err == nil
-	for name, skill := range map[string]string{"claude": ".claude/skills/radar/SKILL.md", "codex": ".agents/skills/radar-architecture/SKILL.md"} {
-		_, err := os.Stat(filepath.Join(a.root, filepath.FromSlash(skill)))
-		d.Agents[name] = err == nil
+	for name, skills := range map[string][]string{"claude": {".claude/skills/radar/SKILL.md"}, "codex": {".agents/skills/radar/SKILL.md", ".agents/skills/radar-architecture/SKILL.md"}} {
+		for _, skill := range skills {
+			_, err := os.Stat(filepath.Join(a.root, filepath.FromSlash(skill)))
+			d.Agents[name] = d.Agents[name] || err == nil
+		}
 	}
 	if inv, err := a.workspaceInvocation(options{}); err == nil && inv != nil {
 		d.Workspace = inv.scope.Workspace

@@ -151,6 +151,7 @@ func renderWorkspaceGate(w io.Writer, g workspaceReport) {
 		if r.Report == nil {
 			continue
 		}
+		renderRunnerPreparationErrors(w, r.Report.RunnerPreparations, "      ", p)
 		warnings := 0
 		for _, f := range r.Report.Findings {
 			switch f.Severity {

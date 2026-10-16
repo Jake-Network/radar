@@ -99,6 +99,7 @@ func TestDoctorFirstRunDetection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		physicalDir = filepath.ToSlash(physicalDir)
 		if err := os.Rename(dir, dir+"-offline"); err != nil {
 			t.Fatal(err)
 		}
@@ -484,5 +485,16 @@ func TestGateBranchUnknownChangesDoNotRenderZeroFiles(t *testing.T) {
 	text := out.String()
 	if !strings.Contains(text, "agent-a  123456789012  changed files unavailable") || !strings.Contains(text, "agent-b  234567890123  1 file changed") || strings.Contains(text, "0 files changed") {
 		t.Fatal(text)
+	}
+}
+
+func TestDoctorRecognizesSharedSkillSetup(t *testing.T) {
+	root, _ := agentRepo(t, map[string]string{"app.py": "VALUE = 1\n"})
+	invoke(t, root, 0, "setup", "both", "--hook=false")
+	report := invoke(t, root, 0, "doctor")
+	project := report["project"].(map[string]any)
+	installed := project["agent_skills_installed"].(map[string]any)
+	if installed["claude"] != true || installed["codex"] != true {
+		t.Fatalf("shared skills not detected: %v", installed)
 	}
 }

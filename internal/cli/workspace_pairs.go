@@ -72,7 +72,19 @@ func (a *app) workspacePairInspection(o options, inv *workspaceInvocation, dirty
 	if g.Only == nil {
 		g.Only = []string{}
 	}
-	for _, r := range results {
+	for i, r := range results {
+		if p, ok := plans[r.ID]; ok && r.Report != nil {
+			if len(p.Order) == 0 && len(p.RestackFirst) > 0 {
+				preview, err := landing.PreviewPlan(a.ctx, r.Path, p, landing.Options{})
+				if err != nil {
+					return a.fail(err)
+				}
+				r.Report = &preview
+			} else {
+				p.EnforceInputScope(r.Report)
+			}
+		}
+		results[i] = r
 		entry := workspaceEntry(r)
 		g.Repos = append(g.Repos, entry)
 		g.BranchCount += len(r.Branches)
@@ -100,6 +112,9 @@ func (a *app) workspacePairInspection(o options, inv *workspaceInvocation, dirty
 		for _, r := range repos {
 			if p, ok := plans[r.ID]; ok {
 				fmt.Fprintf(w, "Land order (%s): %s\n", r.ID, strings.Join(p.Order, " → "))
+				for _, b := range p.RestackFirst {
+					fmt.Fprintf(w, "? Restack first (%s): %s (conflicts with base: %s)\n", r.ID, b.Name, strings.Join(b.Conflicts, ", "))
+				}
 			}
 		}
 		if dirty {

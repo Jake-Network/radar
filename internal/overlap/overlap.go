@@ -61,6 +61,8 @@ func analyzePairs(ctx context.Context, root, base string, inputs []Input, curren
 		out.Limitations = append(out.Limitations, fmt.Sprintf("Overlap incomplete: %d of %d eligible pairs omitted by the %d-pair inspection limit.", eligible-budget, eligible, budget))
 	}
 	standalone := map[int]map[string]bool{}
+	standaloneConflicted := map[int]bool{}
+	standaloneFull := map[int]bool{}
 	for i := 0; i < len(inputs); i++ {
 		for j := i + 1; j < len(inputs); j++ {
 			if current != "" && inputs[i].Branch != current && inputs[j].Branch != current {
@@ -88,17 +90,44 @@ func analyzePairs(ctx context.Context, root, base string, inputs []Input, curren
 					relevant = append(relevant, f)
 				}
 			}
+			if len(pair.Conflicts) > 0 {
+				out.Limitations = append(out.Limitations, fmt.Sprintf("%s + %s: textual conflicts prevent combined symbol analysis: %s", inputs[i].Branch, inputs[j].Branch, strings.Join(pair.Conflicts, ", ")))
+			}
 			if len(relevant) == 0 {
-				if len(pair.Conflicts) > 0 {
-					out.Limitations = append(out.Limitations, fmt.Sprintf("%s + %s: textual conflicts prevent combined symbol analysis: %s", inputs[i].Branch, inputs[j].Branch, strings.Join(pair.Conflicts, ", ")))
-				}
 				continue
 			}
+			needsStandaloneAnalysis := false
+			for _, finding := range relevant {
+				if finding.Code != "worktree_textual_conflict" {
+					needsStandaloneAnalysis = true
+				}
+			}
 			for _, idx := range []int{i, j} {
-				if standalone[idx] == nil {
-					r, e := analyze(ctx, root, base, []Input{inputs[idx]}, cache)
+				if needsStandaloneAnalysis && standaloneConflicted[idx] {
+					return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
+				}
+				if standalone[idx] == nil || needsStandaloneAnalysis && !standaloneFull[idx] {
+					// The full pair above has validated this exact snapshot. A
+					// standalone head at base (or its synthetic dirty child) is
+					// a descendant of base, so merging it cannot create textual
+					// conflict hunks. This establishes no semantic check result.
+					if !needsStandaloneAnalysis && inputs[idx].Head == base && immutableAnalysisInputs(base, []Input{inputs[idx]}) {
+						standalone[idx] = map[string]bool{}
+						continue
+					}
+					r, e := analyzeComparison(ctx, root, base, []Input{inputs[idx]}, cache, !needsStandaloneAnalysis)
 					if e != nil {
 						return out, e
+					}
+					standaloneConflicted[idx] = len(r.Conflicts) > 0
+					standaloneFull[idx] = needsStandaloneAnalysis
+					if needsStandaloneAnalysis && len(r.Conflicts) > 0 {
+						return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
+					}
+					for _, limitation := range r.Limitations {
+						if strings.HasPrefix(limitation, "Overlap incomplete:") {
+							return out, fmt.Errorf("standalone comparison unavailable for %s: %s", inputs[idx].Branch, limitation)
+						}
 					}
 					standalone[idx] = map[string]bool{}
 					for _, f := range r.Findings {
@@ -121,7 +150,7 @@ func analyzePairs(ctx context.Context, root, base string, inputs []Input, curren
 }
 
 func supported(f model.Finding) bool {
-	return f.Severity == model.SeverityError && (f.Code == "worktree_textual_conflict" || f.Code == "duplicate_unique_key" || f.Code == "duplicate_route" || strings.HasPrefix(f.Code, "symbol_") || strings.HasPrefix(f.Code, "migration_") || strings.HasPrefix(f.Code, "unique_"))
+	return f.Severity == model.SeverityError && (f.Code == "worktree_textual_conflict" || f.Code == "duplicate_unique_key" || f.Code == "duplicate_route" || strings.HasPrefix(f.Code, "contract_") || strings.HasPrefix(f.Code, "symbol_") || strings.HasPrefix(f.Code, "migration_") || strings.HasPrefix(f.Code, "unique_"))
 }
 func identity(f model.Finding) string {
 	if f.Code == "worktree_textual_conflict" {
@@ -131,6 +160,16 @@ func identity(f model.Finding) string {
 }
 
 func analyze(ctx context.Context, root, base string, inputs []Input, cache *indexer.ParseCache) (integration.Report, error) {
+	return analyzeComparison(ctx, root, base, inputs, cache, false)
+}
+
+// Textual-only attribution needs complete private merge and hunk inspection,
+// but semantic indexing cannot change the identity of a Git conflict hunk.
+// Partial textual reports must never populate the full-analysis cache.
+func analyzeComparison(ctx context.Context, root, base string, inputs []Input, cache *indexer.ParseCache, textualOnly bool) (integration.Report, error) {
+	if report, ok := cachedAnalysis(ctx, root, base, inputs); ok {
+		return report, nil
+	}
 	heads := []string{}
 	snaps := []integration.DirtySnapshot{}
 	for i, in := range inputs {
@@ -154,9 +193,12 @@ func analyze(ctx context.Context, root, base string, inputs []Input, cache *inde
 	if err != nil {
 		return integration.Report{}, err
 	}
-	r, err := integration.Analyze(ctx, c, integration.Options{Base: base, Branches: heads, ParseCache: cache})
-	if err != nil {
-		return r, err
+	r := integration.Report{Conflicts: append([]string(nil), c.Conflicts...)}
+	if !textualOnly {
+		r, err = integration.Analyze(ctx, c, integration.Options{Base: base, Branches: heads, ParseCache: cache})
+		if err != nil {
+			return r, err
+		}
 	}
 	if len(c.Conflicts) > 0 {
 		stopped, err := gitrepo.Resolve(ctx, c.Dir, "MERGE_HEAD")
@@ -187,6 +229,9 @@ func analyze(ctx context.Context, root, base string, inputs []Input, cache *inde
 		}
 	}
 
+	if !textualOnly {
+		cacheAnalysis(ctx, root, base, inputs, r)
+	}
 	return r, nil
 }
 
@@ -204,9 +249,43 @@ func NewWithDirty(ctx context.Context, root, base, current string, inputs []Inpu
 	if !hasDirty || len(observed.Findings) == 0 {
 		return nil, nil
 	}
+	// If removing current's saved edits leaves exactly the base, the pair is
+	// identical to the already inspected peer standalone. It has no cross-input
+	// drift to subtract. This is an identity of pinned trees, not a clean result
+	// inferred from an unavailable analysis.
+	if len(baseline) == 2 && immutableAnalysisInputs(base, baseline) {
+		for _, input := range baseline {
+			if input.Branch == current && input.Snapshot == nil && input.Head == base {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				out := []model.Finding{}
+				for _, finding := range observed.Findings {
+					for _, branch := range finding.Branches {
+						if branch == current {
+							out = append(out, finding)
+							break
+						}
+					}
+				}
+				return out, nil
+			}
+		}
+	}
 	before, err := AnalyzeCurrent(ctx, root, base, current, baseline, caches...)
 	if err != nil {
 		return nil, err
+	}
+	needsCombinedAnalysis := false
+	for _, finding := range observed.Findings {
+		if finding.Code != "worktree_textual_conflict" {
+			needsCombinedAnalysis = true
+		}
+	}
+	for _, limitation := range before.Limitations {
+		if strings.HasPrefix(limitation, "Overlap incomplete:") || needsCombinedAnalysis && strings.Contains(limitation, "textual conflicts prevent combined symbol analysis") {
+			return nil, fmt.Errorf("dirty baseline comparison unavailable: %s", limitation)
+		}
 	}
 	old := map[string]int{}
 	for _, f := range before.Findings {

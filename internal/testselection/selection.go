@@ -235,11 +235,11 @@ func DiscoverProvider(ctx context.Context, p indexer.Provider, revision string) 
 	return inv, nil
 }
 
-// Only this bounded, known omission is informational. Unknown diagnostics
-// continue to block discovery, including unreadable tests and exhausted budgets.
 const oversizedSourceWarning = "non-test source exceeds 1 MiB discovery limit; skipped"
 
-func inventoryDiagnosticBlocks(d model.Diagnostic) bool {
+// InventoryDiagnosticBlocks distinguishes informational source omissions from
+// incomplete test inventory. Unknown diagnostics remain blocking.
+func InventoryDiagnosticBlocks(d model.Diagnostic) bool {
 	return d.Message != oversizedSourceWarning || isManifest(d.Path) || possibleTestPath(d.Path)
 }
 

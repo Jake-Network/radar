@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+* Candidate source integrity checks stream tracked blobs and files, allowing
+  candidates larger than 64 MiB without weakening content, mode, symlink or
+  input checks. Runner preparation reports inspection errors separately from
+  source changes. Snapshot-copy and static-analysis limits remain in place.
+* Stop hooks preserve the current branch's preview before checking peers.
+  File overlap and supported relationships prioritize peer checks; completed
+  pairs can resume from cache within the remaining time budget. Omitted or
+  incomplete peers remain not verified.
+* Landing plans separate branches that already conflict with the base into
+  `restack_first`, then analyze the remaining combination. Excluded inputs
+  block the full-input gate and prevent `land --apply` from changing refs.
+* Human test suggestions prioritize directly related commands and collapse
+  package fallbacks. Doctor merges shared-resource observations and distinguishes
+  oversized non-test files from blocked test inventory. Claude, Codex and plugin
+  packages share one canonical Radar skill; installation preserves edited skills.
+
 * The Python import preflight now checks where the test's interpreter can load
   code from, not only first-party package names. Import paths, editable and
   local-path installs, preloaded modules and unknown import hooks outside the

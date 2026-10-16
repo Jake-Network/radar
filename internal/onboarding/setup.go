@@ -86,6 +86,7 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 	}
 	r.Diagnostics = append(r.Diagnostics, "Codex project MCP configuration requires a trusted project; Claude may prompt to approve the project MCP server. Restart the agent to load skills, MCP, and hooks.")
 	edits := []edit{}
+	retire := []edit{}
 	add := func(path string, transform func([]byte) ([]byte, error), mode os.FileMode) error {
 		full, e := project.SafePath(root, path)
 		if e != nil {
@@ -127,13 +128,41 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 		data, _ := assets.ReadFile("assets/" + asset)
 		return add(path, func(old []byte) ([]byte, error) {
 			if old != nil && !bytes.Equal(old, data) {
-				return nil, fmt.Errorf("existing integration differs; inspect and merge it manually (not overwritten)")
+				owned := false
+				if asset == "radar.md" {
+					for _, legacy := range []string{"codex.md", "claude.md"} {
+						previous, _ := assets.ReadFile("assets/" + legacy)
+						owned = owned || bytes.Equal(old, previous)
+					}
+				}
+				if !owned {
+					return nil, fmt.Errorf("existing integration differs; inspect and merge it manually (not overwritten)")
+				}
 			}
 			return data, nil
 		}, mode)
 	}
 	if o.Agent == "codex" || o.Agent == "both" {
-		if err = install(".agents/skills/radar-architecture/SKILL.md", "codex.md", 0600); err != nil {
+		// Retire only our exact previous installation; edited skills stay intact.
+		legacyPath := ".agents/skills/radar-architecture/SKILL.md"
+		full, e := project.SafePath(root, legacyPath)
+		if e != nil {
+			return r, e
+		}
+		old, e := os.ReadFile(full)
+		if e != nil && !os.IsNotExist(e) {
+			return r, e
+		}
+		if e == nil {
+			previous, _ := assets.ReadFile("assets/codex.md")
+			if bytes.Equal(old, previous) {
+				retire = append(retire, edit{path: legacyPath, before: old})
+				r.Changes = append(r.Changes, Change{legacyPath, "remove"})
+			} else {
+				r.Diagnostics = append(r.Diagnostics, "Preserved user-edited legacy skill at "+legacyPath+"; review it alongside the radar skill.")
+			}
+		}
+		if err = install(".agents/skills/radar/SKILL.md", "radar.md", 0600); err != nil {
 			return r, err
 		}
 		if err = add(".codex/config.toml", codexMCP, 0600); err != nil {
@@ -147,7 +176,7 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 		}
 	}
 	if o.Agent == "claude" || o.Agent == "both" {
-		if err = install(".claude/skills/radar/SKILL.md", "claude.md", 0600); err != nil {
+		if err = install(".claude/skills/radar/SKILL.md", "radar.md", 0600); err != nil {
 			return r, err
 		}
 		if err = add(".mcp.json", claudeMCP, 0600); err != nil {
@@ -165,6 +194,8 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 	if o.DryRun {
 		return r, nil
 	}
+	// Install the replacement successfully before removing an owned legacy copy.
+	edits = append(edits, retire...)
 	for _, change := range edits {
 		if err = ctx.Err(); err != nil {
 			return r, err
@@ -179,6 +210,12 @@ func Setup(ctx context.Context, selected string, o Options) (Report, error) {
 		}
 		if !bytes.Equal(current, change.before) {
 			return r, fmt.Errorf("%s changed during setup; retry after reviewing it", change.path)
+		}
+		if change.after == nil {
+			if e = os.Remove(full); e != nil {
+				return r, e
+			}
+			continue
 		}
 		if e = os.MkdirAll(filepath.Dir(full), 0700); e != nil {
 			return r, e

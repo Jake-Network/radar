@@ -3,9 +3,11 @@ package evidence
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -35,14 +37,15 @@ func TestPythonCandidateImports(t *testing.T) {
 	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", venv).CombinedOutput(); err != nil {
 		t.Fatalf("venv: %s %v", out, err)
 	}
-	site, err := exec.Command(filepath.Join(venv, "bin/python"), "-c", "import site; print(site.getsitepackages()[0])").Output()
+	site, err := exec.Command(pythonVenvInterpreter(venv), "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(strings.TrimSpace(string(site)), "editable.pth"), []byte(external+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	pythonVenvAlias(t, venv)
+	t.Setenv("PATH", filepath.Dir(pythonVenvInterpreter(venv))+string(os.PathListSeparator)+os.Getenv("PATH"))
 	root := t.TempDir()
 	write(root, "pyproject.toml", "[project]\nname = 'sample'\nversion = '0.0.0'\n")
 	write(root, "libs/shared/pyproject.toml", "[project]\nname = 'shared-modules'\nversion = '0.0.0'\n")
@@ -55,7 +58,7 @@ func TestPythonCandidateImports(t *testing.T) {
 	}
 	// A declared runner creates its own environment and editable path in the
 	// candidate. The rewritten prefix must probe that interpreter too.
-	profile := runners.Profile{Root: ".", Artifacts: []string{".venv"}, Lockfiles: []string{"uv.lock"}, Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", ".venv"}, {"python3", "-c", `import os, glob; open(glob.glob('.venv/lib/python*/site-packages')[0]+'/editable.pth','w').write(os.path.abspath('libs/shared/src')+'\n')`}}}
+	profile := runners.Profile{Root: ".", Artifacts: []string{".venv"}, Lockfiles: []string{"uv.lock"}, Prefix: []string{filepath.ToSlash(pythonVenvInterpreter(".venv"))}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", ".venv"}, {"python3", "-c", `import os, glob; paths=glob.glob('.venv/lib/python*/site-packages')+glob.glob('.venv/Lib/site-packages'); open(os.path.join(paths[0], 'editable.pth'),'w').write(os.path.abspath('libs/shared/src')+'\n')`}}}
 	write(root, "uv.lock", "version = 1\n")
 	commitRunnerFixture(t, root)
 	prep, err := PrepareRunner(context.Background(), root, "repo", profile, runners.Cache{Dir: t.TempDir(), MaxBytes: 64 << 20}, time.Minute)
@@ -143,14 +146,15 @@ func TestPythonImportProbeFlatNamespaces(t *testing.T) {
 	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", venv).CombinedOutput(); err != nil {
 		t.Fatalf("venv: %s %v", out, err)
 	}
-	site, err := exec.Command(filepath.Join(venv, "bin/python"), "-c", "import site; print(site.getsitepackages()[0])").Output()
+	site, err := exec.Command(pythonVenvInterpreter(venv), "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(strings.TrimSpace(string(site)), "editable.pth"), []byte(external+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	pythonVenvAlias(t, venv)
+	t.Setenv("PATH", filepath.Dir(pythonVenvInterpreter(venv))+string(os.PathListSeparator)+os.Getenv("PATH"))
 	got, err = ObserveCandidate(context.Background(), root, argv, time.Minute)
 	if err != nil || got.Status != model.StatusError || got.TestsRun != 0 || got.Diagnosis == nil || got.Diagnosis.Name != "app" || !got.Diagnosis.Environment() {
 		t.Fatalf("external editable flat namespace accepted: %+v %v", got, err)
@@ -158,6 +162,9 @@ func TestPythonImportProbeFlatNamespaces(t *testing.T) {
 }
 
 func TestPythonConsoleAndVersionedLaunchers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shebang launchers are not native Windows executables")
+	}
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip(err)
@@ -179,7 +186,7 @@ func TestPythonConsoleAndVersionedLaunchers(t *testing.T) {
 	if out, e := exec.Command(python, "-m", "venv", "--without-pip", venv).CombinedOutput(); e != nil {
 		t.Fatalf("%s %v", out, e)
 	}
-	interpreter := filepath.Join(venv, "bin/python")
+	interpreter := pythonVenvInterpreter(venv)
 	site, e := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if e != nil {
 		t.Fatal(e)
@@ -192,7 +199,8 @@ func TestPythonConsoleAndVersionedLaunchers(t *testing.T) {
 	if e = os.Symlink(interpreter, filepath.Join(venv, "bin/python3.12")); e != nil {
 		t.Skip(e)
 	}
-	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	pythonVenvAlias(t, venv)
+	t.Setenv("PATH", filepath.Dir(pythonVenvInterpreter(venv))+string(os.PathListSeparator)+os.Getenv("PATH"))
 	env := environment(t.TempDir(), nil)
 	for _, argv := range [][]string{{"pytest"}, {"python3.12", "-m", "pytest"}} {
 		if d := pythonImportCheck(context.Background(), root, root, argv, env); d == nil || d.Name != "shared_modules" {
@@ -354,12 +362,13 @@ func pythonTestVenv(t *testing.T) (string, string) {
 	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", venv).CombinedOutput(); err != nil {
 		t.Fatalf("venv: %s %v", out, err)
 	}
-	interpreter := filepath.Join(venv, "bin/python")
+	interpreter := pythonVenvInterpreter(venv)
 	site, err := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	pythonVenvAlias(t, venv)
+	t.Setenv("PATH", filepath.Dir(pythonVenvInterpreter(venv))+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return interpreter, strings.TrimSpace(string(site))
 }
 
@@ -460,13 +469,13 @@ func TestPythonLocalDistributionInstallsAreChecked(t *testing.T) {
 		}
 		return pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil))
 	}
-	if d := check("file://" + filepath.ToSlash(original)); d == nil || d.Name != "removed" || !strings.Contains(d.Message, "distribution removed") {
+	if d := check(pythonFileURL(original)); d == nil || d.Name != "removed" || !strings.Contains(d.Message, "distribution removed") {
 		t.Fatalf("local install of the original checkout accepted: %+v", d)
 	}
 	if d := check("file://remote-host/share/removed"); d == nil || d.Name != "removed" {
 		t.Fatalf("remote file URL accepted: %+v", d)
 	}
-	if d := check("file://" + filepath.ToSlash(root)); d != nil {
+	if d := check(pythonFileURL(root)); d != nil {
 		t.Fatalf("candidate install refused: %+v", d)
 	}
 	if d := check("https://example.com/removed-1.0.tar.gz"); d != nil {
@@ -645,6 +654,9 @@ func TestPythonSymlinksInSitePackagesAreChecked(t *testing.T) {
 }
 
 func TestPythonSymlinkedConsoleScriptsAndScripts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shebang launchers are not native Windows executables")
+	}
 	interpreter, site := pythonTestVenv(t)
 	root := t.TempDir()
 	pythonTestPut(t, root, "pyproject.toml", "[project]\nname='sample'\n")
@@ -718,6 +730,9 @@ func TestPythonBuildDirectoryURLsOfUnrelatedDistributions(t *testing.T) {
 // The probe's own standard library imports must not hide candidate packages,
 // nor may candidate modules answer for the launcher probe.
 func TestPythonProbeImportsDoNotShadowOrHijack(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shebang launchers are not native Windows executables")
+	}
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 unavailable")
 	}
@@ -753,6 +768,9 @@ func TestPythonProbeImportsDoNotShadowOrHijack(t *testing.T) {
 // The probe shares the command's deadline. Running out of time there is a
 // timeout, not an import provenance problem.
 func TestPythonProbeTimeoutIsReportedAsTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shebang launchers are not native Windows executables")
+	}
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip("python3 unavailable")
@@ -836,7 +854,7 @@ func TestPythonCandidateVenvCopiesMustComeFromTheCandidate(t *testing.T) {
 	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", filepath.Join(root, ".venv")).CombinedOutput(); err != nil {
 		t.Fatalf("venv: %s %v", out, err)
 	}
-	interpreter := filepath.Join(root, ".venv/bin/python")
+	interpreter := pythonVenvInterpreter(filepath.Join(root, ".venv"))
 	out, err := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -853,7 +871,7 @@ func TestPythonCandidateVenvCopiesMustComeFromTheCandidate(t *testing.T) {
 		t.Fatalf("index copy in the candidate venv accepted: %+v", d)
 	}
 	// A non-editable build of the candidate's own source is candidate code.
-	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(filepath.Join(root, "libs/utils"))+`", "dir_info": {}}`)
+	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(filepath.Join(root, "libs/utils"))+`", "dir_info": {}}`)
 	if d := pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil)); d != nil {
 		t.Fatalf("candidate build refused: %+v", d)
 	}
@@ -932,7 +950,7 @@ func TestPythonNamespaceSharedWithRegistryDistributions(t *testing.T) {
 	pythonTestPut(t, site, "acme/util.py", "")
 	pythonTestPut(t, site, "acme_foo-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: acme-foo\nVersion: 1.0\n")
 	pythonTestPut(t, site, "acme_foo-1.0.dist-info/RECORD", "acme/foo/__init__.py,,\nacme/util.py,,\n")
-	pythonTestPut(t, site, "acme_foo-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(root)+`", "dir_info": {}}`)
+	pythonTestPut(t, site, "acme_foo-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(root)+`", "dir_info": {}}`)
 	if d := check(); d != nil {
 		t.Fatalf("candidate build into a shared namespace refused: %+v", d)
 	}
@@ -995,7 +1013,7 @@ func TestPythonInstalledCopyOfRepositoryDistribution(t *testing.T) {
 	if d := check(); d == nil || d.Name != "my-lib" {
 		t.Fatalf("remote copy of the repository accepted: %+v", d)
 	}
-	pythonTestPut(t, site, "my_lib-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(root)+`", "dir_info": {}}`)
+	pythonTestPut(t, site, "my_lib-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(root)+`", "dir_info": {}}`)
 	if d := check(); d != nil {
 		t.Fatalf("candidate build refused: %+v", d)
 	}
@@ -1064,7 +1082,7 @@ func pythonCandidateVenv(t *testing.T, root string) (string, string) {
 	if out, err := exec.Command("python3", "-m", "venv", "--without-pip", filepath.Join(root, ".venv")).CombinedOutput(); err != nil {
 		t.Fatalf("venv: %s %v", out, err)
 	}
-	interpreter := filepath.Join(root, ".venv/bin/python")
+	interpreter := pythonVenvInterpreter(filepath.Join(root, ".venv"))
 	out, err := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -1089,7 +1107,7 @@ func TestPythonCheckoutsInsideTheCandidateVenvAreRefused(t *testing.T) {
 	}
 	// The same checkout recorded only as a distribution.
 	pythonTestPut(t, site, "mylib-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: mylib\nVersion: 1.0\n")
-	pythonTestPut(t, site, "mylib-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(checkout)+`", "dir_info": {"editable": true}}`)
+	pythonTestPut(t, site, "mylib-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(checkout)+`", "dir_info": {"editable": true}}`)
 	if err := os.Remove(filepath.Join(site, "__editable__.mylib-1.0.pth")); err != nil {
 		t.Fatal(err)
 	}
@@ -1110,12 +1128,12 @@ func TestPythonCandidateBuildsMustBeTheLoadedSourceTree(t *testing.T) {
 	pythonTestPut(t, site, "acme_utils-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: acme-utils\nVersion: 1.0\n")
 	pythonTestPut(t, site, "acme_utils-1.0.dist-info/RECORD", "acme_utils/__init__.py,,\n")
 	argv := []string{interpreter, "-m", "unittest", "discover", "-s", "libs/utils"}
-	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(filepath.Join(root, "wheelhouse/acme_utils-1.0-py3-none-any.whl"))+`", "archive_info": {}}`)
+	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(filepath.Join(root, "wheelhouse/acme_utils-1.0-py3-none-any.whl"))+`", "archive_info": {}}`)
 	if d := pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil)); d == nil || d.Name != "acme_utils" {
 		t.Fatalf("committed archive accepted: %+v", d)
 	}
 	// The candidate build owns a module; an unowned stale package wins.
-	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "file://`+filepath.ToSlash(filepath.Join(root, "libs/utils"))+`", "dir_info": {}}`)
+	pythonTestPut(t, site, "acme_utils-1.0.dist-info/direct_url.json", `{"url": "`+pythonFileURL(filepath.Join(root, "libs/utils"))+`", "dir_info": {}}`)
 	pythonTestPut(t, site, "acme_utils-1.0.dist-info/RECORD", "acme_utils.py,,\n")
 	pythonTestPut(t, site, "acme_utils.py", "VALUE = 'candidate'\n")
 	if d := pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil)); d == nil || d.Name != "acme_utils" {
@@ -1251,7 +1269,7 @@ func TestPythonBaseInterpreterInsideTheCandidate(t *testing.T) {
 	if out, err := exec.Command(filepath.Join(base, "bin/python3"), "-m", "venv", "--without-pip", filepath.Join(root, ".venv")).CombinedOutput(); err != nil {
 		t.Skipf("venv: %s %v", out, err)
 	}
-	interpreter := filepath.Join(root, ".venv/bin/python")
+	interpreter := pythonVenvInterpreter(filepath.Join(root, ".venv"))
 	out, err := exec.Command(interpreter, "-c", "import site; print(site.getsitepackages()[0])").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -1344,5 +1362,128 @@ func TestPythonEditablesRedirectorMapping(t *testing.T) {
 	mapping(filepath.Join(original, "app/__init__.py"))
 	if d := pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil)); d == nil || d.Name != "sys.meta_path" {
 		t.Fatalf("outside redirection accepted: %+v", d)
+	}
+}
+
+func pythonVenvInterpreter(root string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.ToSlash(filepath.Join(root, "Scripts", "python.exe"))
+	}
+	return filepath.Join(root, "bin", "python")
+}
+
+func pythonVenvAlias(t *testing.T, root string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return
+	}
+	data, err := os.ReadFile(pythonVenvInterpreter(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Scripts", "python3.exe"), data, 0700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func pythonFileURL(path string) string {
+	path = filepath.ToSlash(path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
+func TestPythonCandidateRootAliasChecksCanonicalLocations(t *testing.T) {
+	interpreter, site := pythonTestVenv(t)
+	root, outside := t.TempDir(), t.TempDir()
+	alias := filepath.Join(t.TempDir(), "candidate-alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("directory symlinks unavailable: %v", err)
+	}
+	pythonTestPut(t, root, "pyproject.toml", "[project]\nname='sample'\n")
+	pythonTestPut(t, root, "src/local_app/__init__.py", "")
+	pythonTestPut(t, site, "candidate.pth", filepath.Join(root, "src")+"\n")
+	argv := []string{interpreter, "-m", "unittest"}
+	if d := pythonImportCheck(context.Background(), alias, alias, argv, environment(t.TempDir(), nil)); d != nil {
+		t.Fatalf("candidate alias refused: %+v", d)
+	}
+	pythonTestPut(t, outside, "local_app/__init__.py", "")
+	pythonTestPut(t, site, "candidate.pth", outside+"\n")
+	if d := pythonImportCheck(context.Background(), alias, alias, argv, environment(t.TempDir(), nil)); d == nil || d.Name != "local_app" && d.Name != "sys.path" {
+		t.Fatalf("candidate alias concealed external imports: %+v", d)
+	}
+}
+
+func TestPythonVenvStandardLibraryExtensionOrigins(t *testing.T) {
+	interpreter, site := pythonTestVenv(t)
+	root, outside := t.TempDir(), t.TempDir()
+	pythonTestPut(t, root, "pyproject.toml", "[project]\nname='sample'\n")
+	// Force the extension to load during startup on every platform, including
+	// Windows where its trusted location is base_prefix/DLLs/_socket.pyd.
+	pythonTestPut(t, site, "socket.pth", "import _socket\n")
+	argv := []string{interpreter, "-m", "unittest"}
+	check := func() *Diagnosis {
+		return pythonImportCheck(context.Background(), root, root, argv, environment(t.TempDir(), nil))
+	}
+	if d := check(); d != nil {
+		t.Fatalf("interpreter standard-library extension refused: %+v", d)
+	}
+	origin, err := exec.Command(interpreter, "-c", `import importlib
+for name in ("_socket", "_ssl", "_ctypes", "_decimal"):
+    try:
+        module = importlib.import_module(name)
+    except ImportError:
+        continue
+    if getattr(module, "__file__", None):
+        print(name)
+        print(module.__file__)
+        break
+`).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(strings.TrimSpace(string(origin)), "\n")
+	if len(parts) != 2 {
+		t.Fatal("no file-backed interpreter extension available")
+	}
+	extension, original := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	binary, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, filepath.Base(original)), binary, 0600); err != nil {
+		t.Fatal(err)
+	}
+	pythonTestPut(t, site, "socket.pth", "import sys; sys.path.insert(0, "+strconvQuote(outside)+"); import "+extension+"; sys.path.pop(0)\n")
+	if d := check(); d == nil || d.Name != extension {
+		t.Fatalf("external extension accepted: %+v", d)
+	}
+	pythonTestPut(t, outside, "unrelated_external.py", "VALUE = 1\n")
+	pythonTestPut(t, site, "socket.pth", "import sys; sys.path.insert(0, "+strconvQuote(outside)+"); import unrelated_external; sys.path.pop(0)\n")
+	if d := check(); d == nil || d.Name != "unrelated_external" {
+		t.Fatalf("external Python module accepted: %+v", d)
+	}
+}
+
+func TestPythonVenvDLLAliasCannotTrustExternalCode(t *testing.T) {
+	for _, aliasFile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("file=%v", aliasFile), func(t *testing.T) {
+			root, outside := t.TempDir(), t.TempDir()
+			interpreter, site := pythonCandidateVenv(t, root)
+			pythonTestPut(t, outside, "unrelated_external.py", "VALUE = 1\n")
+			target := outside
+			if aliasFile {
+				target = filepath.Join(outside, "unrelated_external.py")
+			}
+			if err := os.Symlink(target, filepath.Join(root, ".venv", "DLLs")); err != nil {
+				t.Fatal(err)
+			}
+			pythonTestPut(t, root, "pyproject.toml", "[project]\nname='sample'\n")
+			pythonTestPut(t, site, "outside.pth", "import sys; sys.path.insert(0, "+strconvQuote(outside)+"); import unrelated_external; sys.path.pop(0)\n")
+			if d := pythonImportCheck(context.Background(), root, root, []string{interpreter, "-m", "unittest"}, environment(t.TempDir(), nil)); d == nil || (d.Name != "unrelated_external" && d.Name != "sys.path") {
+				t.Fatalf("venv DLLs alias concealed external code: %+v", d)
+			}
+		})
 	}
 }

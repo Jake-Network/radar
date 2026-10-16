@@ -149,6 +149,12 @@
       "type": "array",
       "items": {
         "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "maxLength": 1027
+          }
+        },
         "required": [
           "status",
           "cache_hit",
@@ -385,6 +391,35 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "restack_first": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "commit",
+              "conflicts"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "behind": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "conflicts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

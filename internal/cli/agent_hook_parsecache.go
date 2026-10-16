@@ -12,6 +12,10 @@ import (
 // Syntax acceleration never skips inventory, imports, manifests or resolution.
 // Corrupt/unsupported state is discarded and source analysis proceeds normally.
 func savedSyntaxCache(root string) (*indexer.ParseCache, func()) {
+	return savedSyntaxCacheWithLimit(root, indexer.MaxTotalSourceBytes)
+}
+
+func savedSyntaxCacheWithLimit(root string, limit int64) (*indexer.ParseCache, func()) {
 	empty := func() (*indexer.ParseCache, func()) { return indexer.NewParseCache(), func() {} }
 	state, err := composition.StateDir()
 	if err != nil {
@@ -32,9 +36,21 @@ func savedSyntaxCache(root string) (*indexer.ParseCache, func()) {
 	if err != nil {
 		return empty()
 	}
+	if st, err := os.Lstat(name); err == nil && st.Size() > limit {
+		cache := indexer.NewParseCache()
+		return cache, func() {
+			if cache.Stats().Bytes <= limit {
+				_ = cache.Save(name)
+			}
+		}
+	}
 	cache, err := indexer.LoadParseCache(name)
 	if err != nil {
 		cache = indexer.NewParseCache()
 	}
-	return cache, func() { _ = cache.Save(name) }
+	return cache, func() {
+		if cache.Stats().Bytes <= limit {
+			_ = cache.Save(name)
+		}
+	}
 }

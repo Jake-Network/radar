@@ -2,8 +2,10 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -334,5 +336,240 @@ func TestDirtySnapshotRejectsLocalAttributesFileNormalization(t *testing.T) {
 	}
 	if _, err := ObserveDirty(context.Background(), gitrepo.WorktreeStatus{Path: root}); err == nil || !strings.Contains(err.Error(), "normalization") {
 		t.Fatalf("local attributes normalization must fail closed: %v", err)
+	}
+}
+
+func TestDirtyCandidateResetsPrivateIndexAcrossDifferentHeads(t *testing.T) {
+	root := dirtyFixture(t)
+	put(t, root, "a-committed.txt", "a committed\n")
+	gitTest(t, root, "add", "a-committed.txt")
+	gitTest(t, root, "commit", "-qm", "a committed")
+	other := filepath.Join(t.TempDir(), "other")
+	gitTest(t, root, "worktree", "add", "-b", "other", other, "baseline")
+	put(t, other, "b-committed.txt", "b committed\n")
+	gitTest(t, other, "add", "b-committed.txt")
+	gitTest(t, other, "commit", "-qm", "b committed")
+	clean := filepath.Join(t.TempDir(), "clean")
+	gitTest(t, root, "worktree", "add", "-b", "clean", clean, "baseline")
+	put(t, clean, "c-committed.txt", "c committed\n")
+	gitTest(t, clean, "add", "c-committed.txt")
+	gitTest(t, clean, "commit", "-qm", "c committed")
+	put(t, root, "a-dirty.txt", "a saved\n")
+	put(t, other, "b-dirty.txt", "b saved\n")
+	a, b := observeTestDirty(t, root), observeTestDirty(t, other)
+	a.InputIndex, b.InputIndex = 0, 1
+	refs := gitTest(t, root, "show-ref")
+	indexBytes := func(dir string) []byte {
+		t.Helper()
+		path := gitTest(t, dir, "rev-parse", "--git-path", "index")
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	beforeA, beforeB, beforeC := indexBytes(root), indexBytes(other), indexBytes(clean)
+	c, err := BuildDirtyCandidate(context.Background(), root, "baseline", []string{"feature", "other", "clean"}, []DirtySnapshot{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if len(c.Inputs) != 3 || c.Inputs[2] != gitTest(t, clean, "rev-parse", "HEAD") || len(c.Conflicts) > 0 {
+		t.Fatalf("input scope lost: %+v", c)
+	}
+	for i, prefix := range []string{"a", "b"} {
+		files := gitTest(t, c.Dir, "ls-tree", "-r", "--name-only", c.Inputs[i])
+		for _, suffix := range []string{"-committed.txt", "-dirty.txt"} {
+			if !strings.Contains(files, prefix+suffix) {
+				t.Fatalf("snapshot %d missing own input: %s", i, files)
+			}
+		}
+		for _, otherPrefix := range []string{"a", "b", "c"} {
+			if otherPrefix != prefix && strings.Contains(files, otherPrefix+"-committed.txt") {
+				t.Fatalf("snapshot %d inherited unrelated index content: %s", i, files)
+			}
+		}
+	}
+	for _, file := range []string{"a-committed.txt", "a-dirty.txt", "b-committed.txt", "b-dirty.txt", "c-committed.txt"} {
+		if _, err := os.Stat(filepath.Join(c.Dir, file)); err != nil {
+			t.Fatalf("combined input %s absent: %v", file, err)
+		}
+	}
+	if gitTest(t, root, "show-ref") != refs || string(indexBytes(root)) != string(beforeA) || string(indexBytes(other)) != string(beforeB) || string(indexBytes(clean)) != string(beforeC) {
+		t.Fatal("private index materialization changed source refs/index bytes")
+	}
+}
+
+func TestDirtyCandidateInShallowClonePreservesBoundary(t *testing.T) {
+	clone := shallowClone(t, shallowSource(t), "2")
+	gitTest(t, clone, "checkout", "-qb", "saved", "origin/a")
+	put(t, clone, "saved.txt", "saved\n")
+	s := observeTestDirty(t, clone)
+	s.InputIndex = 0
+	c, err := BuildDirtyCandidate(context.Background(), clone, "origin/main", []string{"origin/a", "origin/b"}, []DirtySnapshot{s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	for _, path := range []string{"a.txt", "b.txt", "saved.txt"} {
+		if _, err := os.Stat(filepath.Join(c.Dir, path)); err != nil {
+			t.Fatal(path, err)
+		}
+	}
+	if gitTest(t, clone, "rev-parse", "--is-shallow-repository") != "true" || gitTest(t, c.Dir, "rev-parse", "--is-shallow-repository") != "true" {
+		t.Fatal("shallow provenance lost")
+	}
+}
+
+func TestReobserveDirtyRequiresStableCapturedInput(t *testing.T) {
+	for _, kind := range []string{"unchanged", "same-size edit", "index edit", "head moved", "canceled", "uncaptured"} {
+		t.Run(kind, func(t *testing.T) {
+			root := dirtyFixture(t)
+			put(t, root, "tracked.txt", "first\n")
+			prior := observeTestDirty(t, root)
+			ctx := context.Background()
+			switch kind {
+			case "same-size edit":
+				put(t, root, "tracked.txt", "other\n")
+			case "index edit":
+				gitTest(t, root, "add", "tracked.txt")
+			case "head moved":
+				gitTest(t, root, "add", "tracked.txt")
+				gitTest(t, root, "commit", "-qm", "move head")
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			case "uncaptured":
+				prior = DirtySnapshot{Worktree: root, Head: prior.Head, Digest: prior.Digest}
+			}
+			after, err := ReobserveDirty(ctx, prior)
+			if kind == "unchanged" {
+				if err != nil || after.Digest != prior.Digest {
+					t.Fatalf("unchanged pin rejected: %+v %v", after, err)
+				}
+			} else if err == nil {
+				t.Fatal("unverified input accepted", kind)
+			}
+		})
+	}
+}
+
+func TestFailedDoubleCaptureCannotBecomeStableRevalidation(t *testing.T) {
+	root := dirtyFixture(t)
+	put(t, root, "tracked.txt", "first\n")
+	failed, err := observeDirty(context.Background(), gitrepo.WorktreeStatus{Path: root}, func() { put(t, root, "tracked.txt", "other\n") })
+	if err == nil || failed.Digest == "" || failed.files == nil {
+		t.Fatal("fixture must return populated but unstable second capture", failed, err)
+	}
+	if _, err := ReobserveDirty(context.Background(), failed); err == nil {
+		t.Fatal("failed double-capture snapshot accepted as stable prior")
+	}
+	if c, err := BuildDirtyCandidate(context.Background(), root, "baseline", []string{"feature"}, []DirtySnapshot{failed}); err == nil {
+		c.Close()
+		t.Fatal("failed observation entered candidate builder")
+	}
+}
+
+func TestDirtySnapshotPreservesTrackedIndexExecutableMode(t *testing.T) {
+	root := dirtyFixture(t)
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(filepath.Join(root, "tracked.txt"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitTest(t, root, "update-index", "--chmod=+x", "tracked.txt")
+	gitTest(t, root, "commit", "-qm", "committed executable mode")
+	clean := observeTestDirty(t, root)
+	if len(clean.Staged)+len(clean.Unstaged)+len(clean.Untracked) != 0 {
+		t.Fatalf("committed mode became a fake saved change: %+v", clean)
+	}
+	put(t, root, "tracked.txt", "saved executable bytes\n")
+	put(t, root, "new.exe", "untracked bytes\n")
+	saved := observeTestDirty(t, root)
+	c, err := BuildDirtyCandidate(context.Background(), root, "baseline", []string{"feature"}, []DirtySnapshot{saved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	entries, err := gitrepo.Entries(context.Background(), c.Dir, c.Commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modes := map[string]string{}
+	for _, entry := range entries {
+		modes[entry.Path] = entry.Mode
+	}
+	if modes["tracked.txt"] != "100755" || modes["new.exe"] != "100644" {
+		t.Fatalf("saved input modes changed: %+v", modes)
+	}
+}
+
+func TestDirtyCandidateConcurrentPreparationFailureCleansPrivateState(t *testing.T) {
+	for _, kind := range []string{"invalid base", "snapshot moved", "canceled"} {
+		t.Run(kind, func(t *testing.T) {
+			root := dirtyFixture(t)
+			put(t, root, "tracked.txt", "saved\n")
+			snapshot := observeTestDirty(t, root)
+			base := "baseline"
+			ctx := context.Background()
+			switch kind {
+			case "invalid base":
+				base = "missing-base"
+			case "snapshot moved":
+				put(t, root, "tracked.txt", "moved\n")
+			case "canceled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			beforeStatus := gitTest(t, root, "status", "--porcelain=v1", "-z")
+			beforeRefs := gitTest(t, root, "show-ref")
+			private := t.TempDir()
+			for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+				t.Setenv(name, private)
+			}
+			candidate, err := BuildDirtyCandidate(ctx, root, base, []string{"feature"}, []DirtySnapshot{snapshot})
+			if candidate != nil {
+				candidate.Close()
+			}
+			if err == nil {
+				t.Fatal("failed preparation accepted", kind)
+			}
+			entries, readErr := os.ReadDir(private)
+			if readErr != nil || len(entries) != 0 {
+				t.Fatal("failed preparation leaked private state", entries, readErr)
+			}
+			if gitTest(t, root, "status", "--porcelain=v1", "-z") != beforeStatus || gitTest(t, root, "show-ref") != beforeRefs {
+				t.Fatal("failed concurrent preparation changed source")
+			}
+		})
+	}
+}
+
+func TestDirtyConcurrentRevalidationPreservesFirstFailureAndJoins(t *testing.T) {
+	started := make(chan struct{})
+	joined := make(chan struct{})
+	moved := errors.New("snapshot superseded")
+	err := revalidateDirtySnapshotsWith(context.Background(), []DirtySnapshot{{Worktree: "slow"}, {Worktree: "moved"}}, func(ctx context.Context, snapshot DirtySnapshot) error {
+		if snapshot.Worktree == "slow" {
+			close(started)
+			<-ctx.Done()
+			close(joined)
+			return ctx.Err()
+		}
+		<-started
+		return moved
+	})
+	if !errors.Is(err, moved) {
+		t.Fatal("primary snapshot failure hidden by sibling cancellation", err)
+	}
+	select {
+	case <-joined:
+	default:
+		t.Fatal("revalidation returned before canceled sibling joined")
 	}
 }

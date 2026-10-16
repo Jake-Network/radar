@@ -143,13 +143,22 @@ def radar_observations(corpus, runs):
                                if v == 'failed' and k in CHECK_CAUSES})
             observations.append({'id': case['id'], 'input_digest': case['input_digest'],
                                  'status': 'available' if row['verdict'] in ('pass', 'fail') else 'unavailable',
-                                 'detected_causes': detected,
+                                 'detected_causes': detected if row['verdict'] in ('pass', 'fail') else [],
                                  'evidence': {'binary_sha256': result['radar_sha256'],
                                               'version': result.get('radar_version', 'unknown'),
                                               'scope': 'static; no repository code executed',
                                               'verdict': row['verdict'], 'checks': row['checks'],
                                               'finding_codes': row.get('problems', []),
                                               'seconds': row.get('seconds')}})
+            if row.get('error_kind'):
+                if row['error_kind'] not in replay.ERROR_KINDS:
+                    raise ValueError('unsupported replay error kind')
+                observations[-1]['evidence']['error_kind'] = row['error_kind']
+            if row.get('response_digest'):
+                digest_value = row['response_digest']
+                if not isinstance(digest_value, str) or len(digest_value) != 64 or any(c not in '0123456789abcdef' for c in digest_value):
+                    raise ValueError('invalid replay response digest')
+                observations[-1]['evidence']['response_digest'] = digest_value
     return {'schema_version': 1, 'dataset_digest': corpus['dataset_digest'], 'tool': 'radar', 'observations': observations}
 
 

@@ -212,11 +212,13 @@ Common `NOT VERIFIED` causes and fixes:
   no evidence. The static `radar gate` result is what Radar verifies here.
 - **A changed file has no related test.** Static imports found none. Add a
   test, try `--suite full`, or choose a limited `--policy` deliberately.
-- **Test discovery skipped a file** (oversized, symlink, unreadable), so the
-  inventory is incomplete.
+- **Test discovery skipped a test or configuration file** (oversized, symlink,
+  unreadable), so the inventory is incomplete. A large non-test source omission
+  is reported separately and does not block inventory.
 
-Radar refuses symlinks and submodules in the combined tree, and a shallow clone
-needs `git fetch --unshallow`. Both errors say so.
+Radar refuses symlinks and submodules in the combined tree. If a shallow clone
+lacks the required history, fetch it explicitly with `git fetch --unshallow`
+(or use `fetch-depth: 0` in Actions); Radar does not fetch.
 
 ## Agents
 
@@ -224,8 +226,9 @@ needs `git fetch --unshallow`. Both errors say so.
 a project skill and the MCP server. The hook checks saved changes before
 each response ends and returns supported static failures to the agent for
 one repair continuation. It needs no structured plan and runs no repository
-code. By default it previews only the current branch; select parallel work
-explicitly when installing:
+code. It previews the current branch first, then checks peers selected by file
+and supported dependency relationships within the remaining budget. Unchecked
+peers remain NOT VERIFIED. Select an explicit combination when installing:
 
 ```sh
 radar setup both --base main --branches agent-api,agent-client

@@ -55,3 +55,27 @@ func TestDuplicateUnittestFailureIdentities(t *testing.T) {
 		t.Fatalf("repeated names disguised missing failure identities: %+v", o)
 	}
 }
+
+func TestUnittestTerminalNormalizationPreservesFailureIdentity(t *testing.T) {
+	argv := []string{"python3", "-m", "unittest"}
+	for _, ending := range []string{"\n", "\r\n"} {
+		for _, colored := range []bool{false, true} {
+			data := "FAIL: test_old (test_case.Case)\nRan 1 test in 0.01s\nFAILED (failures=1)\n"
+			if colored {
+				data = "\x1b[31m" + strings.ReplaceAll(data, "\n", "\x1b[0m\n\x1b[31m") + "\x1b[0m"
+			}
+			data = strings.ReplaceAll(data, "\n", ending)
+			count := harnessCounts(argv, []byte(data), "")
+			observed := CandidateObservation{Status: model.StatusFailed, TestsRun: count.Run, TestsFailed: count.Failed}
+			decorateCandidateObservation(&observed, argv, []byte(data), t.TempDir(), t.TempDir(), ".")
+			if count.Run != 1 || count.Failed != 1 || len(observed.FailedCases) != 1 || observed.FailedCases[0] != "test_case.Case.test_old" {
+				t.Fatalf("ending=%q colored=%v count=%+v observation=%+v", ending, colored, count, observed)
+			}
+			// A loader error mixed with a real failure is not purely an environment error.
+			mixed := data + strings.ReplaceAll("ERROR: test_missing (unittest.loader._FailedTest.test_missing)\nModuleNotFoundError: No module named 'missing'\n", "\n", ending)
+			if environmentFailure(argv, []byte(mixed)) {
+				t.Fatal("real failing test hidden by loader error")
+			}
+		}
+	}
+}

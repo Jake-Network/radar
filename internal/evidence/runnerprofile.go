@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"time"
+	"unicode"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/model"
@@ -21,6 +22,7 @@ type RunnerPreparation struct {
 	CacheKey      string       `json:"cache_key,omitempty"`
 	SetupCommands int          `json:"setup_commands"`
 	OutputDigest  string       `json:"output_digest,omitempty"`
+	Error         string       `json:"error,omitempty"`
 	CacheWarning  string       `json:"cache_warning,omitempty"`
 	Artifacts     []string     `json:"artifacts"`
 }
@@ -33,8 +35,14 @@ func PrepareRunner(ctx context.Context, root, repository string, p runners.Profi
 
 // PrepareRunnerBudget reserves command budget only for setup steps that
 // actually execute. A cache hit consumes no command slots.
-func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners.Profile, cache runners.Cache, timeout time.Duration, take func() bool) (RunnerPreparation, error) {
-	r := RunnerPreparation{Status: model.StatusPassed, Artifacts: []string{}}
+func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners.Profile, cache runners.Cache, timeout time.Duration, take func() bool) (r RunnerPreparation, resultErr error) {
+	r = RunnerPreparation{Status: model.StatusPassed, Artifacts: []string{}}
+	defer func() {
+		if resultErr != nil {
+			r.Status = model.StatusIncomplete
+			r.Error = PreparationDiagnostic(root, resultErr)
+		}
+	}()
 	if err := runners.Validate(p); err != nil {
 		return r, err
 	}
@@ -55,8 +63,11 @@ func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners
 	cp := CandidateCheckpoint{Repository: repository, Revision: head}
 	cache.SourceRoot = root
 	before, err := InspectCandidateSource(ctx, root, cp, r.Artifacts)
-	if err != nil || !before.Matches {
-		return r, fmt.Errorf("runner candidate source is not pristine")
+	if err != nil {
+		return r, fmt.Errorf("inspect runner source before setup: %w", err)
+	}
+	if !before.Matches {
+		return r, fmt.Errorf("runner candidate source differs before setup")
 	}
 	lockfiles := map[string][]byte{}
 	if len(p.Artifacts) > 0 {
@@ -109,6 +120,7 @@ func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners
 	for _, argv := range p.Setup {
 		if take != nil && !take() {
 			r.Status = model.StatusIncomplete
+			r.Error = "shared command budget exhausted before runner setup completed"
 			return r, nil
 		}
 		if err := checkExecutable(argv); err != nil {
@@ -127,20 +139,27 @@ func PrepareRunnerBudget(ctx context.Context, root, repository string, p runners
 		}
 		if runCtx.Err() != nil {
 			r.Status = model.StatusTimeout
+			r.Error = "runner setup time budget exhausted"
 			return r, nil
 		}
 		if state.ExitCode() != 0 || out.exceeded {
 			r.Status = model.StatusError
+			if out.exceeded {
+				r.Error = "runner setup output limit exceeded"
+			} else {
+				r.Error = fmt.Sprintf("runner setup command exited with code %d", state.ExitCode())
+			}
 			return r, nil
 		}
 	}
 	after, err := InspectCandidateSource(ctx, root, cp, r.Artifacts)
 	if err != nil {
-		return r, err
+		return r, fmt.Errorf("inspect runner source after setup: %w", err)
 	}
 	if !after.Matches {
 		r.Status = model.StatusIncomplete
 		r.CacheWarning = "setup changed candidate source; dependency cache was not published"
+		r.Error = "setup changed candidate source"
 		return r, nil
 	}
 	if len(p.Artifacts) > 0 {
@@ -175,4 +194,23 @@ func containsSlash(s string) bool {
 		}
 	}
 	return false
+}
+
+// PreparationDiagnostic keeps integrity failure causes visible without exposing
+// private checkout locations or terminal control characters in persisted reports.
+func PreparationDiagnostic(root string, err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ReplaceAll(err.Error(), root, "<candidate>")
+	message = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, message)
+	if len(message) > 1024 {
+		message = message[:1024] + "..."
+	}
+	return message
 }

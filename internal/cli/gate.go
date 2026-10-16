@@ -376,16 +376,22 @@ func (g *gateReport) attribute() {
 			paths = append(paths, r.Conflicts...)
 		}
 		if strings.HasPrefix(f.Code, "integration_execution_") {
+			// Missing or inconclusive execution does not establish a source
+			// failure, even when the selected tests import a changed file.
+			if f.Code != "integration_execution_failed" {
+				continue
+			}
+			failed := false
 			environment := false
 			for _, ev := range r.Executions {
 				// integration names the command and directory exactly this way.
-				if strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
+				if ev.Status == model.StatusFailed && strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
+					failed = true
 					paths = append(paths, ev.FailurePaths(testFiles[ev.SelectionID])...)
 					environment = environment || ev.Observation.Diagnosis.Environment()
 				}
 			}
-			// A missing runner says nothing about which branch is at fault.
-			if environment {
+			if !failed || environment {
 				continue
 			}
 			reached := []string{}
@@ -645,16 +651,10 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	if warnings > 5 {
 		fmt.Fprintf(w, "  … %s; see --json\n", plural(warnings-5, "more warning", "more warnings"))
 	}
-	if !ran && r.VerificationProposal != nil && len(r.VerificationProposal.Commands) > 0 {
-		fmt.Fprintf(w, "\n%s %s\n", p.bold("Suggested tests"), p.dim("(static relationships; not run)"))
-		for i, c := range r.VerificationProposal.Commands {
-			if i == 5 {
-				fmt.Fprintf(w, "  … %d more\n", len(r.VerificationProposal.Commands)-5)
-				break
-			}
-			fmt.Fprintf(w, "  %s  %s\n", p.cyan(displayCommand(c.Command)), p.dim("(in "+c.CWD+")"))
-		}
+	if !ran && r.VerificationProposal != nil {
+		renderSuggestedTests(w, *r.VerificationProposal, r.Changed, p)
 	}
+	renderRunnerPreparationErrors(w, r.RunnerPreparations, "  ", p)
 	if ran && r.Selection != nil {
 		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Tests ("+r.Selection.Mode+"):"), len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 		for _, ev := range r.Executions {

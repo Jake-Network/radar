@@ -33,3 +33,20 @@ func TestResolveInsideAndStatePath(t *testing.T) {
 		t.Fatal("escaping state path accepted")
 	}
 }
+
+func TestStatePathInfoPreservesValidatedLeafMetadata(t *testing.T) {
+	root := t.TempDir()
+	missing, info, err := StatePathInfo(root, "missing/child")
+	if err != nil || info != nil || missing != filepath.Join(root, "missing", "child") {
+		t.Fatal(missing, info, err)
+	}
+	want := filepath.Join(root, "regular")
+	if err := os.WriteFile(want, []byte("file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	actual, info, err := StatePathInfo(root, "regular")
+	expected, statErr := os.Lstat(want)
+	if err != nil || statErr != nil || info == nil || actual != want || !os.SameFile(info, expected) || !info.Mode().IsRegular() {
+		t.Fatal("validated leaf metadata differs", actual, info, err, statErr)
+	}
+}

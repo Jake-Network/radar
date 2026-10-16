@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
@@ -45,22 +47,30 @@ type Pair struct {
 	ResolvedFiles []string            `json:"resolved_files,omitempty"`
 	Explanation   string              `json:"explanation"`
 }
+type RestackBranch struct {
+	Name      string   `json:"name"`
+	Commit    string   `json:"commit"`
+	Behind    *int     `json:"behind,omitempty"`
+	Conflicts []string `json:"conflicts"`
+}
+
 type Report struct {
-	Base             string     `json:"base"`
-	Driver           string     `json:"driver,omitempty"`
-	Branches         []Branch   `json:"branches"`
-	Pairs            []Pair     `json:"pairs"`
-	Order            []string   `json:"order"`
-	Independent      []string   `json:"independent"`
-	Chains           [][]string `json:"chains"`
-	Complete         bool       `json:"complete"`
-	EstimatedRebases int        `json:"estimated_rebases"`
-	OrderMethod      string     `json:"order_method"`
-	Limitations      []string   `json:"limitations"`
+	RestackFirst     []RestackBranch `json:"restack_first,omitempty"`
+	Base             string          `json:"base"`
+	Driver           string          `json:"driver,omitempty"`
+	Branches         []Branch        `json:"branches"`
+	Pairs            []Pair          `json:"pairs"`
+	Order            []string        `json:"order"`
+	Independent      []string        `json:"independent"`
+	Chains           [][]string      `json:"chains"`
+	Complete         bool            `json:"complete"`
+	EstimatedRebases int             `json:"estimated_rebases"`
+	OrderMethod      string          `json:"order_method"`
+	Limitations      []string        `json:"limitations"`
 }
 
 func Plan(ctx context.Context, root string, o Options) (Report, error) {
-	r := Report{Pairs: []Pair{}, Independent: []string{}, Chains: [][]string{}, Complete: true, Limitations: []string{"Pair checks cannot prove N-way compatibility. Unchecked pairs are unknown.", "Rebase estimate counts later branches touching an earlier conflicting pair; it does not predict actual manual resolutions."}}
+	r := Report{Pairs: []Pair{}, Order: []string{}, Branches: []Branch{}, Independent: []string{}, Chains: [][]string{}, Complete: true, Limitations: []string{"Pair checks cannot prove N-way compatibility. Unchecked pairs are unknown.", "Rebase estimate counts later branches touching an earlier conflicting pair; it does not predict actual manual resolutions."}}
 	if len(o.Branches) < 1 || len(o.Branches) > 64 {
 		return r, errors.New("landing requires between 1 and 64 branches")
 	}
@@ -97,10 +107,50 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 		}
 		r.Branches = append(r.Branches, Branch{name, sha, changed})
 	}
-	n := len(r.Branches)
+	// Probe each pinned tip against base without invoking a structural driver.
+	// A descendant may resolve its ancestor's conflict, so probe every tip.
+	eligible := []Branch{}
+	probeUnknown := map[string]bool{}
+	for _, b := range r.Branches {
+		candidate, e := integration.BuildCandidate(ctx, root, r.Base, []string{b.Commit})
+		if e != nil {
+			candidate.Close()
+			if ctx.Err() != nil {
+				return r, ctx.Err()
+			}
+			probeUnknown[b.Name] = true
+			r.Complete = false
+			r.Limitations = append(r.Limitations, fmt.Sprintf("Standalone landing probe unavailable for %s: %s", b.Name, e))
+			eligible = append(eligible, b)
+			continue
+		}
+		paths := append([]string{}, candidate.Conflicts...)
+		candidate.Close()
+		if len(paths) == 0 {
+			eligible = append(eligible, b)
+			continue
+		}
+		restack := RestackBranch{Name: b.Name, Commit: b.Commit, Conflicts: paths}
+		if boundary, e := gitrepo.ShallowBoundary(ctx, root); e == nil && len(boundary) == 0 {
+			if count, e := gitrepo.RunPrivate(ctx, root, "rev-list", "--count", b.Commit+".."+r.Base); e == nil {
+				if n, e := strconv.Atoi(strings.TrimSpace(count)); e == nil {
+					restack.Behind = &n
+				}
+			}
+		}
+		r.RestackFirst = append(r.RestackFirst, restack)
+		r.Complete = false
+	}
+	if len(r.RestackFirst) > 0 {
+		r.Limitations = append(r.Limitations, "Restack inputs conflict with base alone and are excluded from pairs, order and the analyzed candidate. Missing behind counts are unknown.")
+	}
+	n := len(eligible)
 	ancestors := make([][]bool, n)
 	conflicts := make([][]bool, n)
 	unknown := make([]bool, n)
+	for i, b := range eligible {
+		unknown[i] = probeUnknown[b.Name]
+	}
 	for i := range ancestors {
 		ancestors[i] = make([]bool, n)
 		conflicts[i] = make([]bool, n)
@@ -110,7 +160,7 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 			if i == j {
 				continue
 			}
-			yes, e := gitrepo.IsAncestor(ctx, root, r.Branches[i].Commit, r.Branches[j].Commit)
+			yes, e := gitrepo.IsAncestor(ctx, root, eligible[i].Commit, eligible[j].Commit)
 			if e != nil {
 				return r, e
 			}
@@ -120,7 +170,7 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 	runs := 0
 	for i := 0; i < n; i++ {
 		for j := i + 1; j < n; j++ {
-			a, b := r.Branches[i], r.Branches[j]
+			a, b := eligible[i], eligible[j]
 			p := Pair{Left: a.Name, Right: b.Name, Status: model.StatusUnknown, Checks: []integration.Check{}, Findings: []model.Finding{}, Conflicts: []string{}}
 			if (n > 12 && !overlap(a.Changed, b.Changed)) || runs >= o.MaxPairs {
 				p.Explanation = "Pair omitted by the analysis bound; compatibility is unknown."
@@ -189,7 +239,7 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 			}
 		}
 		if ind {
-			r.Independent = append(r.Independent, r.Branches[i].Name)
+			r.Independent = append(r.Independent, eligible[i].Name)
 		}
 	}
 	// Nearest selected ancestors form stacks. Emit complete root-to-leaf
@@ -213,7 +263,7 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 		}
 		var chain []string
 		for j := i; j >= 0; j = parents[j] {
-			chain = append(chain, r.Branches[j].Name)
+			chain = append(chain, eligible[j].Name)
 		}
 		for a, b := 0, len(chain)-1; a < b; a, b = a+1, b-1 {
 			chain[a], chain[b] = chain[b], chain[a]
@@ -227,7 +277,7 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 		r.OrderMethod = "deterministic greedy pair-based rebase estimate with ancestry constraints"
 	}
 	for _, i := range order {
-		r.Order = append(r.Order, r.Branches[i].Name)
+		r.Order = append(r.Order, eligible[i].Name)
 	}
 	return r, nil
 }

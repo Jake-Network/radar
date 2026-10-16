@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -127,7 +128,8 @@ func TestResolveTeamScope(t *testing.T) {
 }
 
 func TestRegistryHome(t *testing.T) {
-	w := Workspace{Name: "shop", Home: "orders", Repos: []Repo{{ID: "orders", Path: "/orders", CommonDir: "/orders/.git"}, {ID: "payments", Path: "/payments", CommonDir: "/payments/.git"}}}
+	orders, payments := loc("orders"), loc("payments")
+	w := Workspace{Name: "shop", Home: "orders", Repos: []Repo{{ID: "orders", Path: orders.Root, CommonDir: orders.CommonDir}, {ID: "payments", Path: payments.Root, CommonDir: payments.CommonDir}}}
 	r := Registry{Version: 1, Workspaces: []Workspace{w}}
 	if err := r.Validate(); err != nil {
 		t.Fatal(err)
@@ -137,7 +139,7 @@ func TestRegistryHome(t *testing.T) {
 		t.Fatal("accepted unregistered home")
 	}
 	r.Workspaces[0].Home = "orders"
-	if _, _, err := r.Remove(Location{CommonDir: "/orders/.git"}, "orders"); err != nil {
+	if _, _, err := r.Remove(Location{CommonDir: filepath.Join(orders.Root, ".git")}, "orders"); err != nil {
 		t.Fatal(err)
 	}
 	if r.Workspaces[0].Home != "" {

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,11 @@ func TestCacheInterpreterUsesSelectedExecutableIdentity(t *testing.T) {
 	if err := os.MkdirAll(toolcache, 0700); err != nil {
 		t.Fatal(err)
 	}
-	python := filepath.Join(toolcache, "python3")
+	name := "python3"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	python := filepath.Join(toolcache, name)
 	if err := os.WriteFile(python, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +72,12 @@ func TestCacheInterpreterUsesSelectedExecutableIdentity(t *testing.T) {
 
 func TestRelocateDirectURLComparesPathsNotText(t *testing.T) {
 	old, next := filepath.Join(t.TempDir(), "old root"), filepath.Join(t.TempDir(), "new #root")
-	stored, err := relocateDirectURL([]byte(`{"url": "file://`+filepath.ToSlash(strings.ReplaceAll(old, " ", "%20"))+`/libs/a", "dir_info": {"editable": true}}`), old, true)
+	path := filepath.ToSlash(filepath.Join(old, "libs", "a"))
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	source := (&url.URL{Scheme: "file", Path: path}).String()
+	stored, err := relocateDirectURL([]byte(`{"url": "`+source+`", "dir_info": {"editable": true}}`), old, true)
 	if err != nil || strings.Contains(string(stored), "old") || !strings.Contains(string(stored), `"__RADAR_PROJECT_ROOT__/libs/a"`) || !strings.Contains(string(stored), `"editable":true`) {
 		t.Fatalf("store: %s %v", stored, err)
 	}
@@ -82,7 +92,14 @@ func TestRelocateDirectURLComparesPathsNotText(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, err := url.Parse(record.URL)
-	if err != nil || u.Scheme != "file" || filepath.FromSlash(u.Path) != filepath.Join(next, "libs", "a") {
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := u.Path
+	if runtime.GOOS == "windows" {
+		decoded = strings.TrimPrefix(decoded, "/")
+	}
+	if err != nil || u.Scheme != "file" || filepath.FromSlash(decoded) != filepath.Join(next, "libs", "a") {
 		t.Fatalf("restore: %s %v", restored, err)
 	}
 	// URLs outside the root and non-file URLs are kept as they are.

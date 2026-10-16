@@ -89,6 +89,22 @@ Known new dirty conflict hunks still block even when a later input is unchecked.
 With inherited conflicts, Radar separately checks the current saved snapshot
 against its own HEAD for repairable failures; this does not verify the combined tree.
 
+The current selected preview runs before peer inspection and is cached separately.
+Peer selection prioritizes shared paths, imports in both directions, declared
+contracts, migration histories, unique rules and supported route relationships.
+Unresolved or omitted peers remain NOT VERIFIED. Detached peers are excluded by
+default. Completed pair comparisons are cached independently; partial calls can
+resume remaining pairs and rotate expensive work rather than restarting at the
+same peer. Incomplete standalone or dirty baselines cannot establish new drift.
+The default 20-second budget reserves its final two seconds for revalidation and
+response. A peer deadline preserves completed self findings.
+
+For measurements add `--json` to the native command. The optional `radar` object
+reports `stages_ms`, `self`, and peer total/candidate/checked/reused/omitted counts.
+The native response without this flag retains `decision`, `reason` and
+`systemMessage`, and protocol responses exit zero. A completed self preview is
+not verification of unexamined peers.
+
 Unchanged previews reuse the last result for that worktree. The key includes
 HEAD, base and selected commits, saved content and index digests, configuration,
 Radar version and Go linker build identity, read from bounded executable metadata.
@@ -190,7 +206,20 @@ For project-local removal, delete only Radar's Stop handler from
 `.claude/settings.json` or `.codex/hooks.json`, preserving other handlers and
 settings. Native plugins can also be disabled in the agent's plugin browser.
 Package tests validate wiring; `scripts/agent-hooks-test.py` exercises hook
-behavior against a built binary. The opt-in native smoke needs both agent CLIs,
-uses temporary configuration homes and checks the continuation guard. These
-checks do not prove an authenticated model session or activation after trust
-review.
+behavior against a built binary. The opt-in native smoke needs both agent CLIs
+and uses temporary configuration homes with credential environment variables
+removed.
+It checks installed skill bytes against the canonical source and verifies native
+discovery through Codex app-server `skills/list` and Claude's SDK initialization
+command list. No user message or model turn is sent. With `--radar`, it also
+checks the installed Stop adapter's continuation guard.
+
+Codex `hooks/list` is reported separately: discovering a hook does not prove
+activation. The Codex package follows the [native hook manifest format](https://learn.chatgpt.com/docs/hooks#plugin-bundled-hooks)
+in `.codex-plugin/plugin.json`; in Codex 0.162.1,
+a root universal `plugin.json` takes precedence and does not expose its bundled
+hooks. In the Linux check, the native manifest returned the enabled `radar:radar`
+skill and Stop hook with plugin origin and `trustStatus=untrusted`. No hook trust
+was changed. Claude Code 2.1.301 returned `radar:radar` during local SDK
+initialization. These checks do not prove a model selected the skill or an
+agent host ran Stop after trust review.

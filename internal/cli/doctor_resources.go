@@ -125,16 +125,54 @@ func inspectResources(roots []string) []doctorResource {
 	for key, paths := range unknown {
 		out = append(out, doctorResource{"resource_expression", "unknown", key, sortedRoots(paths)})
 	}
-	// Collapse duplicate configuration declarations without exposing their digests.
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Key+out[i].Status+strings.Join(out[i].Worktrees, "\x00") < out[j].Key+out[j].Status+strings.Join(out[j].Worktrees, "\x00")
-	})
-	result := []doctorResource{}
-	for _, item := range out {
-		if len(result) == 0 || fmt.Sprint(item) != fmt.Sprint(result[len(result)-1]) {
-			result = append(result, item)
+	return out
+}
+
+// Merge only after every collector has contributed. Different literal values
+// can produce the same advisory key with overlapping groups of worktrees.
+func mergeDoctorResources(resources []doctorResource) []doctorResource {
+	type identity struct{ kind, key string }
+	merged := map[identity]doctorResource{}
+	rank := func(status string) int {
+		switch status {
+		case "passed":
+			return 0
+		case "warning":
+			return 1
+		default:
+			return 2
 		}
 	}
+	for _, item := range resources {
+		id := identity{item.Kind, item.Key}
+		previous, exists := merged[id]
+		if !exists {
+			previous = doctorResource{Kind: item.Kind, Key: item.Key, Status: item.Status}
+		}
+		if rank(item.Status) > rank(previous.Status) {
+			previous.Status = item.Status
+		}
+		previous.Worktrees = append(previous.Worktrees, item.Worktrees...)
+		merged[id] = previous
+	}
+	result := []doctorResource{}
+	for _, item := range merged {
+		sort.Strings(item.Worktrees)
+		paths := []string{}
+		for _, p := range item.Worktrees {
+			if len(paths) == 0 || paths[len(paths)-1] != p {
+				paths = append(paths, p)
+			}
+		}
+		item.Worktrees = paths
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Kind != result[j].Kind {
+			return result[i].Kind < result[j].Kind
+		}
+		return result[i].Key < result[j].Key
+	})
 	return result
 }
 
