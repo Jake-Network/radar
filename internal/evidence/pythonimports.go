@@ -540,6 +540,44 @@ def normalize(name):
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def homebrew_site_aliases(base_prefix, base_exec_prefix, executable, version, configured_sites, candidate):
+    # Homebrew links installed dependency files into its shared site-packages.
+    # Prove the layout from the physical interpreter, then trust each file
+    # alias as site content; never grant its parent directory source access.
+    base = pathlib.Path(real(base_prefix))
+    if real(base_exec_prefix) != str(base):
+        return set()
+    suffix = tuple(os.path.normcase(part) for part in ("Frameworks", "Python.framework", "Versions", version))
+    if tuple(base.parts[-4:]) != suffix:
+        return set()
+    keg = base.parents[3]
+    if keg.parent.name != "python@" + version or keg.parent.parent.name != os.path.normcase("Cellar"):
+        return set()
+    cellar = keg.parent.parent
+    if not within(real(executable), str(base / "bin")):
+        return set()
+    shared = cellar.parent / "lib" / ("python" + version) / "site-packages"
+    if real(shared) != str(shared) or str(shared) not in configured_sites or not shared.is_dir():
+        return set()
+    aliases = set()
+    for link in shared.iterdir():
+        if not link.is_symlink():
+            continue
+        target = pathlib.Path(real(link))
+        if not target.is_file() or within(str(target), candidate):
+            continue
+        try:
+            parts = target.relative_to(cellar).parts
+        except ValueError:
+            continue
+        if len(parts) != 6 or parts[2:5] != ("lib", "python" + version, "site-packages") or parts[5] != link.name:
+            continue
+        if not (link.name.endswith(".py") or any(link.name.endswith(suffix) for suffix in importlib.machinery.EXTENSION_SUFFIXES)):
+            continue
+        aliases.add(str(target))
+    return aliases
+
+
 try:
     data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     root = real(data["root"])
@@ -552,6 +590,7 @@ try:
         sites.update(real(path) for path in site.getsitepackages())
     if hasattr(site, "getusersitepackages"):
         sites.add(real(site.getusersitepackages()))
+    site_aliases = homebrew_site_aliases(sys.base_prefix, sys.base_exec_prefix, sys.executable, "%d.%d" % sys.version_info[:2], sites, root)
     exact = set()
     for prefix in (sys.prefix, sys.exec_prefix, sys.base_prefix, sys.base_exec_prefix):
         exact.add(real(prefix))
@@ -590,7 +629,7 @@ def location(path):
     if not isinstance(path, str) or not path:
         return ""
     resolved = real(path)
-    if any(within(resolved, tree) for tree in sites):
+    if resolved in site_aliases or any(within(resolved, tree) for tree in sites):
         return "site"
     if any(within(resolved, prefix) for prefix in local):
         return "install" if allowed(resolved) else ""

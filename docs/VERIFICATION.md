@@ -316,6 +316,11 @@ not inject `PYTHONPATH`. It refuses:
   hides it. When that project's `pyproject.toml` has no readable name, any
   installed copy is refused.
 
+On macOS, Homebrew's shared site-packages may link individual Python modules to
+another versioned package in the same installation. Matching Python-version file aliases
+are treated as installed site content and retain the distribution and first-party
+origin checks above. Trust remains limited to the exact file targets.
+
 The interpreter's own environment is not candidate source even inside the
 candidate directory: its checkouts (such as pip's `src/` for `-e git+…`) are refused like any outside
 path. A site-packages copy counts as candidate code only when every
