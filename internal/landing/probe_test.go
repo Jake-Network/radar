@@ -11,6 +11,13 @@ import (
 
 func TestStandaloneMergeTreeUsesOnlyPrivateObjects(t *testing.T) {
 	root := fixture(t)
+	// The private-only fast path requires an ordinary canonical source store.
+	// Match CLI roots rather than triggering the safe pack-stream fallback
+	// through a trusted temporary-directory alias (including Windows 8.3 TEMP).
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	branch(t, root, "stale", "baseline", "service.py", "def charge():\n return 2\n")
 	branch(t, root, "new-base", "baseline", "service.py", "def charge():\n return 3\n")
 	branch(t, root, "clean", "new-base", "notes.md", "clean\n")

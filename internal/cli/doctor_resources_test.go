@@ -11,7 +11,17 @@ import (
 
 func TestDoctorResourcesKeepDistinctLiteralGroups(t *testing.T) {
 	root, agent := agentRepo(t, map[string]string{"app.py": "VALUE = 1\n"})
-	groups := [][]string{{agent("a", nil), agent("b", nil)}, {agent("c", nil), agent("d", nil)}}
+	// agentRepo's worktree parent may retain a symlink or Windows short-name
+	// alias. Doctor reports canonical roots, so resolve the fixture paths too.
+	canonicalWorktree := func(branch string) string {
+		t.Helper()
+		p, err := filepath.EvalSymlinks(agent(branch, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	groups := [][]string{{canonicalWorktree("a"), canonicalWorktree("b")}, {canonicalWorktree("c"), canonicalWorktree("d")}}
 	for i, paths := range groups {
 		value := []string{"3000", "4000"}[i]
 		for _, p := range paths {
@@ -19,7 +29,7 @@ func TestDoctorResourcesKeepDistinctLiteralGroups(t *testing.T) {
 		}
 		sort.Strings(paths)
 	}
-	expression := agent("expression", nil)
+	expression := canonicalWorktree("expression")
 	put(t, expression, ".env", "PORT=${PORT}\n")
 	resources := doctorProjectOf(t, root).Resources
 	if len(resources) != 3 {
