@@ -112,7 +112,7 @@ func (a *app) land(o options) int {
 		v, e := landing.ApplyWithOptions(a.ctx, a.root, *plan, lopts)
 		applyOutcome = &v.Outcome
 		if e != nil {
-			if len(v.Report.Inputs) != len(order) {
+			if len(v.Report.Checks) == 0 || len(v.Report.Inputs) != len(order) {
 				if a.machine {
 					a.emit(map[string]any{"error": e.Error(), "status": "error", "landing_apply": v.Outcome, "landing": plan})
 					return 2
@@ -151,10 +151,7 @@ func (a *app) land(o options) int {
 	g.attribute()
 	a.report(g, func(w io.Writer) {
 		if plan != nil {
-			fmt.Fprintln(w, "Land order: "+strings.Join(plan.Order, " → "))
-			for _, b := range plan.RestackFirst {
-				fmt.Fprintf(w, "? Restack first: %s (conflicts with base: %s)\n", b.Name, strings.Join(b.Conflicts, ", "))
-			}
+			renderLandingOrder(w, *plan, "")
 			if len(plan.Independent) > 0 {
 				fmt.Fprintln(w, "Any time: "+strings.Join(plan.Independent, ", "))
 			}
@@ -199,4 +196,19 @@ func (a *app) land(o options) int {
 		return applyExit
 	}
 	return gate.Exit(report.Gate)
+}
+
+func renderLandingOrder(w io.Writer, plan landing.Report, repo string) {
+	scope := ""
+	if repo != "" {
+		scope = " (" + repo + ")"
+	}
+	for _, b := range plan.RestackFirst {
+		behind := "unknown"
+		if b.Behind != nil {
+			behind = fmt.Sprint(*b.Behind)
+		}
+		fmt.Fprintf(w, "? Restack first%s: %s (behind base: %s; conflicts with base: %s)\n", scope, b.Name, behind, strings.Join(b.Conflicts, ", "))
+	}
+	fmt.Fprintf(w, "Land order%s: %s\n", scope, strings.Join(plan.Order, " → "))
 }

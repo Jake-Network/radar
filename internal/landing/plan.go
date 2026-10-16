@@ -107,14 +107,16 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 		}
 		r.Branches = append(r.Branches, Branch{name, sha, changed})
 	}
-	// Probe each pinned tip against base without invoking a structural driver.
+	// Probe each pinned tip against base using the same authorized driver as
+	// the final candidate. Static probes share one disposable object store.
 	// A descendant may resolve its ancestor's conflict, so probe every tip.
+	probe := newStandaloneProbe(ctx, root, r.Base, o)
+	defer probe.Close()
 	eligible := []Branch{}
 	probeUnknown := map[string]bool{}
 	for _, b := range r.Branches {
-		candidate, e := integration.BuildCandidate(ctx, root, r.Base, []string{b.Commit})
+		paths, e := probe.conflicts(ctx, b.Commit)
 		if e != nil {
-			candidate.Close()
 			if ctx.Err() != nil {
 				return r, ctx.Err()
 			}
@@ -124,8 +126,6 @@ func Plan(ctx context.Context, root string, o Options) (Report, error) {
 			eligible = append(eligible, b)
 			continue
 		}
-		paths := append([]string{}, candidate.Conflicts...)
-		candidate.Close()
 		if len(paths) == 0 {
 			eligible = append(eligible, b)
 			continue

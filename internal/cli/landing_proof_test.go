@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,34 @@ import (
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
 )
+
+func TestLandingDriverResolvesBaseConflictBeforeRestack(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("POSIX installed-driver fixture")
+	}
+	root, agent := checkoutRepo(t)
+	agent("stale", map[string]string{"backend.py": "def price():\n    return 2\n"})
+	agent("base-update", map[string]string{"backend.py": "def price():\n    return 3\n"})
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mergiraf"), []byte("#!/bin/sh\n[ \"$1\" = merge ] || exit 2\nprintf 'def price():\\n    return 4\\n' > \"$6\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	code, _, errout := run(t, root, "land", "stale", "--base", "base-update", "--driver", "mergiraf")
+	if code != 2 || !strings.Contains(errout, "explicit execution authorization") {
+		t.Fatal("driver ran without authorization", code, errout)
+	}
+	before := gitTest(t, root, "for-each-ref", "--format=%(refname):%(objectname)", "refs/heads")
+	r := invoke(t, root, 0, "land", "stale", "--base", "base-update", "--driver", "mergiraf", "--allow-execution", "--apply")
+	l := r["landing"].(map[string]any)
+	ref := r["integration_ref"].(map[string]any)["ref"].(string)
+	if l["restack_first"] != nil || len(l["order"].([]any)) != 1 || r["gate"].(map[string]any)["verdict"] != "pass" || !strings.Contains(gitTest(t, root, "show", ref+":backend.py"), "return 4") {
+		t.Fatal("authorized driver result was excluded", r)
+	}
+	if before != gitTest(t, root, "for-each-ref", "--format=%(refname):%(objectname)", "refs/heads") || gitTest(t, root, "status", "--porcelain=v1") != "" {
+		t.Fatal("driver application changed source branches/index/worktree")
+	}
+}
 
 func TestLandingCLIPrivateRefAndMCP(t *testing.T) {
 	root, agent := checkoutRepo(t)
@@ -175,6 +205,9 @@ func TestLandingRestackScopeTextJSONAndMCP(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "Restack first: stale") || !strings.Contains(out, "NOT VERIFIED") {
 		t.Fatal(code, out, errout)
 	}
+	if strings.Index(out, "Restack first: stale") > strings.Index(out, "Land order:") || !strings.Contains(out, "behind base: 1") {
+		t.Fatal("restack priority or behind count lost", out)
+	}
 	a := &app{root: root, ctx: context.Background()}
 	result := a.callTool("radar_land", map[string]any{"branches": "stale,clean-a,clean-b,clean-c", "base": "main"})
 	data, _ := json.Marshal(result)
@@ -190,5 +223,20 @@ func TestLandingRestackScopeTextJSONAndMCP(t *testing.T) {
 	all := invoke(t, root, 1, "land", "stale", "--base", "main")
 	if all["candidate_commit"] != nil || all["candidate_tree"] != nil || len(all["inputs"].([]any)) != 0 {
 		t.Fatal(all)
+	}
+	refused := invoke(t, root, 2, "land", "stale", "--base", "main", "--apply")
+	if refused["status"] != "error" || !strings.Contains(refused["error"].(string), "require restack") {
+		t.Fatal("all-restack apply lost its error", refused)
+	}
+	code, out, errout = run(t, root, "land", "stale", "--base", "main", "--apply")
+	if code != 2 || !strings.Contains(errout, "require restack") || strings.Contains(out, "Land order:") || before != gitTest(t, root, "show-ref") {
+		t.Fatal("all-restack apply was not refused before publication", code, out, errout)
+	}
+	shallow := filepath.Join(t.TempDir(), "shallow")
+	gitTest(t, root, "clone", "--no-local", "--no-single-branch", "--depth=2", root, shallow)
+	gitTest(t, shallow, "branch", "stale", "origin/stale")
+	code, out, errout = run(t, shallow, "land", "stale", "--base", "main")
+	if code != 1 || !strings.Contains(out, "behind base: unknown") || !strings.Contains(out, "Restack first: stale") {
+		t.Fatal("uncertain shallow behind count not explicit", code, out, errout)
 	}
 }

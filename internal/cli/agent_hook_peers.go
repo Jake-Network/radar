@@ -16,13 +16,14 @@ import (
 )
 
 type hookDiagnostics struct {
-	StagesMS   map[string]int64 `json:"stages_ms"`
-	Self       string           `json:"self"`
-	PeersTotal int              `json:"peers_total"`
-	Candidates int              `json:"peer_candidates"`
-	Checked    int              `json:"peers_checked"`
-	Reused     int              `json:"peers_reused"`
-	Omitted    int              `json:"peers_omitted"`
+	StagesMS        map[string]int64 `json:"stages_ms"`
+	Self            string           `json:"self"`
+	PeersTotal      int              `json:"peers_total"`
+	Candidates      int              `json:"peer_candidates"`
+	Checked         int              `json:"peers_checked"`
+	Reused          int              `json:"peers_reused"`
+	Omitted         int              `json:"peers_omitted"`
+	OmissionReasons map[string]int   `json:"peer_omission_reasons,omitempty"`
 }
 
 type hookPeer struct {
@@ -34,6 +35,12 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 	incomplete := func(reason string) agentHookResponse {
 		self.Message = hookText(strings.TrimSpace(self.Message + " Radar NOT VERIFIED: peer inspection incomplete: " + reason))
 		diag.Omitted = diag.PeersTotal - diag.Checked - diag.Reused
+		if remaining := diag.Omitted - hookOmissionCount(diag.OmissionReasons); remaining > 0 {
+			if diag.OmissionReasons == nil {
+				diag.OmissionReasons = map[string]int{}
+			}
+			diag.OmissionReasons["inspection_incomplete"] += remaining
+		}
 		return self
 	}
 	deadline, ok := ctx.Deadline()
@@ -56,11 +63,20 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 			current = w
 			continue
 		}
-		if !w.Detached {
-			peers = append(peers, hookPeer{worktree: w, priority: 1})
+		diag.PeersTotal++
+		if w.Detached {
+			if diag.OmissionReasons == nil {
+				diag.OmissionReasons = map[string]int{}
+			}
+			diag.OmissionReasons["detached"]++
+			continue
 		}
+		peers = append(peers, hookPeer{worktree: w, priority: 1})
 	}
-	diag.PeersTotal = len(peers)
+	diag.Omitted = hookOmissionCount(diag.OmissionReasons)
+	if detached := diag.OmissionReasons["detached"]; detached > 0 {
+		self.Message = hookText(self.Message + fmt.Sprintf(" Radar NOT VERIFIED: %d detached peers excluded by default; saved changes were not inspected.", detached))
+	}
 	if len(peers) == 0 {
 		return self
 	}
@@ -120,13 +136,30 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 		return incomplete("current changed paths unavailable")
 	}
 	selectionStarted := time.Now()
-	peers, unresolved, err := selectHookPeers(peerCtx, a.root, in.Base, ownPaths, peers, cache)
+	peers, omissions, err := selectHookPeers(peerCtx, a.root, in.Base, ownPaths, peers, cache)
 	diag.StagesMS["peer_selection"] = time.Since(selectionStarted).Milliseconds()
+	if diag.OmissionReasons == nil {
+		diag.OmissionReasons = map[string]int{}
+	}
+	for reason, count := range omissions {
+		diag.OmissionReasons[reason] += count
+	}
+	diag.Candidates = len(peers)
 	if err != nil {
 		return incomplete("peer relationship selection unavailable: " + err.Error())
 	}
-	if unresolved > 0 {
-		self.Message = hookText(self.Message + fmt.Sprintf(" Radar NOT VERIFIED: %d peers have unresolved relationships and were not checked.", unresolved))
+	if unresolved := hookOmissionCount(omissions); unresolved > 0 {
+		reasons := []string{}
+		if count := omissions["no_overlapping_paths"]; count > 0 {
+			reasons = append(reasons, fmt.Sprintf("skipped: no overlapping paths or resolved dependencies: %d", count))
+		}
+		if count := omissions["no_changed_paths"]; count > 0 {
+			reasons = append(reasons, fmt.Sprintf("skipped: no changed paths: %d", count))
+		}
+		if count := omissions["inspection_error"]; count > 0 {
+			reasons = append(reasons, fmt.Sprintf("inspection unavailable: %d", count))
+		}
+		self.Message = hookText(self.Message + fmt.Sprintf(" Radar NOT VERIFIED: %d peers have unresolved relationships and were not checked (%s).", unresolved, strings.Join(reasons, "; ")))
 	}
 	sort.SliceStable(peers, func(i, j int) bool { return peers[i].priority < peers[j].priority })
 	diag.Candidates = len(peers)
@@ -270,4 +303,12 @@ func hookPeerDeadline(deadline time.Time, budget time.Duration) time.Time {
 		budget = 20 * time.Second
 	}
 	return deadline.Add(-min(2*time.Second, budget/10))
+}
+
+func hookOmissionCount(reasons map[string]int) int {
+	total := 0
+	for _, count := range reasons {
+		total += count
+	}
+	return total
 }

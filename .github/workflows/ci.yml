@@ -129,9 +129,6 @@ jobs:
       - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: "3.12"
       - name: Inspect native Python installation
         run: |
           python3 - <<'PY'
@@ -140,7 +137,7 @@ jobs:
           PY
       - name: Build and smoke with the unmodified macOS TMPDIR
         run: |
-          go test -count=1 ./internal/git ./internal/integration -run 'Test.*(Symlink|Canonical|Candidate)'
+          go test -count=1 -v ./internal/evidence ./internal/git ./internal/integration
           go build -o "$RUNNER_TEMP/radar" ./cmd/radar
           bash scripts/smoke.sh "$RUNNER_TEMP/radar"
           python3 scripts/release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci
@@ -185,6 +182,6 @@ jobs:
         shell: bash
         run: |
           git config core.autocrlf true
-          go test -p=1 -count=1 ./... -timeout 45m
+          go test -count=1 ./... -timeout 45m
           python scripts/release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci
           python scripts/validate-release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci

@@ -17,9 +17,9 @@ import (
 
 // Selection is an acceleration policy, never a proof of independence. Peers
 // without a resolved relation are omitted with an explicit NOT VERIFIED scope.
-func selectHookPeers(ctx context.Context, root, base string, own map[string]bool, peers []hookPeer, cache *indexer.ParseCache) ([]hookPeer, int, error) {
+func selectHookPeers(ctx context.Context, root, base string, own map[string]bool, peers []hookPeer, cache *indexer.ParseCache) ([]hookPeer, map[string]int, error) {
 	selected := []hookPeer{}
-	omitted := 0
+	omitted := map[string]int{}
 	var graph model.Snapshot
 	graphReady := false
 	declarations := loadHookDeclarations(ctx, root, base)
@@ -29,10 +29,11 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 	paths := hookPeerPaths(ctx, base, peers)
 	for i, peer := range peers {
 		if err := ctx.Err(); err != nil {
-			return selected, len(peers) - len(selected), err
+			omitted["selection_incomplete"] += len(peers) - len(selected) - hookOmissionCount(omitted)
+			return selected, omitted, err
 		}
 		if paths[i].err != nil {
-			omitted++
+			omitted["inspection_error"]++
 			continue
 		}
 		changed := map[string]bool{}
@@ -49,7 +50,7 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 			continue
 		}
 		if len(changed) == 0 {
-			omitted++
+			omitted["no_changed_paths"]++
 			continue
 		}
 		peerDeclarations := loadHookDeclarations(ctx, peer.worktree.Path, "WORKTREE")
@@ -69,13 +70,14 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 				var err error
 				graph, err = hookSelectionGraph(ctx, root, cache)
 				if err != nil {
-					return selected, len(peers) - len(selected), err
+					omitted["inspection_error"] += len(peers) - len(selected) - hookOmissionCount(omitted)
+					return selected, omitted, err
 				}
 				graphReady = true
 			}
 			other, e := hookSelectionGraph(ctx, peer.worktree.Path, cache)
 			if e != nil {
-				omitted++
+				omitted["inspection_error"]++
 				continue
 			}
 			related = hookGraphRelated(own, changed, graph, other)
@@ -84,7 +86,7 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 			peer.priority = 1
 			selected = append(selected, peer)
 		} else {
-			omitted++
+			omitted["no_overlapping_paths"]++
 		}
 	}
 	return selected, omitted, nil

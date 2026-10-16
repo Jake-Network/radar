@@ -4,9 +4,56 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
+
+func TestDoctorResourcesKeepDistinctLiteralGroups(t *testing.T) {
+	root, agent := agentRepo(t, map[string]string{"app.py": "VALUE = 1\n"})
+	groups := [][]string{{agent("a", nil), agent("b", nil)}, {agent("c", nil), agent("d", nil)}}
+	for i, paths := range groups {
+		value := []string{"3000", "4000"}[i]
+		for _, p := range paths {
+			put(t, p, ".env", "PORT="+value+"\n")
+		}
+		sort.Strings(paths)
+	}
+	expression := agent("expression", nil)
+	put(t, expression, ".env", "PORT=${PORT}\n")
+	resources := doctorProjectOf(t, root).Resources
+	if len(resources) != 3 {
+		t.Fatalf("distinct resource values merged: %+v", resources)
+	}
+	want := map[string]string{
+		strings.Join(groups[0], "\n"): "warning",
+		strings.Join(groups[1], "\n"): "warning",
+		expression:                    "unknown",
+	}
+	for _, item := range resources {
+		if item.Key != "PORT" || want[strings.Join(item.Worktrees, "\n")] != item.Status {
+			t.Fatalf("incorrect resource group or certainty: %+v", item)
+		}
+		delete(want, strings.Join(item.Worktrees, "\n"))
+	}
+	if len(want) != 0 {
+		t.Fatal("missing resource groups", want)
+	}
+	code, text, errs := run(t, root, "doctor")
+	if code != 0 {
+		t.Fatal(code, text, errs)
+	}
+	for _, paths := range groups {
+		if !strings.Contains(text, "PORT ("+strings.Join(paths, ", ")+")") {
+			t.Fatal("human report lost distinct resource group", text)
+		}
+	}
+	for _, limit := range []string{"candidate integrity: 10000 tracked files, 20000 filesystem inputs; no total byte limit", "radar test: 10000 tracked entries, 64 MiB total copied file content"} {
+		if !strings.Contains(text, limit) {
+			t.Fatal("doctor omitted separate execution-path limit", text)
+		}
+	}
+}
 
 func TestDoctorSharedResources(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
@@ -23,6 +70,11 @@ func TestDoctorSharedResources(t *testing.T) {
 	data, _ := json.Marshal(result)
 	if strings.Contains(string(data), "very-secret") || strings.Contains(string(data), "8080") {
 		t.Fatal("resource values leaked")
+	}
+	for _, item := range result {
+		if item.valueGroup == "" || strings.Contains(string(data), item.valueGroup) {
+			t.Fatal("private resource identity missing or exposed in JSON")
+		}
 	}
 	os.WriteFile(filepath.Join(b, ".env"), []byte("DATABASE_URL=postgres://other/db\nPORT=8081\n"), 0600)
 	if got := inspectResources([]string{a, b}); len(got) != 0 {
@@ -114,16 +166,20 @@ func TestDoctorKnownPythonBootstrapIsNotEditableLoader(t *testing.T) {
 
 func TestDoctorResourcesMergeGroupsAndUncertainty(t *testing.T) {
 	got := mergeDoctorResources([]doctorResource{
-		{"shared_resource", "warning", "PORT", []string{"a", "b"}},
-		{"shared_resource", "unknown", "PORT", []string{"b", "c"}},
-		{"resource_expression", "unknown", "PORT", []string{"d"}},
+		{Kind: "shared_resource", Status: "warning", Key: "PORT", Worktrees: []string{"a", "b"}, valueGroup: "same-literal"},
+		{Kind: "shared_resource", Status: "unknown", Key: "PORT", Worktrees: []string{"b", "c"}, valueGroup: "same-literal"},
+		{Kind: "shared_resource", Status: "warning", Key: "PORT", Worktrees: []string{"d", "e"}, valueGroup: "different-literal"},
+		{Kind: "resource_expression", Status: "unknown", Key: "PORT", Worktrees: []string{"f"}},
 	})
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Fatalf("%+v", got)
 	}
 	for _, item := range got {
-		if item.Kind == "shared_resource" && (item.Status != "unknown" || strings.Join(item.Worktrees, ",") != "a,b,c") {
+		if item.valueGroup == "same-literal" && (item.Status != "unknown" || strings.Join(item.Worktrees, ",") != "a,b,c") {
 			t.Fatalf("%+v", item)
+		}
+		if item.valueGroup == "different-literal" && (item.Status != "warning" || strings.Join(item.Worktrees, ",") != "d,e") {
+			t.Fatalf("distinct literal inherited unrelated uncertainty: %+v", item)
 		}
 	}
 }

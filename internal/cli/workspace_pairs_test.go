@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -97,5 +98,9 @@ func TestWorkspaceLandingRestackKeepsExcludedScopeBlocked(t *testing.T) {
 			}
 		}
 		checkStage2Schema(t, report)
+		code, text, errs := run(t, s.orders, append([]string{"land"}, refs...)...)
+		if code != 1 || !strings.Contains(text, "Restack first (orders): agent/stale (behind base: 1;") || strings.Index(text, "Restack first (orders)") > strings.Index(text, "Land order (orders)") {
+			t.Fatal("workspace restack priority/behind lost", code, text, errs)
+		}
 	}
 }

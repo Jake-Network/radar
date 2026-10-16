@@ -168,3 +168,36 @@ func TestVerificationMetadataDeadlinePreviewCannotInventTestEvidence(t *testing.
 		})
 	}
 }
+
+// Providers can finish a buffered read after an earlier I/O deadline. Later
+// successful or unrelated failed reads must not clear the recorded timeout.
+func TestVerificationMetadataRetainsEarlierDeadline(t *testing.T) {
+	for _, first := range []string{"entries", "read"} {
+		t.Run(first, func(t *testing.T) {
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+			defer cancel()
+			provider := verificationProfileProvider{
+				entries: func(context.Context) ([]indexer.Entry, error) { return nil, context.DeadlineExceeded },
+				read:    func(context.Context) ([]byte, error) { return nil, context.DeadlineExceeded },
+			}
+			metadata := &verificationMetadata{Provider: provider}
+			if first == "entries" {
+				_, _ = metadata.Entries(ctx)
+			} else {
+				_, _ = metadata.Read(ctx, indexer.Entry{}, 1)
+			}
+			if !metadata.timedOut {
+				t.Fatal("I/O deadline was not recorded")
+			}
+			metadata.Provider = verificationProfileProvider{
+				entries: func(context.Context) ([]indexer.Entry, error) { return nil, nil },
+				read:    func(context.Context) ([]byte, error) { return nil, errors.New("later read error") },
+			}
+			_, _ = metadata.Entries(context.Background())
+			_, _ = metadata.Read(context.Background(), indexer.Entry{}, 1)
+			if !metadata.timedOut {
+				t.Fatal("later I/O erased the earlier metadata deadline")
+			}
+		})
+	}
+}

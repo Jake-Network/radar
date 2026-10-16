@@ -111,10 +111,7 @@ func (a *app) workspacePairInspection(o options, inv *workspaceInvocation, dirty
 	a.report(g, func(w io.Writer) {
 		for _, r := range repos {
 			if p, ok := plans[r.ID]; ok {
-				fmt.Fprintf(w, "Land order (%s): %s\n", r.ID, strings.Join(p.Order, " → "))
-				for _, b := range p.RestackFirst {
-					fmt.Fprintf(w, "? Restack first (%s): %s (conflicts with base: %s)\n", r.ID, b.Name, strings.Join(b.Conflicts, ", "))
-				}
+				renderLandingOrder(w, p, r.ID)
 			}
 		}
 		if dirty {

@@ -17,6 +17,9 @@ type doctorResource struct {
 	Status    string   `json:"status"`
 	Key       string   `json:"key"`
 	Worktrees []string `json:"worktrees"`
+	// Retain literal equality across collectors without exposing values or
+	// their hashes in either human or JSON reports.
+	valueGroup string
 }
 
 var resourceKey = regexp.MustCompile(`^(?:[A-Z_][A-Z0-9_]*_)?PORT$|^(?:[A-Z_][A-Z0-9_]*_)?DATABASE_URL$|^DB_URL$|^COMPOSE_PROJECT_NAME$`)
@@ -119,19 +122,19 @@ func inspectResources(roots []string) []doctorResource {
 	}
 	for id, paths := range shared {
 		if len(paths) > 1 {
-			out = append(out, doctorResource{"shared_resource", "warning", id.key, sortedRoots(paths)})
+			out = append(out, doctorResource{Kind: "shared_resource", Status: "warning", Key: id.key, Worktrees: sortedRoots(paths), valueGroup: id.digest})
 		}
 	}
 	for key, paths := range unknown {
-		out = append(out, doctorResource{"resource_expression", "unknown", key, sortedRoots(paths)})
+		out = append(out, doctorResource{Kind: "resource_expression", Status: "unknown", Key: key, Worktrees: sortedRoots(paths)})
 	}
 	return out
 }
 
-// Merge only after every collector has contributed. Different literal values
-// can produce the same advisory key with overlapping groups of worktrees.
+// Merge only after every collector has contributed. Literal equality remains
+// part of the identity: a shared key alone does not establish a shared resource.
 func mergeDoctorResources(resources []doctorResource) []doctorResource {
-	type identity struct{ kind, key string }
+	type identity struct{ kind, key, valueGroup string }
 	merged := map[identity]doctorResource{}
 	rank := func(status string) int {
 		switch status {
@@ -144,10 +147,11 @@ func mergeDoctorResources(resources []doctorResource) []doctorResource {
 		}
 	}
 	for _, item := range resources {
-		id := identity{item.Kind, item.Key}
+		id := identity{item.Kind, item.Key, item.valueGroup}
 		previous, exists := merged[id]
 		if !exists {
-			previous = doctorResource{Kind: item.Kind, Key: item.Key, Status: item.Status}
+			previous = item
+			previous.Worktrees = nil
 		}
 		if rank(item.Status) > rank(previous.Status) {
 			previous.Status = item.Status
@@ -171,7 +175,10 @@ func mergeDoctorResources(resources []doctorResource) []doctorResource {
 		if result[i].Kind != result[j].Kind {
 			return result[i].Kind < result[j].Kind
 		}
-		return result[i].Key < result[j].Key
+		if result[i].Key != result[j].Key {
+			return result[i].Key < result[j].Key
+		}
+		return strings.Join(result[i].Worktrees, "\x00") < strings.Join(result[j].Worktrees, "\x00")
 	})
 	return result
 }
@@ -217,7 +224,7 @@ func editableAdvisories(root, environment string) []doctorResource {
 						continue
 					}
 				}
-				out = append(out, doctorResource{kind, status, "python editable environment", []string{root}})
+				out = append(out, doctorResource{Kind: kind, Status: status, Key: "python editable environment", Worktrees: []string{root}})
 				break
 			}
 		}

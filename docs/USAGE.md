@@ -22,7 +22,9 @@ candidates, and frameworks such as pytest are checked when tests run.
 
 Doctor also warns when worktrees declare the same literal database URL, port or
 Compose project name in conventional root `.env`/Compose files. Values are
-compared privately and omitted from reports. Expressions remain `unknown`.
+compared privately and omitted from reports. Each warning lists only worktrees
+sharing that same literal value; different values under one key stay separate.
+Expressions remain `unknown` and are not assumed to share a literal resource.
 Static `.pth` inspection of `VIRTUAL_ENV` warns about external paths or
 uninterpreted loaders without running Python. These are configuration advisories,
 not runtime isolation checks; nested settings and full Compose semantics are
@@ -30,8 +32,13 @@ not interpreted.
 
 Candidate source integrity compares tracked blobs and files with bounded
 streaming buffers, so total tracked bytes have no integrity limit. The 10,000
-tracked-file and 20,000 filesystem-input bounds still apply; snapshot copying
-and static parsing retain separate limits. Same-length content changes, extra
+tracked-file and 20,000 filesystem-input bounds still apply. The separate
+single-checkpoint `radar test` command copies at most 10,000 tracked entries
+and 64 MiB of regular-file content into its execution snapshot; a larger input
+is rejected before setup or tests run. That copy limit does not apply to
+integrity inspection of private Git candidates used by `gate --run` or
+`merge-check --verify --allow-execution`. Static parsing retains its own limits.
+Same-length content changes, extra
 inputs and supported executable-mode changes invalidate execution proof.
 Declared runner preparation errors appear in `runner_preparations[].error` and
 human output; inspection errors remain distinct from source mismatches.

@@ -83,6 +83,16 @@ class WorkflowPolicyTests(unittest.TestCase):
         for command in ("release.py", "validate-release.py"):
             self.assertIn('python3 scripts/' + command + ' "$RUNNER_TEMP/radar-release" 0.0.0-ci', macos)
 
+    def test_native_ci_keeps_default_interpreter_and_parallel_coverage(self):
+        source = (ROOT / WORKFLOWS[0]).read_text()
+        macos = source.split("\n  macos-default-tmpdir:\n", 1)[1].split("\n  windows-native:\n", 1)[0]
+        self.assertNotIn("setup-python", macos)
+        self.assertIn("python3 - <<'PY'", macos)
+        self.assertIn("go test -count=1 -v ./internal/evidence ./internal/git ./internal/integration", macos)
+        windows = source.split("\n  windows-native:\n", 1)[1]
+        self.assertIn("go test -count=1 ./... -timeout 45m", windows)
+        self.assertNotRegex(windows, r"go test[^\n]*\s-p(?:=|\s)")
+
     def test_publication_requires_explicit_manual_request(self):
         source = (ROOT / WORKFLOWS[1]).read_text()
         publish = source.split("\n  publish:\n", 1)[1]

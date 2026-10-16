@@ -216,6 +216,7 @@ func (a *app) doctor(_ options) int {
 			line("State", a.stateRoot+"/.radar")
 		}
 		line("Limits", "candidate integrity: 10000 tracked files, 20000 filesystem inputs; no total byte limit")
+		line("Snapshot", "radar test: 10000 tracked entries, 64 MiB total copied file content")
 		line("Privacy", "local only: no telemetry, no cloud inference; runs repository code only with --run")
 		fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(proj.Next))
 	})

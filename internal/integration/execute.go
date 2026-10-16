@@ -319,13 +319,13 @@ type verificationMetadata struct {
 
 func (p *verificationMetadata) Entries(ctx context.Context) ([]indexer.Entry, error) {
 	entries, err := p.Provider.Entries(ctx)
-	p.timedOut = err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
+	p.timedOut = p.timedOut || err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
 	return entries, err
 }
 
 func (p *verificationMetadata) Read(ctx context.Context, entry indexer.Entry, limit int64) ([]byte, error) {
 	data, err := p.Provider.Read(ctx, entry, limit)
-	p.timedOut = err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
+	p.timedOut = p.timedOut || err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
 	return data, err
 }
 

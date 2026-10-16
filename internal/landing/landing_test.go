@@ -417,6 +417,37 @@ func TestAuthorizedDriverResolvesPrivately(t *testing.T) {
 	}
 }
 
+func TestStandaloneRestackHonorsAuthorizedDriver(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("POSIX driver fixture")
+	}
+	root := fixture(t)
+	branch(t, root, "stale", "baseline", "service.py", "def charge():\n return 2\n")
+	branch(t, root, "new-base", "baseline", "service.py", "def charge():\n return 3\n")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mergiraf"), []byte("#!/bin/sh\n[ \"$1\" = merge ] || exit 2\nprintf 'def charge():\\n return 4\\n' > \"$6\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	before := git(t, root, "show-ref")
+	o := Options{Base: "new-base", Branches: []string{"stale"}, Driver: "mergiraf", AllowExecution: true}
+	p, err := Plan(context.Background(), root, o)
+	if err != nil || len(p.RestackFirst) != 0 || len(p.Order) != 1 {
+		t.Fatalf("authorized driver resolution excluded: %+v %v", p, err)
+	}
+	r, err := PreviewPlan(context.Background(), root, p, o)
+	if err != nil || r.Gate.Verdict != gate.Pass {
+		t.Fatalf("driver preview: %+v %v", r, err)
+	}
+	if before != git(t, root, "show-ref") {
+		t.Fatal("standalone driver mutated source refs")
+	}
+	a, err := ApplyWithOptions(context.Background(), root, p, o)
+	if err != nil || !a.Outcome.Published || !strings.Contains(git(t, root, "show", a.Ref+":service.py"), "return 4") {
+		t.Fatalf("authorized standalone apply: %+v %v", a, err)
+	}
+}
+
 func TestMigrationPairUsesExistingDetectorAndIgnoresBaseExisting(t *testing.T) {
 	root := fixture(t)
 	put(t, root, "db/env.py", "# alembic\n")

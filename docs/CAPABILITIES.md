@@ -167,7 +167,8 @@ complete-candidate static verification. User branch movement remains explicit.
 worktree drift. These are static repair leads, not a lock or runtime guarantee.
 The hook only blocks new drift caused by the current worktree's saved changes;
 pre-existing textual conflicts/drift are informational. Doctor's bounded local
-resource advisories compare literals privately and leave expressions unknown.
+resource advisories compare literals privately, keep distinct values in separate
+worktree groups, and leave expressions unknown.
 
 Passing gate trailers refer to immutable local historical reports; `show` does
 not revalidate current commits or authenticate a signer. Actions check runs and
