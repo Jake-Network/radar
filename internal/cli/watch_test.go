@@ -126,6 +126,7 @@ type watchEventWriter struct {
 	events   []watch.Event
 	callback func(watch.Event)
 	err      error
+	onError  func(error)
 }
 
 func (w *watchEventWriter) Write(p []byte) (int, error) {
@@ -138,6 +139,9 @@ func (w *watchEventWriter) Write(p []byte) (int, error) {
 		var event watch.Event
 		if err := json.Unmarshal(w.pending[:i], &event); err != nil {
 			w.err = err
+			if w.onError != nil {
+				w.onError(err)
+			}
 			return 0, err
 		}
 		w.pending = w.pending[i+1:]
@@ -148,18 +152,60 @@ func (w *watchEventWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
-func watchSession(t *testing.T, root string, callback func(watch.Event, context.CancelFunc), args ...string) ([]watch.Event, string) {
+
+func TestWatchEventWriterKeepsPartialJSONLAndRejectsMalformedEvent(t *testing.T) {
+	var callbacks, errors int
+	w := watchEventWriter{callback: func(watch.Event) { callbacks++ }, onError: func(error) { errors++ }}
+	first := []byte(`{"type":"completed","sequence":1`)
+	if n, err := w.Write(first); err != nil || n != len(first) || callbacks != 0 || !bytes.Equal(w.pending, first) {
+		t.Fatal("partial JSONL was lost or published", n, err, w)
+	}
+	if _, err := w.Write([]byte("}\n{invalid}\n")); err == nil || w.err == nil || errors != 1 {
+		t.Fatal("malformed JSONL did not stop the session", err, w)
+	}
+	if callbacks != 1 || len(w.events) != 1 || w.events[0].Type != watch.Completed {
+		t.Fatal("malformed event was accepted or earlier event lost", w)
+	}
+}
+
+type watchSessionEvents struct {
+	completed, errors, attributed int
+}
+
+func watchSession(t *testing.T, root string, want watchSessionEvents, callback func(watch.Event, context.CancelFunc), args ...string) ([]watch.Event, string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	// Functional fixtures stop on their expected semantic event. The Go test
+	// deadline is a watchdog, not a product latency budget for native Git.
+	ctx, cancel := watchFunctionalContext(t)
 	defer cancel()
-	out := &watchEventWriter{callback: func(e watch.Event) { callback(e, cancel) }}
+	out := &watchEventWriter{onError: func(error) { cancel() }}
+	var got watchSessionEvents
+	out.callback = func(e watch.Event) {
+		switch e.Type {
+		case watch.Completed:
+			got.completed++
+		case watch.Attributed:
+			got.attributed++
+		}
+		if e.Type == watch.Error || e.Error != "" {
+			got.errors++
+		}
+		if got.completed > want.completed || got.attributed > want.attributed || got.errors > want.errors {
+			cancel()
+			return
+		}
+		callback(e, cancel)
+		if got == want {
+			cancel()
+		}
+	}
 	var errs bytes.Buffer
 	argv := append([]string{"watch", "--root", root, "--jsonl", "--interval", "100ms", "--debounce", "1ms"}, args...)
-	if code := Run(ctx, argv, out, &errs); code != 0 {
-		t.Fatalf("watch exit %d: %s", code, errs.String())
-	}
-	if ctx.Err() == context.DeadlineExceeded {
-		t.Fatal("watch did not complete before deadline", errs.String())
+	started := time.Now()
+	code := Run(ctx, argv, out, &errs)
+	t.Logf("watch functional session elapsed=%s completed=%d attributed=%d errors=%d", time.Since(started), got.completed, got.attributed, got.errors)
+	if code != 0 || ctx.Err() != context.Canceled || got != want {
+		t.Fatalf("watch did not stop on expected events: exit=%d context=%v got=%+v want=%+v stderr=%s events=%+v", code, ctx.Err(), got, want, errs.String(), out.events)
 	}
 	if out.err != nil || len(out.pending) > 0 {
 		t.Fatalf("invalid JSONL: %v %q", out.err, out.pending)
@@ -167,6 +213,9 @@ func watchSession(t *testing.T, root string, callback func(watch.Event, context.
 	for i, e := range out.events {
 		if e.Sequence != uint64(i+1) || e.Time.IsZero() {
 			t.Fatalf("inconsistent event %d: %+v", i, e)
+		}
+		if e.Type == watch.Completed && e.Result == nil {
+			t.Fatal("completed event missing result", e)
 		}
 	}
 	return out.events, errs.String()
@@ -202,7 +251,7 @@ func TestWatchInitialInvalidReferences(t *testing.T) {
 }
 func TestWatchNoSelectedBranchesWaitsWithoutPass(t *testing.T) {
 	root, _ := checkoutRepo(t)
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			cancel()
 		}
@@ -219,7 +268,7 @@ func TestWatchAutomaticallyRechecksCommittedChanges(t *testing.T) {
 	root, agent := checkoutRepo(t)
 	wt := agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	var trees []string
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 2}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type != watch.Completed {
 			return
 		}
@@ -277,7 +326,7 @@ func TestWatchCompletedWorktreeInclusionMetadata(t *testing.T) {
 				original["excluded"] = gitTest(t, excluded, "rev-parse", "HEAD")
 			}
 			var completed watch.Event
-			watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+			watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 				if e.Type == watch.Completed {
 					completed = e
 					cancel()
@@ -285,6 +334,16 @@ func TestWatchCompletedWorktreeInclusionMetadata(t *testing.T) {
 			}, args...)
 			if watchVerdict(t, completed) != "pass" {
 				t.Fatal("static check", watchReport(t, completed))
+			}
+			report := watchReport(t, completed)
+			wantInputs := 1
+			if includeDirty {
+				wantInputs = 2
+			}
+			commit, _ := report["candidate_commit"].(string)
+			tree, _ := report["candidate_tree"].(string)
+			if commit == "" || tree == "" || len(report["inputs"].([]any)) != wantInputs {
+				t.Fatal("completed event lost pinned candidate scope", report)
 			}
 			state := completed.State.Value.(map[string]any)
 			worktrees := state["worktrees"].([]any)
@@ -374,7 +433,7 @@ func TestWatchRunReproducesCombinedFailureAndPreservesSources(t *testing.T) {
 		before[path] = watchSourceFingerprint(t, path)
 	}
 	var completed watch.Event
-	_, scope := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	_, scope := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()
@@ -412,7 +471,7 @@ func TestWatchDirtyBranchesAtBaseConflictThenRepair(t *testing.T) {
 		expected[path] = watchSourceFingerprint(t, path)
 	}
 	var checks []watch.Event
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 2}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type != watch.Completed {
 			return
 		}
@@ -461,10 +520,22 @@ func TestWatchDirtyBranchesAtBaseConflictThenRepair(t *testing.T) {
 		t.Fatal("agent snapshot missing", snapshots)
 	}
 	r := watchReport(t, checks[1])
+	commit, _ := r["candidate_commit"].(string)
+	tree, _ := r["candidate_tree"].(string)
+	if commit == "" || tree == "" {
+		t.Fatal("repair omitted candidate identity", r)
+	}
 	if r["executions"] != nil {
 		t.Fatal("dirty static verification executed tests", r)
 	}
 	inputs := r["inputs"].([]any)
+	// Restoring agent-b to the base makes it clean, so automatic selection
+	// must retain only agent-a's dirty input in the repaired candidate.
+	repairedState := checks[1].State.Value.(map[string]any)
+	refs := repairedState["branches"].([]any)
+	if len(inputs) != 1 || len(refs) != 1 || refs[0] != "agent-a" {
+		t.Fatal("repair did not remove the now-clean branch", inputs, refs)
+	}
 	base := gitTest(t, root, "rev-parse", "main")
 	if inputs[0] == base {
 		t.Fatal("dirty candidate reused committed identity", inputs)
@@ -494,7 +565,7 @@ func TestWatchDirtyUnsupportedEntryInvalidatesCurrentResult(t *testing.T) {
 	}
 	var completed int
 	var reportedError bool
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1, errors: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed++
 			if completed > 1 {
@@ -541,7 +612,7 @@ func TestWatchAttributionFollowsCompletedFailure(t *testing.T) {
 	agent("agent-backend", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	agent("agent-frontend", map[string]string{"frontend.ts": "export const QUANTITY = 2;\n"})
 	var completed watch.Event
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1, attributed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		switch e.Type {
 		case watch.Completed:
 			if completed.Sequence != 0 {
@@ -583,7 +654,7 @@ func TestWatchDirtyExplicitFullBranchReference(t *testing.T) {
 	root, agent := checkoutRepo(t)
 	wt := agent("feature", nil)
 	put(t, wt, "backend.py", "def price():\n    return 8\n")
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			if watchVerdict(t, e) != "pass" {
 				t.Fatal(e)
@@ -618,7 +689,7 @@ func TestWatchUnsupportedTestConfigurationCannotPass(t *testing.T) {
 	root, agent := agentRepo(t, map[string]string{"app.ts": "export const n = 1;\n", "app.test.ts": "import test from 'node:test';\ntest('n', () => {});\n"})
 	agent("feature", map[string]string{"app.test.ts": "import test from 'node:test';\ntest('edited', () => {});\n"})
 	var completed watch.Event
-	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()
@@ -652,7 +723,7 @@ func TestWatchDiscoversWorktreeCreationAndRemoval(t *testing.T) {
 	agent("agent-a", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	var checks []watch.Event
 	var added string
-	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	watchSession(t, root, watchSessionEvents{completed: 3}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type != watch.Completed {
 			return
 		}
@@ -688,7 +759,7 @@ func TestWatchReusesCommittedAnalysisForExcludedDirtyMetadata(t *testing.T) {
 	wt := agent("feature", map[string]string{"backend.py": "def price():\n    return 2\n"})
 	var checks []watch.Event
 	var savedFingerprint string
-	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	watchSession(t, root, watchSessionEvents{completed: 2}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type != watch.Completed {
 			return
 		}
@@ -746,7 +817,7 @@ func TestWatchDirtyUnattachedLocalBranchDoesNotSelectSharedHeadWorktree(t *testi
 	gitTest(t, root, "branch", "unattached", "main")
 	put(t, wt, "backend.py", "def price():\n    return 99\n")
 	var completed watch.Event
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()
@@ -771,7 +842,7 @@ func TestWatchDirtyHEADSelectsOnlyInvocationWorktree(t *testing.T) {
 	put(t, root, "backend.py", "def price():\n    return 7\n")
 	put(t, sibling, "backend.py", "def price():\n    return 99\n")
 	var completed watch.Event
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()
@@ -809,7 +880,7 @@ func TestWatchDirtyAutoSelectsStatusHiddenModeChange(t *testing.T) {
 		t.Fatalf("fixture mode was not hidden: %q", status)
 	}
 	var completed watch.Event
-	watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()
@@ -841,7 +912,7 @@ func TestWatchDirtyCanonicalBaseReferenceExcludesBaseWorktree(t *testing.T) {
 	put(t, root, "backend.py", "def price():\n    return 42\n")
 	before := watchSourceFingerprint(t, root)
 	var completed watch.Event
-	events, _ := watchSession(t, root, func(e watch.Event, cancel context.CancelFunc) {
+	events, _ := watchSession(t, root, watchSessionEvents{completed: 1}, func(e watch.Event, cancel context.CancelFunc) {
 		if e.Type == watch.Completed {
 			completed = e
 			cancel()

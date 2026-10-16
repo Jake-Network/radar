@@ -50,10 +50,14 @@ func analyzePairs(ctx context.Context, root, base string, inputs []Input, curren
 		budget = 11
 	}
 	eligible := 0
+	pairs := []pairIndices{}
 	for i := range inputs {
 		for j := i + 1; j < len(inputs); j++ {
 			if current == "" || inputs[i].Branch == current || inputs[j].Branch == current {
 				eligible++
+				if len(pairs) < budget {
+					pairs = append(pairs, pairIndices{i, j})
+				}
 			}
 		}
 	}
@@ -63,90 +67,95 @@ func analyzePairs(ctx context.Context, root, base string, inputs []Input, curren
 	standalone := map[int]map[string]bool{}
 	standaloneConflicted := map[int]bool{}
 	standaloneFull := map[int]bool{}
-	for i := 0; i < len(inputs); i++ {
-		for j := i + 1; j < len(inputs); j++ {
-			if current != "" && inputs[i].Branch != current && inputs[j].Branch != current {
-				continue
+	workers := 2
+	if !immutableAnalysisInputs(base, inputs) {
+		// Do not overlap mutable-ref observations.
+		workers = 1
+	}
+	results, batchErr := inspectPairBatch(ctx, len(pairs), workers, func(ctx context.Context, index int) (integration.Report, error) {
+		pair := pairs[index]
+		return analyze(ctx, root, base, []Input{inputs[pair.left], inputs[pair.right]}, cache)
+	})
+	for index, indices := range pairs {
+		i, j := indices.left, indices.right
+		if !results[index].complete {
+			if batchErr == nil {
+				return out, fmt.Errorf("overlap pair inspection incomplete")
 			}
-			if out.Pairs >= budget {
-				continue
-			}
-			if err := ctx.Err(); err != nil {
-				return out, err
-			}
-			pair, err := analyze(ctx, root, base, []Input{inputs[i], inputs[j]}, cache)
-			if err != nil {
-				return out, err
-			}
-			out.Pairs++
-			for _, limitation := range pair.Limitations {
-				if strings.HasPrefix(limitation, "Overlap incomplete:") {
-					out.Limitations = append(out.Limitations, fmt.Sprintf("%s (%s + %s)", limitation, inputs[i].Branch, inputs[j].Branch))
-				}
-			}
-			relevant := []model.Finding{}
-			for _, f := range pair.Findings {
-				if supported(f) {
-					relevant = append(relevant, f)
-				}
-			}
-			if len(pair.Conflicts) > 0 {
-				out.Limitations = append(out.Limitations, fmt.Sprintf("%s + %s: textual conflicts prevent combined symbol analysis: %s", inputs[i].Branch, inputs[j].Branch, strings.Join(pair.Conflicts, ", ")))
-			}
-			if len(relevant) == 0 {
-				continue
-			}
-			needsStandaloneAnalysis := false
-			for _, finding := range relevant {
-				if finding.Code != "worktree_textual_conflict" {
-					needsStandaloneAnalysis = true
-				}
-			}
-			for _, idx := range []int{i, j} {
-				if needsStandaloneAnalysis && standaloneConflicted[idx] {
-					return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
-				}
-				if standalone[idx] == nil || needsStandaloneAnalysis && !standaloneFull[idx] {
-					// The full pair above has validated this exact snapshot. A
-					// standalone head at base (or its synthetic dirty child) is
-					// a descendant of base, so merging it cannot create textual
-					// conflict hunks. This establishes no semantic check result.
-					if !needsStandaloneAnalysis && inputs[idx].Head == base && immutableAnalysisInputs(base, []Input{inputs[idx]}) {
-						standalone[idx] = map[string]bool{}
-						continue
-					}
-					r, e := analyzeComparison(ctx, root, base, []Input{inputs[idx]}, cache, !needsStandaloneAnalysis)
-					if e != nil {
-						return out, e
-					}
-					standaloneConflicted[idx] = len(r.Conflicts) > 0
-					standaloneFull[idx] = needsStandaloneAnalysis
-					if needsStandaloneAnalysis && len(r.Conflicts) > 0 {
-						return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
-					}
-					for _, limitation := range r.Limitations {
-						if strings.HasPrefix(limitation, "Overlap incomplete:") {
-							return out, fmt.Errorf("standalone comparison unavailable for %s: %s", inputs[idx].Branch, limitation)
-						}
-					}
-					standalone[idx] = map[string]bool{}
-					for _, f := range r.Findings {
-						standalone[idx][identity(f)] = true
-					}
-				}
-			}
-			for _, f := range relevant {
-				if standalone[i][identity(f)] || standalone[j][identity(f)] {
-					continue
-				}
-				f.Branches = []string{inputs[i].Branch, inputs[j].Branch}
-				f.ID = model.StableID("worktree_drift", f.ID, inputs[i].Branch, inputs[j].Branch)
-				f.Explanation = "Cross-worktree drift: " + f.Explanation
-				out.Findings = append(out.Findings, f)
+			return out, batchErr
+		}
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+		pair := results[index].report
+		out.Pairs++
+		for _, limitation := range pair.Limitations {
+			if strings.HasPrefix(limitation, "Overlap incomplete:") {
+				out.Limitations = append(out.Limitations, fmt.Sprintf("%s (%s + %s)", limitation, inputs[i].Branch, inputs[j].Branch))
 			}
 		}
+		relevant := []model.Finding{}
+		for _, f := range pair.Findings {
+			if supported(f) {
+				relevant = append(relevant, f)
+			}
+		}
+		if len(pair.Conflicts) > 0 {
+			out.Limitations = append(out.Limitations, fmt.Sprintf("%s + %s: textual conflicts prevent combined symbol analysis: %s", inputs[i].Branch, inputs[j].Branch, strings.Join(pair.Conflicts, ", ")))
+		}
+		if len(relevant) == 0 {
+			continue
+		}
+		needsStandaloneAnalysis := false
+		for _, finding := range relevant {
+			if finding.Code != "worktree_textual_conflict" {
+				needsStandaloneAnalysis = true
+			}
+		}
+		for _, idx := range []int{i, j} {
+			if needsStandaloneAnalysis && standaloneConflicted[idx] {
+				return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
+			}
+			if standalone[idx] == nil || needsStandaloneAnalysis && !standaloneFull[idx] {
+				// The full pair above has validated this exact snapshot. A
+				// standalone head at base (or its synthetic dirty child) is
+				// a descendant of base, so merging it cannot create textual
+				// conflict hunks. This establishes no semantic check result.
+				if !needsStandaloneAnalysis && inputs[idx].Head == base && immutableAnalysisInputs(base, []Input{inputs[idx]}) {
+					standalone[idx] = map[string]bool{}
+					continue
+				}
+				r, e := analyzeComparison(ctx, root, base, []Input{inputs[idx]}, cache, !needsStandaloneAnalysis)
+				if e != nil {
+					return out, e
+				}
+				standaloneConflicted[idx] = len(r.Conflicts) > 0
+				standaloneFull[idx] = needsStandaloneAnalysis
+				if needsStandaloneAnalysis && len(r.Conflicts) > 0 {
+					return out, fmt.Errorf("standalone comparison unavailable for %s: textual conflicts prevent combined analysis", inputs[idx].Branch)
+				}
+				for _, limitation := range r.Limitations {
+					if strings.HasPrefix(limitation, "Overlap incomplete:") {
+						return out, fmt.Errorf("standalone comparison unavailable for %s: %s", inputs[idx].Branch, limitation)
+					}
+				}
+				standalone[idx] = map[string]bool{}
+				for _, f := range r.Findings {
+					standalone[idx][identity(f)] = true
+				}
+			}
+		}
+		for _, f := range relevant {
+			if standalone[i][identity(f)] || standalone[j][identity(f)] {
+				continue
+			}
+			f.Branches = []string{inputs[i].Branch, inputs[j].Branch}
+			f.ID = model.StableID("worktree_drift", f.ID, inputs[i].Branch, inputs[j].Branch)
+			f.Explanation = "Cross-worktree drift: " + f.Explanation
+			out.Findings = append(out.Findings, f)
+		}
 	}
-	return out, nil
+	return out, batchErr
 }
 
 func supported(f model.Finding) bool {

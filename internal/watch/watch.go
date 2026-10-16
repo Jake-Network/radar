@@ -103,7 +103,18 @@ func Run(ctx context.Context, options Options, observe Observe, analyze Analyze,
 		}
 		emit(event)
 	}
+	resetPoll := func() {
+		poll.Stop()
+		// Legacy timer channels can retain an expired tick after Stop/Reset.
+		select {
+		case <-poll.C:
+		default:
+		}
+		poll.Reset(options.Interval)
+	}
 	refresh := func() {
+		// Pace polling after observation so slow reads cannot queue continuous work.
+		defer resetPoll()
 		state, err := observe(ctx)
 		if err == nil && state.Key == "" {
 			err = fmt.Errorf("watch observation returned an empty key")

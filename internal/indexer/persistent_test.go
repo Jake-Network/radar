@@ -12,8 +12,17 @@ import (
 	"github.com/Jake-Network/radar/internal/model"
 )
 
+func canonicalCacheTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestPersistentParseReuseAndInvalidation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "syntax.json")
+	path := filepath.Join(canonicalCacheTempDir(t), "syntax.json")
 	cache, err := LoadParseCache(path)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +65,7 @@ func TestPersistentParseReuseAndInvalidation(t *testing.T) {
 	}
 }
 func TestPersistentCacheRejectsSymlinksAndTampering(t *testing.T) {
-	dir := t.TempDir()
+	dir := canonicalCacheTempDir(t)
 	target := filepath.Join(dir, "target")
 	os.WriteFile(target, []byte("{}"), 0600)
 	link := filepath.Join(dir, "link")
@@ -70,8 +79,13 @@ func TestPersistentCacheRejectsSymlinksAndTampering(t *testing.T) {
 		t.Fatal("symlink destination overwritten")
 	}
 	path := filepath.Join(dir, "cache")
-	NewParseCache().Save(path)
-	raw, _ := os.ReadFile(path)
+	if err := NewParseCache().Save(path); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := range raw {
 		if raw[i] == 'a' {
 			raw[i] = 'b'
@@ -81,6 +95,34 @@ func TestPersistentCacheRejectsSymlinksAndTampering(t *testing.T) {
 	os.WriteFile(path, raw, 0600)
 	if _, err := LoadParseCache(path); err == nil {
 		t.Fatal("tampered cache accepted")
+	}
+}
+
+func TestPersistentCacheRejectsSymlinkParent(t *testing.T) {
+	dir := canonicalCacheTempDir(t)
+	physical := filepath.Join(dir, "physical")
+	if err := os.Mkdir(physical, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(dir, "alias")
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Skip(err)
+	}
+	name := filepath.Join(physical, "cache.json")
+	const original = "unchanged"
+	if err := os.WriteFile(name, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewParseCache().Save(filepath.Join(alias, "cache.json")); err == nil {
+		t.Fatal("symlink parent accepted")
+	}
+	raw, err := os.ReadFile(name)
+	if err != nil || string(raw) != original {
+		t.Fatalf("symlink target changed: %q %v", raw, err)
+	}
+	entries, err := os.ReadDir(physical)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("symlink target gained cache artifacts: %v %v", entries, err)
 	}
 }
 
@@ -143,7 +185,7 @@ func TestDiskCacheBuildIdentityInvalidatesWithoutManualVersionBump(t *testing.T)
 	if fingerprintForBuild("extractor-A") == fingerprintForBuild("extractor-B") {
 		t.Fatal("extractor build absent from cache identity")
 	}
-	name := filepath.Join(t.TempDir(), "syntax.json")
+	name := filepath.Join(canonicalCacheTempDir(t), "syntax.json")
 	cache := NewParseCache()
 	cache.put(parserFingerprint()+"\x00fixture", languages.Result{}, 1)
 	if err := cache.Save(name); err != nil {
@@ -168,7 +210,7 @@ func TestDiskCacheBuildIdentityInvalidatesWithoutManualVersionBump(t *testing.T)
 	}
 }
 func TestLoadedCacheAccountsSourceBytesAndEvictsForNewSyntax(t *testing.T) {
-	name := filepath.Join(t.TempDir(), "syntax.json")
+	name := filepath.Join(canonicalCacheTempDir(t), "syntax.json")
 	cache := NewParseCache()
 	prefix := parserFingerprint() + "\x00"
 	result := languages.Result{}

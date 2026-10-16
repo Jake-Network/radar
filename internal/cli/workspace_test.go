@@ -158,25 +158,43 @@ func TestWorkspaceAddErrors(t *testing.T) {
 	s := newShop(t)
 	s.register()
 	// Default ID collision: another repository folder also named payments.
-	other := s.repo(filepath.Join("elsewhere", "payments"), map[string]string{"a.py": "A = 1\n"})
+	// Spaces require quoting on POSIX too; Windows separators also need quotes.
+	other := s.repo(filepath.Join("elsewhere with spaces", "payments"), map[string]string{"a.py": "A = 1\n"})
+	before := registryText(t)
+	nextAdd := "radar workspace add " + workspace.ShellPath(other) + " --id payments_2"
 	code, _, errs := run(t, s.orders, "workspace", "add", other)
-	if code != 2 || !strings.Contains(errs, "already used") || !strings.Contains(errs, "Next: radar workspace add "+other+" --id payments_2") {
+	if code != 2 || !strings.Contains(errs, "already used") || !strings.Contains(errs, "Next: "+nextAdd) {
 		t.Fatal("ID collision", code, errs)
+	}
+	if r := invoke(t, s.orders, 2, "workspace", "add", other); r["next"] != nextAdd {
+		t.Fatal("JSON collision recommendation differs from text", r)
 	}
 	if code, _, errs = run(t, s.orders, "workspace", "add", other, "--id", "9pay"); code != 2 || !strings.Contains(errs, "invalid ID") {
 		t.Fatal("invalid ID", code, errs)
 	}
-	invoke(t, s.orders, 0, "workspace", "add", other, "--id", "payments_eu")
+	if registryText(t) != before {
+		t.Fatal("rejected additions changed registered repositories")
+	}
+	// The suggested override succeeds through argv without treating quoting as
+	// part of the path, and re-adding that repository is not another collision.
+	added := invoke(t, s.orders, 0, "workspace", "add", other, "--id", "payments_2")
+	if added["result"].(map[string]any)["repo"].(map[string]any)["id"] != "payments_2" {
+		t.Fatal("suggested ID did not resolve collision", added)
+	}
+	if r := invoke(t, s.orders, 0, "workspace", "add", other); r["result"].(map[string]any)["unchanged"] != true {
+		t.Fatal("same repository was mistaken for an ID collision", r)
+	}
 	// A repository in another workspace cannot join this one.
 	blog := s.repo("blog", map[string]string{"a.py": "A = 1\n"})
-	web := s.repo("web", map[string]string{"a.py": "A = 1\n"})
+	web := s.repo(filepath.Join("elsewhere with spaces", "web"), map[string]string{"a.py": "A = 1\n"})
 	invoke(t, blog, 0, "workspace", "add", web)
+	nextRemove := "radar --root " + workspace.ShellPath(web) + " workspace remove web"
 	code, _, errs = run(t, s.orders, "workspace", "add", web)
-	if code != 2 || !strings.Contains(errs, `workspace "blog"`) || !strings.Contains(errs, "Next: radar --root "+web+" workspace remove web") {
+	if code != 2 || !strings.Contains(errs, `workspace "blog"`) || !strings.Contains(errs, "Next: "+nextRemove) {
 		t.Fatal("other workspace", code, errs)
 	}
 	r := invoke(t, s.orders, 2, "workspace", "add", web)
-	if !strings.Contains(r["next"].(string), "workspace remove web") {
+	if r["next"] != nextRemove {
 		t.Fatal("JSON errors carry the next action", r)
 	}
 }

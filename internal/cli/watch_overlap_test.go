@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/overlap"
+	"github.com/Jake-Network/radar/internal/project"
 	"github.com/Jake-Network/radar/internal/watch"
 )
 
@@ -192,14 +194,41 @@ func TestHookPersistsSyntaxOnlyCache(t *testing.T) {
 	root, agent := agentRepo(t, map[string]string{"backend.py": "def charge():\n    return 1\n"})
 	a := agent("api", nil)
 	put(t, a, "backend.py", "def bill():\n    return 1\n")
-	result := hookInvoke(t, root, hookEvent(t, a), "--base", "main")
-	if result.Decision != "" {
-		t.Fatalf("unexpected block: %+v", result)
+	for i, cwd := range []string{a, a + string(os.PathSeparator) + "."} {
+		result := hookInvoke(t, root, hookEvent(t, cwd), "--base", "main", "--json")
+		if result.Decision != "" || result.Radar == nil || result.Radar.Self != "complete" && result.Radar.Self != "reused" {
+			t.Fatalf("static preview did not complete before checking syntax persistence: %+v", result)
+		}
+		if i > 0 && result.Radar.Self != "reused" {
+			t.Fatalf("equivalent public CWD did not reuse the completed self preview: %+v", result.Radar)
+		}
+		// Production callers resolve the public CWD before choosing a cache namespace.
+		canonical, err := project.Root(cwd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cache, _ := savedSyntaxCache(canonical)
+		if cache.Stats().Entries == 0 {
+			t.Fatalf("hook did not persist reusable syntax for equivalent root %q; response=%+v diagnostics=%+v", cwd, result, result.Radar)
+		}
 	}
-	cache, save := savedSyntaxCache(a)
-	defer save()
-	if cache.Stats().Entries == 0 {
-		t.Fatal("hook did not persist reusable syntax")
+	other := agent("other", nil)
+	canonicalOther, err := project.Root(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, _ := savedSyntaxCache(canonicalOther)
+	if cache.Stats().Entries != 0 {
+		t.Fatal("syntax cache crossed into a different worktree")
+	}
+	otherRoot, _ := agentRepo(t, map[string]string{"backend.py": "def bill():\n    return 1\n"})
+	canonicalRoot, err := project.Root(otherRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, _ = savedSyntaxCache(canonicalRoot)
+	if cache.Stats().Entries != 0 {
+		t.Fatal("syntax cache crossed into a different repository")
 	}
 }
 

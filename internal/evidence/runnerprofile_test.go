@@ -113,6 +113,13 @@ func TestEditableVenvMetadataRelocatesToNewCandidate(t *testing.T) {
 	makeRoot := func() string {
 		root := filepath.Join(t.TempDir(), "with space")
 		os.Mkdir(root, 0700)
+		// Private candidates canonicalize their temporary root before setup.
+		// Match that boundary when TEMP uses a Windows short-path alias.
+		var err error
+		root, err = filepath.EvalSymlinks(root)
+		if err != nil {
+			t.Fatal(err)
+		}
 		os.WriteFile(filepath.Join(root, "uv.lock"), []byte("same"), 0600)
 		os.Mkdir(filepath.Join(root, "libs"), 0700)
 		os.WriteFile(filepath.Join(root, "libs", "editable.py"), []byte("VALUE=7\n"), 0600)

@@ -9,7 +9,9 @@ import (
 
 func objectCopyFixture(t *testing.T) (string, string) {
 	t.Helper()
-	source, dest := t.TempDir(), t.TempDir()
+	// Match private candidate preparation: resolve trusted temporary-directory
+	// aliases before testing the object store's stricter canonical-path guard.
+	source, dest := realTempDir(t), realTempDir(t)
 	ctx := context.Background()
 	for _, root := range []string{source, dest} {
 		if _, err := RunPrivate(ctx, root, "init", "--quiet"); err != nil {

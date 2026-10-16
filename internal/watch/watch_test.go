@@ -3,6 +3,7 @@ package watch
 import (
 	"context"
 	"errors"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -342,5 +343,90 @@ func TestFollowupErrorPreservesFastResultEvent(t *testing.T) {
 	observed := waitEvent(t, events, Attributed, "revision")
 	if observed.Error != "attribution unavailable" || observed.Result != nil {
 		t.Fatalf("attribution error replaced fast gate: %#v", observed)
+	}
+}
+
+func TestSlowObservationDoesNotImmediatelyConsumeExpiredPoll(t *testing.T) {
+	for _, mode := range []string{"0", "1"} {
+		t.Run("asynctimerchan="+mode, func(t *testing.T) {
+			t.Setenv("GODEBUG", os.Getenv("GODEBUG")+",asynctimerchan="+mode)
+			const interval = 40 * time.Millisecond
+			started, release := make(chan struct{}), make(chan struct{})
+			gaps := make(chan time.Duration, 1)
+			var observed atomic.Int32
+			var finishedFirst time.Time
+			_, cancel, _ := launch(t, Options{Interval: interval, Heartbeat: time.Hour},
+				func(ctx context.Context) (State, error) {
+					switch observed.Add(1) {
+					case 1:
+						close(started)
+						select {
+						case <-release:
+						case <-ctx.Done():
+							return State{}, ctx.Err()
+						}
+						finishedFirst = time.Now()
+					case 2:
+						gaps <- time.Since(finishedFirst)
+					}
+					return State{Key: "unchanged"}, nil
+				},
+				func(ctx context.Context, _ State) (Result, error) {
+					<-ctx.Done() // No completion may trigger a forced observation.
+					return Result{}, ctx.Err()
+				})
+			<-started
+			// Force the original ticker to expire while observation is blocked.
+			time.Sleep(2 * interval)
+			close(release)
+			select {
+			case gap := <-gaps:
+				if gap < interval/2 {
+					t.Fatalf("slow observation immediately consumed an expired poll after %s", gap)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("next periodic observation never ran")
+			}
+			cancel()
+		})
+	}
+}
+
+func TestCancellationInterruptsSlowObservationWithoutPublishing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	finished := make(chan error, 1)
+	events := make(chan Event, 10)
+	var analyzed atomic.Int32
+	go func() {
+		finished <- Run(ctx, Options{Interval: time.Millisecond},
+			func(ctx context.Context) (State, error) {
+				close(started)
+				<-ctx.Done()
+				return State{}, ctx.Err()
+			},
+			func(context.Context, State) (Result, error) {
+				analyzed.Add(1)
+				return Result{}, nil
+			}, func(event Event) { events <- event })
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("slow observation lost cancellation", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("canceled slow observation did not stop")
+	}
+	if analyzed.Load() != 0 {
+		t.Fatal("canceled observation launched analysis")
+	}
+	select {
+	case event := <-events:
+		t.Fatal("canceled observation published an event", event)
+	default:
 	}
 }
