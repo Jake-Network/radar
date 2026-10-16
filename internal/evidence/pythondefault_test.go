@@ -42,7 +42,26 @@ func logDefaultPythonProvenance(t *testing.T, root string) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "python3", "-c", `import json, os, site, sys, sysconfig
-print(json.dumps({"executable": sys.executable, "canonical_executable": os.path.realpath(sys.executable), "version": sys.version, "prefix": sys.prefix, "base_prefix": sys.base_prefix, "paths": sysconfig.get_paths(), "sys_path": sys.path, "site_packages": site.getsitepackages(), "startup_modules": {name: getattr(sys.modules.get(name), "__file__", None) for name in ("sitecustomize", "usercustomize")}}, indent=2))`)
+def detail(path):
+    return {"path": path, "realpath": os.path.realpath(path), "exists": os.path.exists(path), "is_file": os.path.isfile(path), "is_dir": os.path.isdir(path), "is_symlink": os.path.islink(path)}
+paths = sysconfig.get_paths()
+sites = sorted({os.path.realpath(path) for path in site.getsitepackages() + [site.getusersitepackages()] + [paths[key] for key in ("purelib", "platlib") if paths.get(key)]})
+links = []
+errors = []
+link_count = 0
+for directory in sites:
+    if not os.path.isdir(directory):
+        continue
+    try:
+        with os.scandir(directory) as entries:
+            for item in sorted(entries, key=lambda entry: entry.name):
+                if item.is_symlink():
+                    link_count += 1
+                    if len(links) < 32:
+                        links.append(detail(item.path))
+    except OSError as error:
+        errors.append({"directory": directory, "error_type": type(error).__name__})
+print(json.dumps({"executable": sys.executable, "canonical_executable": os.path.realpath(sys.executable), "version": sys.version, "prefix": sys.prefix, "base_prefix": sys.base_prefix, "paths": paths, "sys_path": sys.path, "path_details": [detail(path or os.getcwd()) for path in sys.path], "site_packages": site.getsitepackages(), "site_directories": sites, "site_child_symlinks": links, "site_child_symlink_count": link_count, "site_scan_errors": errors, "startup_modules": {name: getattr(sys.modules.get(name), "__file__", None) for name in ("sitecustomize", "usercustomize")}}, indent=2))`)
 	cmd.Dir = root
 	cmd.Env = environment(t.TempDir(), nil)
 	out, err := cmd.CombinedOutput()
