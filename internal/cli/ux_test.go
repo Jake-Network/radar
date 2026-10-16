@@ -99,7 +99,8 @@ func TestDoctorFirstRunDetection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		physicalDir = filepath.ToSlash(physicalDir)
+		// InspectWorktrees exposes native, cleaned paths on each platform.
+		physicalDir = filepath.Clean(physicalDir)
 		if err := os.Rename(dir, dir+"-offline"); err != nil {
 			t.Fatal(err)
 		}
