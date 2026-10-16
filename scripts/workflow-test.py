@@ -79,6 +79,9 @@ class WorkflowPolicyTests(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, source)
+        macos = source.split("\n  macos-default-tmpdir:\n", 1)[1].split("\n  windows-native:\n", 1)[0]
+        for command in ("release.py", "validate-release.py"):
+            self.assertIn('python3 scripts/' + command + ' "$RUNNER_TEMP/radar-release" 0.0.0-ci', macos)
 
     def test_publication_requires_explicit_manual_request(self):
         source = (ROOT / WORKFLOWS[1]).read_text()

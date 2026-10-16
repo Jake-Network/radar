@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -163,16 +164,28 @@ func missingRunnerScenario(t *testing.T) (string, []string) {
 	})
 	agent("feature/multi", map[string]string{"backend/model.py": "VALUE=1 # edit\n", "frontend/model.js": "export const value=1; // edit\n"})
 	bin := t.TempDir()
+	var runnerPaths []string
 	for _, tool := range []string{"git", "python3"} {
 		resolved, err := exec.LookPath(tool)
 		if err != nil {
 			t.Fatal(err)
 		}
+		if runtime.GOOS == "windows" {
+			// Native Python needs adjacent runtime DLLs as well as its .exe.
+			runnerPaths = append(runnerPaths, filepath.Dir(resolved))
+			continue
+		}
 		if err = os.Symlink(resolved, filepath.Join(bin, tool)); err != nil {
-			t.Skip(err)
+			t.Fatal(err)
 		}
 	}
-	t.Setenv("PATH", bin)
+	if runtime.GOOS != "windows" {
+		runnerPaths = []string{bin}
+	}
+	t.Setenv("PATH", strings.Join(runnerPaths, string(os.PathListSeparator)))
+	if _, err := exec.LookPath("node"); err == nil {
+		t.Skip("controlled PATH cannot omit node because it shares a Git or Python executable directory")
+	}
 	return root, []string{"feature/multi"}
 }
 

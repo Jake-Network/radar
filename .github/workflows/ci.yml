@@ -143,6 +143,8 @@ jobs:
           go test -count=1 ./internal/git ./internal/integration -run 'Test.*(Symlink|Canonical|Candidate)'
           go build -o "$RUNNER_TEMP/radar" ./cmd/radar
           bash scripts/smoke.sh "$RUNNER_TEMP/radar"
+          python3 scripts/release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci
+          python3 scripts/validate-release.py "$RUNNER_TEMP/radar-release" 0.0.0-ci
 
   windows-native:
     runs-on: windows-2022
