@@ -25,7 +25,12 @@ func TestDeclaredSetupCacheAndRealVenvRelocation(t *testing.T) {
 		p.Setup[1] = []string{"python3", "-c", `from pathlib import Path; Path('.venv/Scripts/check.py').write_text('import sys; print(sys.prefix)\n')`}
 	}
 	newCandidate := func(lock string) string {
-		root := t.TempDir()
+		// Private candidates use a physical root. Python 3.14 also resolves
+		// the venv prefix through macOS /var -> /private/var aliases.
+		root, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
 		os.WriteFile(filepath.Join(root, "uv.lock"), []byte(lock), 0600)
 		commitRunnerFixture(t, root)
 		return root
