@@ -9,6 +9,12 @@ Indexing, discovery, `check`, `merge-check` without `--verify`, and
 They do not run application code, package scripts, Git hooks or agent
 instructions.
 
+`land` is static by default. `--driver ... --allow-execution` separately
+authorizes the named installed structural merge driver, with host permissions,
+inside a private candidate. Drivers are never selected from repository Git
+configuration, and merely installing one does not authorize execution. MCP exposes
+static landing/brief/overlap queries without driver, execution or apply flags.
+
 Repository code runs only with `gate --run`, `watch --run`, `merge-check --verify
 --allow-execution` or `test --allow-execution`. Those commands run in a private
 copy of the selected commits or explicitly selected saved previews, with a
@@ -50,7 +56,9 @@ Git is called with argument arrays, never through a shell. Radar's Git
 processes disable repository fsmonitor hooks and never enable a pager. The
 private candidate repository also runs without hooks and ignores user and
 system Git configuration. Radar does not merge, rebase, push, stash, clean or
-rewrite anything in your repository. Combined candidates live in a temporary
+rewrite user branches in your repository. Explicit `land --apply` imports
+immutable objects and creates only a create-only `refs/radar/integration/<id>`;
+it does not fast-forward a user branch or modify its index/worktree. Combined candidates live in a temporary
 repository that is deleted afterward. Radar never fetches. When a shallow clone
 lacks the history it needs, the error tells you to run `git fetch --unshallow`.
 
@@ -59,6 +67,15 @@ inside the repository, symlinks and submodules are refused in combined trees,
 remote `$ref` is not followed, and file sizes are capped.
 
 ## Stored data
+
+Passing `gate --trailer` records a repository-bound historical report under the
+existing private run-state directory; `show` does not promote it to current-head
+evidence. Digests detect edits but do not authenticate the writer. Syntax caches
+contain bounded source-derived parser facts and are disposable acceleration data;
+inventory, import resolution and required checks still run. Conflict briefs
+return explicitly requested committed excerpts and inferred test links, so their
+output may contain source text. Resource advisories compare database values
+privately and serialize no URL/credential values.
 
 Evidence records store an output digest, never raw stdout or stderr. The last
 4 KiB of output is shown to you (and included in `--json`) but not saved.

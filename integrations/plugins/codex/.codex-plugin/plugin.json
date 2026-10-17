@@ -1,0 +1,7 @@
+{
+  "name": "radar",
+  "version": "0.3.0",
+  "description": "Static Radar verification before an agent stops, with bounded repair feedback.",
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills"
+}

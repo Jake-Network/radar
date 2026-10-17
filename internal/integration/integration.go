@@ -26,6 +26,9 @@ import (
 )
 
 type Options struct {
+	// ParseCache optionally shares bounded exact-content syntax across analyses.
+	// Inventory, manifests, import resolution, and provenance are always rebuilt.
+	ParseCache             *indexer.ParseCache
 	SuggestTests           bool
 	Suite                  string
 	CWD                    string
@@ -82,7 +85,17 @@ type Check = gate.Check
 
 // ExecutionEvidence binds an observation to the combined tree and ordered
 // inputs. Individual branch evidence is deliberately never consumed.
+// BaseComparison records the automatic, budgeted baseline check of a failed
+// command. The original candidate observation is retained without alteration.
+type BaseComparison struct {
+	Execution     *ExecutionEvidence `json:"execution,omitempty"`
+	ExistingCases []string           `json:"existing_cases,omitempty"`
+	Explanation   string             `json:"explanation"`
+	AllExisting   bool               `json:"all_existing"`
+}
+
 type ExecutionEvidence struct {
+	BaseComparison       *BaseComparison               `json:"base_comparison,omitempty"`
 	PlanRecord           *evidence.Record              `json:"plan_record,omitempty"`
 	ExecutionError       string                        `json:"execution_error,omitempty"`
 	SelectionID          string                        `json:"selection_id,omitempty"`
@@ -104,6 +117,7 @@ type ExecutionEvidence struct {
 	observedFiles        []string
 }
 type Report struct {
+	Drift                []model.Finding              `json:"drift,omitempty"`
 	RunnerPreparations   []evidence.RunnerPreparation `json:"runner_preparations,omitempty"`
 	VerificationProposal *testselection.Proposal      `json:"verification_proposal,omitempty"`
 	// Selection is the bounded execution plan for a --suite mode, including
@@ -256,7 +270,10 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	if e = analyzeTreeRules(ctx, temp, &r); e != nil {
 		return r, e
 	}
-	parseCache := indexer.NewParseCache()
+	parseCache := o.ParseCache
+	if parseCache == nil {
+		parseCache = indexer.NewParseCache()
+	}
 	snapshot, e := indexAndDiscover(ctx, temp, &r, parseCache)
 	if e != nil {
 		return r, e

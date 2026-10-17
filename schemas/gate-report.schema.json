@@ -4,50 +4,520 @@
   "title": "Radar single-repository gate report v1",
   "description": "Stable verdict and check contract for static and opted-in runs. Additional evidence fields are additive. Workspace reports use workspace-report.schema.json. An exit code is not a substitute for gate.verdict.",
   "type": "object",
-  "required": ["gate", "status", "base", "inputs", "checks", "coverage", "findings", "diagnostics", "limitations"],
+  "required": [
+    "gate",
+    "status",
+    "base",
+    "inputs",
+    "checks",
+    "coverage",
+    "findings",
+    "diagnostics",
+    "limitations"
+  ],
   "properties": {
     "gate": {
       "type": "object",
-      "required": ["verdict", "policy", "required_checks", "explanation"],
+      "required": [
+        "verdict",
+        "policy",
+        "required_checks",
+        "explanation"
+      ],
       "properties": {
-        "verdict": {"enum": ["pass", "fail", "blocked", "error"]},
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "blocked",
+            "error"
+          ]
+        },
         "policy": {
           "type": "object",
-          "required": ["version", "require"],
+          "required": [
+            "version",
+            "require"
+          ],
           "properties": {
-            "version": {"const": 1},
-            "name": {"type": "string"},
-            "require": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
-            "on_missing": {"enum": ["blocked", "fail"]}
+            "version": {
+              "const": 1
+            },
+            "name": {
+              "type": "string"
+            },
+            "require": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "on_missing": {
+              "enum": [
+                "blocked",
+                "fail"
+              ]
+            }
           }
         },
-        "required_checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
-        "explanation": {"type": "string"}
+        "required_checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "explanation": {
+          "type": "string"
+        }
       }
     },
-    "status": {"$ref": "#/$defs/status"},
-    "base": {"type": "string"},
-    "inputs": {"type": "array", "items": {"type": "string"}},
-    "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
-    "coverage": {"type": "array", "items": {"type": "object", "required": ["analyzer", "status", "analyzed_scope", "excluded_scope", "unavailable_capabilities", "uncertainty"]}},
-    "findings": {"type": "array", "items": {"type": "object"}},
-    "diagnostics": {"type": "array", "items": {"type": "object"}},
-    "limitations": {"type": "array", "items": {"type": "string"}},
-    "next": {"type": "string"},
-    "executions": {"type": "array", "items": {"type": "object"}},
-    "generated_executions": {"type": "array", "items": {"type": "object", "required": ["name", "status", "candidate_commit", "candidate_tree"]}},
-    "runner_preparations": {"type": "array", "items": {"type": "object", "required": ["status", "cache_hit", "setup_commands", "artifacts"]}}
+    "status": {
+      "$ref": "#/$defs/status"
+    },
+    "base": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "analyzer",
+          "status",
+          "analyzed_scope",
+          "excluded_scope",
+          "unavailable_capabilities",
+          "uncertainty"
+        ]
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next": {
+      "type": "string"
+    },
+    "executions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "generated_executions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "candidate_commit",
+          "candidate_tree"
+        ]
+      }
+    },
+    "runner_preparations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "maxLength": 1027
+          }
+        },
+        "required": [
+          "status",
+          "cache_hit",
+          "setup_commands",
+          "artifacts"
+        ]
+      }
+    },
+    "landing": {
+      "$ref": "#/$defs/landing"
+    },
+    "conflict_brief": {
+      "$ref": "#/$defs/conflict_brief"
+    },
+    "drift": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "overlap": {
+      "type": "object",
+      "required": [
+        "drift",
+        "pairs_checked",
+        "limitations"
+      ]
+    },
+    "landing_apply": {
+      "$ref": "#/$defs/landing_apply"
+    },
+    "integration_ref": {
+      "type": "object",
+      "required": [
+        "ref",
+        "commit",
+        "tree",
+        "fast_forward",
+        "report"
+      ],
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/landing_apply"
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^refs/radar/integration/[a-f0-9]+$"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "tree": {
+          "type": "string"
+        },
+        "fast_forward": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
   },
   "$defs": {
-    "status": {"enum": ["passed", "failed", "unknown", "incomplete", "blocked", "warning", "error", "timeout"]},
+    "landing_apply": {
+      "type": "object",
+      "required": ["published", "objects_imported"],
+      "properties": {
+        "published": {"type": "boolean"},
+        "objects_imported": {"type": "boolean"},
+        "reason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "unknown",
+        "incomplete",
+        "blocked",
+        "warning",
+        "error",
+        "timeout"
+      ]
+    },
     "check": {
       "type": "object",
-      "required": ["id", "status", "evidence", "explanation"],
+      "required": [
+        "id",
+        "status",
+        "evidence",
+        "explanation"
+      ],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "status": {"$ref": "#/$defs/status"},
-        "evidence": {"enum": ["verified_static", "verified_tool", "observed_test", "inferred", "proposed", "unknown"]},
-        "explanation": {"type": "string"}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "evidence": {
+          "enum": [
+            "verified_static",
+            "verified_tool",
+            "observed_test",
+            "inferred",
+            "proposed",
+            "unknown"
+          ]
+        },
+        "explanation": {
+          "type": "string"
+        }
+      }
+    },
+    "landing": {
+      "type": "object",
+      "description": "Bounded static pair observations and a deterministic estimate; not runtime or N-way proof.",
+      "required": [
+        "base",
+        "branches",
+        "pairs",
+        "order",
+        "independent",
+        "chains",
+        "complete",
+        "estimated_rebases",
+        "order_method",
+        "limitations"
+      ],
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "commit",
+              "changed"
+            ]
+          }
+        },
+        "pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "left",
+              "right",
+              "status",
+              "checks",
+              "findings",
+              "conflicts",
+              "explanation"
+            ],
+            "properties": {
+              "left": {
+                "type": "string"
+              },
+              "right": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/$defs/status"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/check"
+                }
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "conflicts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "explanation": {
+                "type": "string"
+              },
+              "resolved_by": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "independent": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "chains": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "estimated_rebases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "order_method": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "restack_first": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "commit",
+              "conflicts"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "behind": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "conflicts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "conflict_brief": {
+      "type": "object",
+      "description": "Bounded committed excerpts; symbol and related-test links are inferred, not observed test coverage.",
+      "required": [
+        "base",
+        "left",
+        "right",
+        "files",
+        "reproduction",
+        "evidence",
+        "limitations"
+      ],
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "left": {
+          "type": "string"
+        },
+        "right": {
+          "type": "string"
+        },
+        "evidence": {
+          "enum": [
+            "inferred"
+          ]
+        },
+        "reproduction": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "base",
+              "left",
+              "right",
+              "hunks",
+              "symbols",
+              "tests",
+              "complete"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "base": {
+                "type": "string"
+              },
+              "left": {
+                "type": "string"
+              },
+              "right": {
+                "type": "string"
+              },
+              "hunks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "left",
+                    "right"
+                  ]
+                }
+              },
+              "symbols": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tests": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -28,7 +29,7 @@ type WorktreeStatus struct {
 // InspectWorktree observes one worktree directly, without enumerating siblings.
 // Detached heads are supported and all inspection remains data-only.
 func InspectWorktree(ctx context.Context, root string) (WorktreeStatus, error) {
-	w := WorktreeStatus{Path: root, Staged: []string{}, Unstaged: []string{}, Untracked: []string{}}
+	w := WorktreeStatus{Path: filepath.Clean(root), Staged: []string{}, Unstaged: []string{}, Untracked: []string{}}
 	head, err := Resolve(ctx, root, "HEAD")
 	if err != nil {
 		return w, err
@@ -64,7 +65,7 @@ func InspectWorktrees(ctx context.Context, root string) ([]WorktreeStatus, error
 		for _, field := range strings.Split(record, "\x00") {
 			switch {
 			case strings.HasPrefix(field, "worktree "):
-				w.Path = strings.TrimPrefix(field, "worktree ")
+				w.Path = filepath.Clean(filepath.FromSlash(strings.TrimPrefix(field, "worktree ")))
 			case strings.HasPrefix(field, "HEAD "):
 				w.Commit = strings.TrimPrefix(field, "HEAD ")
 			case strings.HasPrefix(field, "branch refs/heads/"):

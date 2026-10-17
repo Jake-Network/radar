@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -78,5 +79,35 @@ func TestCacheRejectsEscapeSecretsAndPrunes(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "target", ".env"), []byte("KEY=secret"), 0600)
 	if err := cache.Store(ctx, third, root, p); err == nil {
 		t.Fatal("cached secret file")
+	}
+}
+
+func TestPythonExecutablePrefixReplacesInterpreter(t *testing.T) {
+	for _, tc := range []struct {
+		prefix, original string
+		replace          bool
+	}{
+		{".venv/Scripts/python.exe", "python3", true},
+		{".venv/Scripts/python.exe", "python.exe", true},
+		{".venv/Scripts/PYTHON.EXE", "python3.exe", runtime.GOOS == "windows"},
+		{".venv/bin/python", "python3", true},
+		{"python-wrapper.exe", "python3", false},
+		{"mypython.exe", "python3", false},
+		{"uv", "python3", false},
+		{"python.exe.config", "python3", false},
+		{"python2.exe", "python3", false},
+		{"tool.exe", "tool", false},
+	} {
+		t.Run(tc.prefix+"-"+tc.original, func(t *testing.T) {
+			profile := Profile{Prefix: []string{tc.prefix}}
+			want := []string{tc.prefix, tc.original, "-m", "unittest"}
+			if tc.replace {
+				want = []string{tc.prefix, "-m", "unittest"}
+			}
+			got := profile.Rewrite([]string{tc.original, "-m", "unittest"})
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("rewritten argv = %v, want %v", got, want)
+			}
+		})
 	}
 }

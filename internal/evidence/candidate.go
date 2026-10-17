@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +100,16 @@ func observeCandidateReport(ctx context.Context, root, cwd string, argv []string
 	defer cancel()
 	var out output
 	env := environment(home, nil)
+	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		// The preflight shares the command's deadline; running out of it is a
+		// timeout, not an import provenance finding.
+		if runCtx.Err() != nil {
+			r.Status = model.StatusTimeout
+			return r, nil
+		}
+		r.Diagnosis = diagnosis
+		return r, nil
+	}
 	if observed != nil {
 		env, e = prepareFileObservation(root, home, argv, env)
 		if e != nil {
@@ -134,16 +145,62 @@ func observeCandidateReport(ctx context.Context, root, cwd string, argv []string
 	return r, nil
 }
 
+// Parameterized IDs and arbitrary failure text are deliberately omitted: only
+// bounded repository-relative Python test identities are persisted.
+var pytestFailedCase = regexp.MustCompile(`(?m)^(?:FAILED|ERROR) ([A-Za-z0-9_./-]+\.py(?:::[A-Za-z_][A-Za-z0-9_]*)*)(?: -|$)`)
+
 func decorateCandidateObservation(r *CandidateObservation, argv []string, data []byte, root, dir, cwd string) {
 	var e error
+	if r.TestsFailed > 0 && r.Harness == "pytest" {
+		for _, m := range pytestFailedCase.FindAllStringSubmatch(ansi.ReplaceAllString(string(data), ""), -1) {
+			parts := strings.SplitN(m[1], "::", 2)
+			p := parts[0]
+			if cwd != "" && cwd != "." {
+				p = filepath.ToSlash(filepath.Join(cwd, p))
+			}
+			if _, err := pathutil.RepoRelative(p); err != nil {
+				continue
+			}
+			if _, err := pathutil.ResolveInside(root, p); err != nil {
+				continue
+			}
+			if len(parts) == 1 {
+				// Collection errors identify a file, not a failure cause or test
+				// case. A different error in that file on base cannot establish
+				// that this candidate failure already existed. Retain only a
+				// bounded source location for repair leads.
+				if len(r.Locations) < 20 && !slices.ContainsFunc(r.Locations, func(loc model.Provenance) bool {
+					return loc.Path == p && loc.Method == "observed_pytest_collection_error"
+				}) {
+					r.Locations = append(r.Locations, model.Provenance{Path: p, Method: "observed_pytest_collection_error", Evidence: model.ObservedTest})
+				}
+				continue
+			}
+			name := p
+			if len(parts) > 1 {
+				name += "::" + parts[1]
+			}
+			if len(name) > 512 {
+				continue
+			}
+			if !slices.Contains(r.FailedCases, name) {
+				r.FailedCases = append(r.FailedCases, name)
+			}
+			if len(r.FailedCases) >= 20 {
+				break
+			}
+		}
+	}
 	if r.TestsFailed > 0 && isUnittest(argv) {
-		text := string(data)
+		text := normalizedHarnessOutput(data)
 		for _, match := range failedCase.FindAllStringSubmatch(text, -1) {
 			name := match[2]
 			if !strings.HasSuffix(name, "."+match[1]) {
 				name += "." + match[1]
 			}
-			r.FailedCases = append(r.FailedCases, name)
+			if !slices.Contains(r.FailedCases, name) {
+				r.FailedCases = append(r.FailedCases, name)
+			}
 			if len(r.FailedCases) >= 20 {
 				break
 			}

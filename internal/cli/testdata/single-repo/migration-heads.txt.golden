@@ -21,7 +21,7 @@ Problems
     fix: In db/versions/b1_refunds.py, set down_revision = "a1" so it follows the other line, or add a merge revision with `alembic merge heads`.
 
 Suggested tests (static relationships; not run)
-  python3 -m unittest discover -s . -p test_checkout.py  (in .)
+  1 package fallback available; review with --run --suite balanced
 
 Next: repair on the branches above, commit, then rerun: radar gate
 Details: add --json. Radar never touches your branches; the combination is built in private Git state.

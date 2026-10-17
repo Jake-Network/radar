@@ -1,0 +1,2616 @@
+{
+  "dataset_digest": "20ef92ac3aecdea2f85ca16bf7f250d831042ae7c757eef9dfbd97e66721ea8d",
+  "observations": [
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.99,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "fff2e02497992208a24e6fb8681e1b81e358345d8ccbac5f0c75eaf36205fe23",
+      "input_digest": "fff2e02497992208a24e6fb8681e1b81e358345d8ccbac5f0c75eaf36205fe23",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.552,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "48962c7b2b4504e45ea0e738a4889213214bc4ede97121ff776ff13532e1417e",
+      "input_digest": "48962c7b2b4504e45ea0e738a4889213214bc4ede97121ff776ff13532e1417e",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.683,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7dbd3df26a137e8ed01ff66d69a310805a2858c4182859cbfeedd89eadc78368",
+      "input_digest": "7dbd3df26a137e8ed01ff66d69a310805a2858c4182859cbfeedd89eadc78368",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.225,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9482551c6e61faff608fbccb4c12b4184b68d45609b6fbfde0f7c2e01c0e7808",
+      "input_digest": "9482551c6e61faff608fbccb4c12b4184b68d45609b6fbfde0f7c2e01c0e7808",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "e12b1cc904f7aea6c6ec2d99d1196a7dd097acbf783059451284f0f686096522",
+        "scope": "static; no repository code executed",
+        "seconds": 4.052,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a1a8bda32d5f62153e2573971097dd2ca42221a9ecefa92628c5fe5d6fc61565",
+      "input_digest": "a1a8bda32d5f62153e2573971097dd2ca42221a9ecefa92628c5fe5d6fc61565",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.292,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "64aea3dc8f13b2232d10fd8e564ca1b6251c55830a64a6009a9d62ebdc0783c8",
+      "input_digest": "64aea3dc8f13b2232d10fd8e564ca1b6251c55830a64a6009a9d62ebdc0783c8",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.636,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "607892b6807c2762dd216850f9c66f650b74da0a39820cb9f435a14ac61aad9c",
+      "input_digest": "607892b6807c2762dd216850f9c66f650b74da0a39820cb9f435a14ac61aad9c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 5.054,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "b482bea8c52e93bf54d353ab6a3911ceb7daaba440faa2f16e3d5b74f6f04816",
+      "input_digest": "b482bea8c52e93bf54d353ab6a3911ceb7daaba440faa2f16e3d5b74f6f04816",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.508,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "32b0f1d741744237b7a69a1f86e74bcdad826406657926b21e376efd5b86178d",
+      "input_digest": "32b0f1d741744237b7a69a1f86e74bcdad826406657926b21e376efd5b86178d",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.99,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6c056e4f0710560a2e152d177abbf41f63efad8410888f78ce198ffcea3edb38",
+      "input_digest": "6c056e4f0710560a2e152d177abbf41f63efad8410888f78ce198ffcea3edb38",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "c2106a5cc9ab0bd21822ef98953733331804859ef9eb9fab2ce67dc8140a516d",
+        "scope": "static; no repository code executed",
+        "seconds": 2.966,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "3f1317a8202f943aeb00546106d9d702aa07d7e853fe58e3a1c07454dcf5a6c5",
+      "input_digest": "3f1317a8202f943aeb00546106d9d702aa07d7e853fe58e3a1c07454dcf5a6c5",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.489,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8607403f0e3bd7a22daacb61160f098233231c7e25f5234a3600b034bad1cb25",
+      "input_digest": "8607403f0e3bd7a22daacb61160f098233231c7e25f5234a3600b034bad1cb25",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 4.24,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "504b50b410f8478dda3a26a70522f1ee5bc509640b36341bd37b2a7faa2fb556",
+      "input_digest": "504b50b410f8478dda3a26a70522f1ee5bc509640b36341bd37b2a7faa2fb556",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 13.375,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "bd028144627a002266fd0406962a14caa8777f42f118ad81bc3ae40e006b3d8c",
+      "input_digest": "bd028144627a002266fd0406962a14caa8777f42f118ad81bc3ae40e006b3d8c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 2.251,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6a1d227614a5143763d0784a88ee126c159f2edf7362f5fcef9b5e2b940a2e7b",
+      "input_digest": "6a1d227614a5143763d0784a88ee126c159f2edf7362f5fcef9b5e2b940a2e7b",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.359,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8ccfe8ea4a59cb534cf44f8f37850af0ee70b3992672fa9655843b9ab0aebc28",
+      "input_digest": "8ccfe8ea4a59cb534cf44f8f37850af0ee70b3992672fa9655843b9ab0aebc28",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.743,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d93ac46bfe579f19f1636041dc635f69990949c4db716ab784a4053e299011ea",
+      "input_digest": "d93ac46bfe579f19f1636041dc635f69990949c4db716ab784a4053e299011ea",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.25,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d9a01e60a098ec04cafcdbaf34400cb36edb7e504c9de30a1b5ade90422c39ec",
+      "input_digest": "d9a01e60a098ec04cafcdbaf34400cb36edb7e504c9de30a1b5ade90422c39ec",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.404,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a64a05c081bbb6bdd7938551b7b1c760bc74659fc8ddae1f8e520f2f8d93b93c",
+      "input_digest": "a64a05c081bbb6bdd7938551b7b1c760bc74659fc8ddae1f8e520f2f8d93b93c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.371,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8110dc842ea39487d11a9f6c5eba46f3f35492feea7e955dfb66d53abf2e0ce2",
+      "input_digest": "8110dc842ea39487d11a9f6c5eba46f3f35492feea7e955dfb66d53abf2e0ce2",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.285,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "619bb0c08980ec6811cfaca947456df0bbb5f4790362be87776b68fa58277662",
+      "input_digest": "619bb0c08980ec6811cfaca947456df0bbb5f4790362be87776b68fa58277662",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.567,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f0635e38cd7783e3895c49c57b6ae961e16820bf8c2e43dc2bec5c9cfd0b2186",
+      "input_digest": "f0635e38cd7783e3895c49c57b6ae961e16820bf8c2e43dc2bec5c9cfd0b2186",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.752,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d137b24b9d3aac2cabe12b6440b1e044fad00ee51c871d9552e1b0c20b66ba16",
+      "input_digest": "d137b24b9d3aac2cabe12b6440b1e044fad00ee51c871d9552e1b0c20b66ba16",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.796,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7d9c17881fd9ddd184568a3b66bed182f0b70b194a46338ab2cc6a7ccfa64e78",
+      "input_digest": "7d9c17881fd9ddd184568a3b66bed182f0b70b194a46338ab2cc6a7ccfa64e78",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.474,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0aec0b413cf65c390c5a95cd6051c2e46e3da4bde7ca7421af55e024e1e089ec",
+      "input_digest": "0aec0b413cf65c390c5a95cd6051c2e46e3da4bde7ca7421af55e024e1e089ec",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.999,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "342db4fecd8eb5cd875e72f6b3f9067222ebddc22164aa15b678b722d4242dbb",
+      "input_digest": "342db4fecd8eb5cd875e72f6b3f9067222ebddc22164aa15b678b722d4242dbb",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 2.002,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "34ff7f6ece86f3db063924f83f6c6b62a6d00ae76fb19cf171aba852d4e2ff39",
+      "input_digest": "34ff7f6ece86f3db063924f83f6c6b62a6d00ae76fb19cf171aba852d4e2ff39",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.345,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "eb055f7822a71276a2ea312db868b08b22c8d92370db1cc21c0c0122c2fb68e3",
+      "input_digest": "eb055f7822a71276a2ea312db868b08b22c8d92370db1cc21c0c0122c2fb68e3",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 7.6,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6b7daac2c3d9bfb0a05fe4caf9b6432aaa7b5cda0003f167058d7bf514506108",
+      "input_digest": "6b7daac2c3d9bfb0a05fe4caf9b6432aaa7b5cda0003f167058d7bf514506108",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.283,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a34708e3ce60f20b73a548675b21d7b8cd169c6f2fd47d108c6f70ac9e671716",
+      "input_digest": "a34708e3ce60f20b73a548675b21d7b8cd169c6f2fd47d108c6f70ac9e671716",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.381,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "32d5cd26cecd8cad712523dc5038cee18b2e4369cfc175db4e9549ae38a96bb9",
+      "input_digest": "32d5cd26cecd8cad712523dc5038cee18b2e4369cfc175db4e9549ae38a96bb9",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.531,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "1b915c4da5cd613b0c18bd49aa8b949f6446ab12b0fa09e7f63eba1446824d15",
+      "input_digest": "1b915c4da5cd613b0c18bd49aa8b949f6446ab12b0fa09e7f63eba1446824d15",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.431,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "440cf5a003c47cb0eff9fadb65185c277f1b92619ed410ce97344f530f95a466",
+      "input_digest": "440cf5a003c47cb0eff9fadb65185c277f1b92619ed410ce97344f530f95a466",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.627,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "82fbf4cf22ab86126ef741f5b135fb22a77e0800c64dcf2877ae6ae1aa2c879c",
+      "input_digest": "82fbf4cf22ab86126ef741f5b135fb22a77e0800c64dcf2877ae6ae1aa2c879c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.477,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "74f3731288ddd2ff589c03ce4db98d0c87ca5d5bc9f6b36fc448d295ff3503ca",
+      "input_digest": "74f3731288ddd2ff589c03ce4db98d0c87ca5d5bc9f6b36fc448d295ff3503ca",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.051,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "53c3896c2d06830e7cb355f3aad73e5d44847faad8b253f9f85b8d2b4ff43f11",
+      "input_digest": "53c3896c2d06830e7cb355f3aad73e5d44847faad8b253f9f85b8d2b4ff43f11",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.39,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c16738892ac1e987bd7fcfdd013c07594b72855ed194fba575985e47ec930967",
+      "input_digest": "c16738892ac1e987bd7fcfdd013c07594b72855ed194fba575985e47ec930967",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.281,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "802868c4fa1df2fda90727f106e8b3a06b769793c32cc23a5da689428c776982",
+      "input_digest": "802868c4fa1df2fda90727f106e8b3a06b769793c32cc23a5da689428c776982",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.639,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "93cbfe7666b6c10e2adafe63ceafeef2033fa7e14e98467b8eec44d03a9cd4bf",
+      "input_digest": "93cbfe7666b6c10e2adafe63ceafeef2033fa7e14e98467b8eec44d03a9cd4bf",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.263,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "3baa2bd9b273f043a9c65543eb32b20496905b2d16bc0df9f167fc046fa8a507",
+      "input_digest": "3baa2bd9b273f043a9c65543eb32b20496905b2d16bc0df9f167fc046fa8a507",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.387,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7af49f2b6184fc633fa0a796dbc63110b7bf275c45f0d042080d07969710c6e0",
+      "input_digest": "7af49f2b6184fc633fa0a796dbc63110b7bf275c45f0d042080d07969710c6e0",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "4ec58ec7fe2749666b8322c69556216885afaf9a690f24b765d4639bfff5ec55",
+        "scope": "static; no repository code executed",
+        "seconds": 2.956,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d517bcd68addca0936498a1b34ecc329397b4d8fd3493a0dbd960b786951cf11",
+      "input_digest": "d517bcd68addca0936498a1b34ecc329397b4d8fd3493a0dbd960b786951cf11",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 5.137,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2e1a91eed754d75457cb8c46f798228a73fb628614b106dd3723e6fecd38b6f9",
+      "input_digest": "2e1a91eed754d75457cb8c46f798228a73fb628614b106dd3723e6fecd38b6f9",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.316,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "78facd2b4a2ca114ce55d69adfd92a7dd0ff5f6fa0eb4b699ae6c43589a939ab",
+      "input_digest": "78facd2b4a2ca114ce55d69adfd92a7dd0ff5f6fa0eb4b699ae6c43589a939ab",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.411,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "43a3fb5b624fc0214c200e78dedfc1c9d2bbe272fc9121c74038fb1096c9e9ec",
+      "input_digest": "43a3fb5b624fc0214c200e78dedfc1c9d2bbe272fc9121c74038fb1096c9e9ec",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.337,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "3ca1e4a247c1b1de4ef2cee710c813239d90fa0ffe66edbb45290614f2a83f7d",
+      "input_digest": "3ca1e4a247c1b1de4ef2cee710c813239d90fa0ffe66edbb45290614f2a83f7d",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 2.217,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "34df4cb0b64f7070992f98900939a775bf8ce4231b3001600d1b8f2c83ae647e",
+      "input_digest": "34df4cb0b64f7070992f98900939a775bf8ce4231b3001600d1b8f2c83ae647e",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 6.628,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "dd4e2c9a387fd009b03e166371e353b3489a7893b81b28f5bd634439c77a008c",
+      "input_digest": "dd4e2c9a387fd009b03e166371e353b3489a7893b81b28f5bd634439c77a008c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.967,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "3fc25a2a99a94e11ad5667e245bb310dfc12e2759c71b5831fb7229cadd4cf14",
+      "input_digest": "3fc25a2a99a94e11ad5667e245bb310dfc12e2759c71b5831fb7229cadd4cf14",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 7.306,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "36ab8eaee607d7c812c4f50950846613d092fd43916602a6e8c9443fc6515ed5",
+      "input_digest": "36ab8eaee607d7c812c4f50950846613d092fd43916602a6e8c9443fc6515ed5",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "d851d15381f61b4932aa7443fc5069fae981d0cb68b1a04a786b455fea7c3ac8",
+        "scope": "static; no repository code executed",
+        "seconds": 0.659,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d10426b0d7d28389c78d9a669b40983aa0ec9bb44daa4da6f4ea09ef603b3895",
+      "input_digest": "d10426b0d7d28389c78d9a669b40983aa0ec9bb44daa4da6f4ea09ef603b3895",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.285,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "54cb3e8d603a3b6618751c8fb182affed5cf02087a67cfece3ec184d36e53c2e",
+      "input_digest": "54cb3e8d603a3b6618751c8fb182affed5cf02087a67cfece3ec184d36e53c2e",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.515,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "76ee3361a11130c3469fe54d588e84bee896a2cd97ca9c2ec7561aec0897d090",
+      "input_digest": "76ee3361a11130c3469fe54d588e84bee896a2cd97ca9c2ec7561aec0897d090",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.319,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6b8d5193c671998799dbd73a66a3aa903a959a2b59aa8464c359dfa4f9cc6416",
+      "input_digest": "6b8d5193c671998799dbd73a66a3aa903a959a2b59aa8464c359dfa4f9cc6416",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.276,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9ab8fbdcefcc1d735d5ebaeccdc15689fdd6e7010aefee8da31b84ca18129e67",
+      "input_digest": "9ab8fbdcefcc1d735d5ebaeccdc15689fdd6e7010aefee8da31b84ca18129e67",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.235,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9e5f71b6098c340c9747e8dea73fa145fded85ee1238f30ae718ddd50e269c0d",
+      "input_digest": "9e5f71b6098c340c9747e8dea73fa145fded85ee1238f30ae718ddd50e269c0d",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.476,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7a9d3020ae9525a6276427d9220f513c7a68c38b1b6524c4c675fd2384768298",
+      "input_digest": "7a9d3020ae9525a6276427d9220f513c7a68c38b1b6524c4c675fd2384768298",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "ef4cad78c446d17c6725ace6796b82e8196d90786892aa31a08c44dae34f949c",
+        "scope": "static; no repository code executed",
+        "seconds": 0.212,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "92467a8500041cdfda4f17fad0f59ea7af9f8f2e047111729fc5a09cd3373e2f",
+      "input_digest": "92467a8500041cdfda4f17fad0f59ea7af9f8f2e047111729fc5a09cd3373e2f",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.72,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a826ca9eaf76f38c31bb094b188efac3e69d3682a3731862f47444f413af744f",
+      "input_digest": "a826ca9eaf76f38c31bb094b188efac3e69d3682a3731862f47444f413af744f",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.364,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e609a45537933955854ce7c0c9508f85abe18e6c73ae01be76ece4deec096588",
+      "input_digest": "e609a45537933955854ce7c0c9508f85abe18e6c73ae01be76ece4deec096588",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.475,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5b2ba01a4427602d87a7c6dbdd6274e436a83dd686b7d0905b70db778c7ac2f9",
+      "input_digest": "5b2ba01a4427602d87a7c6dbdd6274e436a83dd686b7d0905b70db778c7ac2f9",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.239,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8ea1451a3618b72c9bb2e305a312f36ceee435af5cbfedfca09b921a05e60921",
+      "input_digest": "8ea1451a3618b72c9bb2e305a312f36ceee435af5cbfedfca09b921a05e60921",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.65,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7636dcb8be0f24cc8e94bba3d70c37d8c476b114b8f8445f9e286cfbf3272ed0",
+      "input_digest": "7636dcb8be0f24cc8e94bba3d70c37d8c476b114b8f8445f9e286cfbf3272ed0",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.256,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d81a0bbb5d357771c62ecae065c5e25fe3bd76719a5f9d44399eb0545e02e4ea",
+      "input_digest": "d81a0bbb5d357771c62ecae065c5e25fe3bd76719a5f9d44399eb0545e02e4ea",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.29,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f25131bc24cdb44bb795d83c26688704ca1b6a6b1eacd845417cfeb4712ab11b",
+      "input_digest": "f25131bc24cdb44bb795d83c26688704ca1b6a6b1eacd845417cfeb4712ab11b",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.252,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "463ab34a180bc2034226f18bc4ba7674f186e79fa9131e3271fadc8a30f5cfd6",
+      "input_digest": "463ab34a180bc2034226f18bc4ba7674f186e79fa9131e3271fadc8a30f5cfd6",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.253,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c36657b0c43dd01f1019c5ba93dfb23244ea61b18f22dc56a0c570f84207fc79",
+      "input_digest": "c36657b0c43dd01f1019c5ba93dfb23244ea61b18f22dc56a0c570f84207fc79",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.475,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8548943b5e05bf799f1ceb85c07f8c3b2c83b204d71398ec7b417e59a4e9b146",
+      "input_digest": "8548943b5e05bf799f1ceb85c07f8c3b2c83b204d71398ec7b417e59a4e9b146",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.283,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "bfa5ca34f697bbe265733a4bb07562a2108fb34db467302cff124018aa3ef92c",
+      "input_digest": "bfa5ca34f697bbe265733a4bb07562a2108fb34db467302cff124018aa3ef92c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 2.784,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a9412e78d78158800c32ccd8195f7dc9f11370095d45053337e5e77b5b202fae",
+      "input_digest": "a9412e78d78158800c32ccd8195f7dc9f11370095d45053337e5e77b5b202fae",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 14.934,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "70703b2bf2a62a1600e9ec007560c4fec4a21785c5748231e33572197d07ea37",
+      "input_digest": "70703b2bf2a62a1600e9ec007560c4fec4a21785c5748231e33572197d07ea37",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.502,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2410aea685c4c4b9161d7f69e117c73b0bf2e2a7009a0745827f3cdd09918225",
+      "input_digest": "2410aea685c4c4b9161d7f69e117c73b0bf2e2a7009a0745827f3cdd09918225",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "b874ac33cf95cf7e3d26e500c9a0ba04249ea85aa2a527e84658ebf19496f6f0",
+        "scope": "static; no repository code executed",
+        "seconds": 6.73,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "1285b1d40aadcf2c01d6c94be3691f2eac5979f68c498de36a75f14b331e5430",
+      "input_digest": "1285b1d40aadcf2c01d6c94be3691f2eac5979f68c498de36a75f14b331e5430",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 3.618,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "84da6f45d784547f3e1ac4edbfec3a97a2bcb617901bbde958b20ef152a4d8f2",
+      "input_digest": "84da6f45d784547f3e1ac4edbfec3a97a2bcb617901bbde958b20ef152a4d8f2",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 1.818,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c83ee7ad631495a040e406cfb6f803291a27b4f1974e696a519b27e5c2b60fa6",
+      "input_digest": "c83ee7ad631495a040e406cfb6f803291a27b4f1974e696a519b27e5c2b60fa6",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 6.54,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "67378bafd8b93d8ca4f072f0136e63b14278d1ff600a22735308d012647c3bb1",
+      "input_digest": "67378bafd8b93d8ca4f072f0136e63b14278d1ff600a22735308d012647c3bb1",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.341,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c5552d51a4f7cb52c0097951920e1490657f10e0f23c0e20fe013b694eb2a16f",
+      "input_digest": "c5552d51a4f7cb52c0097951920e1490657f10e0f23c0e20fe013b694eb2a16f",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.785,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "52e1df17b8c0d18b5567e40fee902e6877b65f39cc0d537302996d2429227421",
+      "input_digest": "52e1df17b8c0d18b5567e40fee902e6877b65f39cc0d537302996d2429227421",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 4.878,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0a8771ba78539583cd3aa6e58ade09d7e201a9606ae64db459cce8c92959a7ba",
+      "input_digest": "0a8771ba78539583cd3aa6e58ade09d7e201a9606ae64db459cce8c92959a7ba",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.302,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d12cda1f0b00c973bf777caaf13d243878f7ab02a2518d4532a30f62e120b89d",
+      "input_digest": "d12cda1f0b00c973bf777caaf13d243878f7ab02a2518d4532a30f62e120b89d",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.38,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "b08f27ac25da7cd3101a96fafc0aa7188e299b463935b2753414dcaeaff0bff5",
+      "input_digest": "b08f27ac25da7cd3101a96fafc0aa7188e299b463935b2753414dcaeaff0bff5",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.261,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "af5ae79b59b050d9f98e858f2ee24bd627311accd45bdc9da3017c7065d27365",
+      "input_digest": "af5ae79b59b050d9f98e858f2ee24bd627311accd45bdc9da3017c7065d27365",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 15.948,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "daab437467d72551153118efc676fa9ba17c2a40ed1bd95bce35f9ba37bb9a72",
+      "input_digest": "daab437467d72551153118efc676fa9ba17c2a40ed1bd95bce35f9ba37bb9a72",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "8aa220e2282717df5f266ce29b9a6dc27de385f151ab0f703ee40bafb161cd64",
+        "scope": "static; no repository code executed",
+        "seconds": 0.11,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0df9541fea6ee9b72fe9b2de187f3ed763e9b74688a5553495306b327e7321cc",
+      "input_digest": "0df9541fea6ee9b72fe9b2de187f3ed763e9b74688a5553495306b327e7321cc",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.005,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f8be59bd74847813ad557c8627e2d5c34218fc5c4d29abbe8234dfb136c11a7f",
+      "input_digest": "f8be59bd74847813ad557c8627e2d5c34218fc5c4d29abbe8234dfb136c11a7f",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.96,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "afc282b6ba99101326a401a769de809edc3d52d3ed77d25ff60d38de957ec941",
+      "input_digest": "afc282b6ba99101326a401a769de809edc3d52d3ed77d25ff60d38de957ec941",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed",
+          "unique_keys": "unknown"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 6.885,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "02ad32fdf07070c861a1af87fdc11c91d6dc120a6e22a9614f75de9a4f966015",
+      "input_digest": "02ad32fdf07070c861a1af87fdc11c91d6dc120a6e22a9614f75de9a4f966015",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.545,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "00cc17f655969da3cd62fe1dfbbae612b4dcdf1cc85cd0efedc885d435788fca",
+      "input_digest": "00cc17f655969da3cd62fe1dfbbae612b4dcdf1cc85cd0efedc885d435788fca",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.448,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6abcfd0ee26b955e438b579122212074394fc45ea42bcb36403e5317f016b3f7",
+      "input_digest": "6abcfd0ee26b955e438b579122212074394fc45ea42bcb36403e5317f016b3f7",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.529,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "bc96cc9cae3609abc187b5a1c3b7fbdd6f2ee61c7101ea9d140b47f39c0031a8",
+      "input_digest": "bc96cc9cae3609abc187b5a1c3b7fbdd6f2ee61c7101ea9d140b47f39c0031a8",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed",
+          "unique_keys": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 11.305,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e5fa4a093b9e47d9a35ea155e6d745ff9921ef248a528d08e30a51cf1b3f4377",
+      "input_digest": "e5fa4a093b9e47d9a35ea155e6d745ff9921ef248a528d08e30a51cf1b3f4377",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.337,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e426ed64febe927184de97291a5a16e26f729d0dbaa25f8cde0d932ae7fb3886",
+      "input_digest": "e426ed64febe927184de97291a5a16e26f729d0dbaa25f8cde0d932ae7fb3886",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.985,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "735c101cde00b8d79ba877542c0a11d3a99db15cc0655a046d21edcc2dc5c4b0",
+      "input_digest": "735c101cde00b8d79ba877542c0a11d3a99db15cc0655a046d21edcc2dc5c4b0",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 20.173,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6d59aeb82d8ba080d02d7d1275f02f3eef4afe341762c7c46eafb8a450a7f0c4",
+      "input_digest": "6d59aeb82d8ba080d02d7d1275f02f3eef4afe341762c7c46eafb8a450a7f0c4",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "6d8d0c6f8fd6633e85f1824c924edabd743348be9a1be68555250b3bad479fcf",
+        "scope": "static; no repository code executed",
+        "seconds": 2.047,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9f3004d2f8fc8cd25dc2e709d9e644296911bda496ecc0ff8793c3c1a1fb276c",
+      "input_digest": "9f3004d2f8fc8cd25dc2e709d9e644296911bda496ecc0ff8793c3c1a1fb276c",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 48.64,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "aa888a9b36d1a3f0113ba916fdbd041c37f1e2aa56422e761f9b486b82fcdb94",
+      "input_digest": "aa888a9b36d1a3f0113ba916fdbd041c37f1e2aa56422e761f9b486b82fcdb94",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 24.496,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "39131cb07a6ff31697956158995d2ccf45eb627ad601c4808c8d256e0eb72c41",
+      "input_digest": "39131cb07a6ff31697956158995d2ccf45eb627ad601c4808c8d256e0eb72c41",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.243,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "6f5b2affc8492e47f3a45b5f0a363c089a28ed5a57830932d56e813d3d4a4f55",
+      "input_digest": "6f5b2affc8492e47f3a45b5f0a363c089a28ed5a57830932d56e813d3d4a4f55",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.151,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "4a3aee7915c2400a748e7da59e7dd1710dd87752f5a5a043fe3865256da021aa",
+      "input_digest": "4a3aee7915c2400a748e7da59e7dd1710dd87752f5a5a043fe3865256da021aa",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 5.237,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f0da1ed473525ebd98eb494d44e6b98826f4eb2183496b200a012ad4ad6d47ce",
+      "input_digest": "f0da1ed473525ebd98eb494d44e6b98826f4eb2183496b200a012ad4ad6d47ce",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 7.35,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "51120d1002324d1eef3fd70071e75ca4be66e2d406296f5b63d86d33759e0aa7",
+      "input_digest": "51120d1002324d1eef3fd70071e75ca4be66e2d406296f5b63d86d33759e0aa7",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.521,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c17b53b9b9026dd30093f6fce48158289aefbe4518b266b35754abbd66ff6a92",
+      "input_digest": "c17b53b9b9026dd30093f6fce48158289aefbe4518b266b35754abbd66ff6a92",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "96179d19a5d3a4db5af356c23b28e3b9c864ef5f69f43d9c1e413086f581c2e2",
+        "scope": "static; no repository code executed",
+        "seconds": 1.303,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5469e9d1fccf902fe703547760b6ebc9f25e6dbe47fbe85d07005d62b219484c",
+      "input_digest": "5469e9d1fccf902fe703547760b6ebc9f25e6dbe47fbe85d07005d62b219484c",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.252,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "1111c03e787e4d70c746cf1522464d675e597a94d86b2d05bc8d9a2dcf1bd326",
+      "input_digest": "1111c03e787e4d70c746cf1522464d675e597a94d86b2d05bc8d9a2dcf1bd326",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "2fad501847a8594d56d7813c970e12458b7b0ee5cc99332106489388baf2ce9a",
+        "scope": "static; no repository code executed",
+        "seconds": 0.643,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "754c6d7a57827dc136d0921c7b25816ec9fb0a373070b4ab2c5adab935d10c44",
+      "input_digest": "754c6d7a57827dc136d0921c7b25816ec9fb0a373070b4ab2c5adab935d10c44",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 49.98,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "eb1d204ff6ef8ce7543f9f49ac4fe6b97f9939dc150eb19503e9869a573161a4",
+      "input_digest": "eb1d204ff6ef8ce7543f9f49ac4fe6b97f9939dc150eb19503e9869a573161a4",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.055,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "88e67f92099e533328d1e8c5f677acf5cedea3d0b1ddb02424139a9788583cfd",
+      "input_digest": "88e67f92099e533328d1e8c5f677acf5cedea3d0b1ddb02424139a9788583cfd",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.963,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "12a5341469357552127aab32f447679c296563955f9067886086075a88a87d1b",
+      "input_digest": "12a5341469357552127aab32f447679c296563955f9067886086075a88a87d1b",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "8aa220e2282717df5f266ce29b9a6dc27de385f151ab0f703ee40bafb161cd64",
+        "scope": "static; no repository code executed",
+        "seconds": 0.139,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8421711555acee590bb370e23ae4a1ce1c07f2c738d7d815df6935bd51d918a1",
+      "input_digest": "8421711555acee590bb370e23ae4a1ce1c07f2c738d7d815df6935bd51d918a1",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.528,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f199d648af82e80121df177a1de84f213a3b29646f96e8667cbaa542807f7d1b",
+      "input_digest": "f199d648af82e80121df177a1de84f213a3b29646f96e8667cbaa542807f7d1b",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "timeout",
+        "finding_codes": [],
+        "response_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "scope": "static; no repository code executed",
+        "seconds": 90.258,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "447520b72d2435fa57f578acdf6584f50a01e1e88644002eb7764d2382bff0ab",
+      "input_digest": "447520b72d2435fa57f578acdf6584f50a01e1e88644002eb7764d2382bff0ab",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.895,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "41974ea3481fd8eba35cdafc9f697efc5baaf8fdc4a477195271bef3726e3625",
+      "input_digest": "41974ea3481fd8eba35cdafc9f697efc5baaf8fdc4a477195271bef3726e3625",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 4.656,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2a235e9a5d8719ca4d3f8219f653fdb51a283d9440516fa3235cf3292c470f5c",
+      "input_digest": "2a235e9a5d8719ca4d3f8219f653fdb51a283d9440516fa3235cf3292c470f5c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.278,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "086353341d0741cab04ff6abec765ae23663daa71e44fcd232597d9ee51e3a2a",
+      "input_digest": "086353341d0741cab04ff6abec765ae23663daa71e44fcd232597d9ee51e3a2a",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 8.005,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e9416f107c74e5ee8bbea7b3f6e733e99ca1a8145e046728f6a55ce48cc53d76",
+      "input_digest": "e9416f107c74e5ee8bbea7b3f6e733e99ca1a8145e046728f6a55ce48cc53d76",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.908,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "bf677e91172e18fd5ad929d89d80f110a54a154122c426b0228a10a37b5cfbc8",
+      "input_digest": "bf677e91172e18fd5ad929d89d80f110a54a154122c426b0228a10a37b5cfbc8",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 10.703,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f952525176cea9ab164309fd300c9358c9d06fd3fedb8639f0b92189d8dff034",
+      "input_digest": "f952525176cea9ab164309fd300c9358c9d06fd3fedb8639f0b92189d8dff034",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 4.371,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "891d60f19db26fae72610d78ffba76bcf249b6cb2826a86af6662081c43b2a86",
+      "input_digest": "891d60f19db26fae72610d78ffba76bcf249b6cb2826a86af6662081c43b2a86",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {},
+        "error_kind": "unsupported_repository_layout",
+        "finding_codes": [],
+        "response_digest": "d6331260d23774a71ef805711b455fb49a344509264b84e9ae15ec58bf6391a0",
+        "scope": "static; no repository code executed",
+        "seconds": 0.596,
+        "verdict": "error",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d4365ee23475ddf17d8501eedcc421d6bcf55581925fe9836d4b8eead827af79",
+      "input_digest": "d4365ee23475ddf17d8501eedcc421d6bcf55581925fe9836d4b8eead827af79",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.54,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2478e085f9c672d9070c4b10905b595ba8b61c574fe107cb07a8a0861111da63",
+      "input_digest": "2478e085f9c672d9070c4b10905b595ba8b61c574fe107cb07a8a0861111da63",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.286,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a82c91c31b2bd3d291df8737193791b66c4944daa126ae6f526adfde785317c5",
+      "input_digest": "a82c91c31b2bd3d291df8737193791b66c4944daa126ae6f526adfde785317c5",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.129,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "30e32bf4db04d25263e85ef453ebdb337b9f6c5fb8aaef8afcd7d6b9a49ff6d8",
+      "input_digest": "30e32bf4db04d25263e85ef453ebdb337b9f6c5fb8aaef8afcd7d6b9a49ff6d8",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.661,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9b160c7dd646e059a00c03949968397640179bcae04df3711e8c68cc2f48b32b",
+      "input_digest": "9b160c7dd646e059a00c03949968397640179bcae04df3711e8c68cc2f48b32b",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.701,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c0bc660008730a70a7b9ed6dffddd7395f0582d12101e06e1873f85058050a80",
+      "input_digest": "c0bc660008730a70a7b9ed6dffddd7395f0582d12101e06e1873f85058050a80",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 12.487,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "ab8fbf4ca6fcd104d7e83bfa27b7a796570ffa35f725300f1c17cced1de5c9a8",
+      "input_digest": "ab8fbf4ca6fcd104d7e83bfa27b7a796570ffa35f725300f1c17cced1de5c9a8",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 7.263,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f1b252ae932e687a1404da86ff1f5955267c688bafe7a1491739c08fa783576a",
+      "input_digest": "f1b252ae932e687a1404da86ff1f5955267c688bafe7a1491739c08fa783576a",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "8966ecb7231130293a5680b151a652c04ec7feea0f8d7f64e960ca4e950311f0",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 23.659,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5e65d741eb69d75b6c94493710a538157023e89c5845140591e07e48db3e70de",
+      "input_digest": "5e65d741eb69d75b6c94493710a538157023e89c5845140591e07e48db3e70de",
+      "status": "available"
+    }
+  ],
+  "schema_version": 1,
+  "tool": "radar"
+}

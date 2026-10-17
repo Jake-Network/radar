@@ -19,7 +19,7 @@ def main():
         env["PATH"] = str(binary.parent) + os.pathsep + env.get("PATH", "")
 
         def run(argv, **kwargs):
-            return subprocess.run(argv, cwd=root, env=env, text=True,
+            return subprocess.run(argv, cwd=root, env=env, text=True, encoding="utf-8",
                                   capture_output=True, timeout=60, **kwargs)
 
         def git(*args):
@@ -66,8 +66,11 @@ def main():
                          "hook_event_name": "Stop", "stop_hook_active": False}))
             assert result.returncode == 0, (agent, result.stdout, result.stderr)
             feedback = json.loads(result.stdout)
-            assert feedback.get("decision") == "block", (agent, feedback)
-            assert "conflict" in feedback["reason"].lower(), feedback
+            assert "decision" not in feedback, (agent, feedback)
+            assert "restack" in feedback["systemMessage"].lower(), feedback
+            cached = run(argv, input=json.dumps({"cwd": str(root)}))
+            assert cached.returncode == 0, cached.stderr
+            assert "reused" in json.loads(cached.stdout)["systemMessage"], cached.stdout
             repeat = run(argv, input=json.dumps({"cwd": str(root), "stop_hook_active": True}))
             assert repeat.returncode == 0 and "decision" not in json.loads(repeat.stdout)
 

@@ -75,7 +75,8 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 	defer reader.Close()
 	hash := sha256.New()
 	tracked := map[string]bool{}
-	var total, actualTotal int64
+	buffer := make([]byte, 64<<10)
+	expectedBuffer := make([]byte, len(buffer))
 	for _, entry := range entries {
 		if e = ctx.Err(); e != nil {
 			return state, e
@@ -84,18 +85,24 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 		if entry.Mode != "100644" && entry.Mode != "100755" {
 			return state, errors.New("candidate contains non-regular source")
 		}
-		content, e := reader.Read(entry.OID, maxSnapshot-total)
-		if e != nil {
-			return state, e
-		}
-		total += int64(len(content))
 		full, e := pathutil.StatePath(root, entry.Path)
 		if e != nil {
+			var pathErr *os.PathError
+			if errors.As(e, &pathErr) {
+				return state, e
+			}
 			state.Matches = false
 			continue
 		}
 		info, e := os.Lstat(filepath.Join(root, filepath.FromSlash(entry.Path)))
-		if e != nil || !info.Mode().IsRegular() {
+		if e != nil {
+			if !os.IsNotExist(e) {
+				return state, e
+			}
+			state.Matches = false
+			continue
+		}
+		if !info.Mode().IsRegular() {
 			state.Matches = false
 			continue
 		}
@@ -103,23 +110,54 @@ func InspectCandidateSource(ctx context.Context, root string, c CandidateCheckpo
 		if openErr != nil {
 			return state, openErr
 		}
-		actual, e := io.ReadAll(io.LimitReader(file, maxSnapshot+1))
-		_ = file.Close()
-		if e != nil {
-			return state, e
-		}
-		actualTotal += int64(len(actual))
-		if actualTotal > maxSnapshot {
-			return state, errors.New("candidate source exceeds byte limit")
-		}
 		actualExecutable := info.Mode().Perm()&0111 != 0
 		if runtime.GOOS != "windows" && actualExecutable != (entry.Mode == "100755") {
 			state.Matches = false
 		}
-		fmt.Fprintf(hash, "%s\x00%s\x00%d\x00%t\x00", entry.Path, entry.Mode, len(actual), actualExecutable)
-		hash.Write(actual)
-		if !bytes.Equal(actual, content) {
-			state.Matches = false
+		fmt.Fprintf(hash, "%s\x00%s\x00%d\x00%t\x00", entry.Path, entry.Mode, info.Size(), actualExecutable)
+		var actualSize int64
+		e = reader.Stream(entry.OID, func(size int64, expected io.Reader) error {
+			if size != info.Size() {
+				state.Matches = false
+			}
+			for {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				n, readErr := file.Read(buffer)
+				if n > 0 {
+					actualSize += int64(n)
+					hash.Write(buffer[:n])
+					count, expectedErr := io.ReadFull(expected, expectedBuffer[:n])
+					if expectedErr != nil && expectedErr != io.EOF && expectedErr != io.ErrUnexpectedEOF {
+						return expectedErr
+					}
+					if count != n || !bytes.Equal(buffer[:n], expectedBuffer[:count]) {
+						state.Matches = false
+					}
+				}
+				if readErr == io.EOF {
+					break
+				}
+				if readErr != nil {
+					return readErr
+				}
+			}
+			if actualSize != size {
+				state.Matches = false
+			}
+			return nil
+		})
+		after, statErr := file.Stat()
+		_ = file.Close()
+		if e != nil {
+			return state, e
+		}
+		if statErr != nil {
+			return state, statErr
+		}
+		if actualSize != info.Size() || !os.SameFile(info, after) || info.Size() != after.Size() || info.Mode() != after.Mode() || !info.ModTime().Equal(after.ModTime()) {
+			return state, errors.New("candidate source changed during inspection")
 		}
 	}
 	allowed := map[string]bool{}
@@ -403,6 +441,14 @@ func RunCandidateBudget(ctx context.Context, root string, c CandidateCheckpoint,
 		} else if !os.IsNotExist(e) {
 			return finish(model.StatusError), nil
 		}
+	}
+	if diagnosis := pythonImportCheck(runCtx, root, dir, argv, env); diagnosis != nil {
+		if runCtx.Err() != nil {
+			return finish(model.StatusTimeout), nil
+		}
+		result := finish(model.StatusError)
+		result.Observation.Diagnosis = diagnosis
+		return result, nil
 	}
 	r.Phase = "test"
 	out = output{}

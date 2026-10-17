@@ -11,6 +11,7 @@ import (
 	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/landing"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -287,30 +288,32 @@ type crossRepo struct {
 // workspaceReport is the version 1 JSON report of a multi-repository gate;
 // see schemas/workspace-report.schema.json.
 type workspaceReport struct {
-	Version            int                    `json:"version"`
-	Workspace          string                 `json:"workspace"`
-	ScopeSource        string                 `json:"scope_source"`
-	ScopeSummary       string                 `json:"scope_summary"`
-	OneOff             bool                   `json:"one_off"`
-	Only               []string               `json:"only"`
-	RepoCount          int                    `json:"repo_count"`
-	BranchCount        int                    `json:"branch_count"`
-	Repos              []workspaceRepo        `json:"repos"`
-	SuggestedLinks     []workspaceSuggestion  `json:"suggested_links,omitempty"`
-	Links              []composition.Link     `json:"links,omitempty"`
-	TeamFile           *composition.Team      `json:"team_file,omitempty"`
-	ExcludedRepos      []workspace.ScopeRepo  `json:"excluded_repos,omitempty"`
-	CrossRepo          crossRepo              `json:"cross_repo"`
-	CrossRepoExecution *crossRepo             `json:"cross_repo_execution,omitempty"`
-	Selection          composition.Selection  `json:"selection"`
-	Again              *composition.RunChange `json:"again,omitempty"`
-	ReplayOf           string                 `json:"replay_of,omitempty"`
-	Digest             string                 `json:"digest"`
-	RunID              string                 `json:"run_id"`
-	RecordError        string                 `json:"record_error,omitempty"`
-	Configuration      []ConfigurationInput   `json:"configuration_inputs,omitempty"`
-	Verdict            gate.Verdict           `json:"verdict"`
-	Next               string                 `json:"next"`
+	CrossRepoPairs     *composition.PairReport   `json:"cross_repo_pairs,omitempty"`
+	Landings           map[string]landing.Report `json:"landing,omitempty"`
+	Version            int                       `json:"version"`
+	Workspace          string                    `json:"workspace"`
+	ScopeSource        string                    `json:"scope_source"`
+	ScopeSummary       string                    `json:"scope_summary"`
+	OneOff             bool                      `json:"one_off"`
+	Only               []string                  `json:"only"`
+	RepoCount          int                       `json:"repo_count"`
+	BranchCount        int                       `json:"branch_count"`
+	Repos              []workspaceRepo           `json:"repos"`
+	SuggestedLinks     []workspaceSuggestion     `json:"suggested_links,omitempty"`
+	Links              []composition.Link        `json:"links,omitempty"`
+	TeamFile           *composition.Team         `json:"team_file,omitempty"`
+	ExcludedRepos      []workspace.ScopeRepo     `json:"excluded_repos,omitempty"`
+	CrossRepo          crossRepo                 `json:"cross_repo"`
+	CrossRepoExecution *crossRepo                `json:"cross_repo_execution,omitempty"`
+	Selection          composition.Selection     `json:"selection"`
+	Again              *composition.RunChange    `json:"again,omitempty"`
+	ReplayOf           string                    `json:"replay_of,omitempty"`
+	Digest             string                    `json:"digest"`
+	RunID              string                    `json:"run_id"`
+	RecordError        string                    `json:"record_error,omitempty"`
+	Configuration      []ConfigurationInput      `json:"configuration_inputs,omitempty"`
+	Verdict            gate.Verdict              `json:"verdict"`
+	Next               string                    `json:"next"`
 	ran                bool
 }
 
@@ -420,6 +423,9 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 		}
 	}
 	recordVerdict(a.ctx, g.Verdict)
+	if o.trailer {
+		return a.emitWorkspaceTrailer(g)
+	}
 	a.report(g, func(w io.Writer) { renderWorkspaceGate(w, g) })
 	if configuration.Policy != nil || o.verify || unstable {
 		return gate.Exit(gate.Result{Verdict: g.Verdict})

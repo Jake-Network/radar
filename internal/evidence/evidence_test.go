@@ -1,11 +1,14 @@
 package evidence
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -330,28 +333,57 @@ func TestGoModuleDependenciesResolveFromLocalCache(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip(err)
 	}
-	// Radar's own dependencies are in the local module cache when this test runs.
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}|{{.Version}}", "github.com/google/uuid").Output()
-	if err != nil || !strings.Contains(string(out), "|") {
-		t.Skip("uuid module not cached")
+	// Build a private file proxy and populate its cache explicitly. Lazy module
+	// loading does not guarantee that Radar's indirect dependencies are downloaded.
+	proxy, cache := t.TempDir(), t.TempDir()
+	module := "example.com/offline"
+	mod := "module " + module + "\n\ngo 1.23\n"
+	directory := filepath.Join(proxy, "example.com", "offline", "@v")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
 	}
-	version := strings.TrimSpace(strings.Split(string(out), "|")[1])
-	sum, err := os.ReadFile(filepath.Join("..", "..", "go.sum"))
+	archive, err := os.Create(filepath.Join(directory, "v1.0.0.zip"))
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
-	var lines []string
-	for _, line := range strings.Split(string(sum), "\n") {
-		if strings.HasPrefix(line, "github.com/google/uuid "+version) {
-			lines = append(lines, line)
+	writer := zip.NewWriter(archive)
+	for name, content := range map[string]string{"go.mod": mod, "value.go": "package offline\nfunc Value() string { return \"cached\" }\n"} {
+		entry, err := writer.Create(module + "@v1.0.0/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{"v1.0.0.mod": mod, "v1.0.0.info": `{"Version":"v1.0.0","Time":"2025-01-01T00:00:00Z"}`} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
 		}
 	}
 	root := fixture(t, map[string]string{
-		"go.mod":     "module example.com/fixture\n\ngo 1.23\n\nrequire github.com/google/uuid " + version + "\n",
-		"go.sum":     strings.Join(lines, "\n") + "\n",
-		"id.go":      "package fixture\n\nimport \"github.com/google/uuid\"\n\nfunc New() string { return uuid.NewString() }\n",
-		"id_test.go": "package fixture\n\nimport \"testing\"\n\nfunc TestNew(t *testing.T) { if New() == \"\" { t.Fatal(\"empty\") } }\n",
+		"go.mod":     "module example.com/fixture\n\ngo 1.23\n\nrequire example.com/offline v1.0.0\n",
+		"id.go":      "package fixture\nimport \"example.com/offline\"\nfunc New() string { return offline.Value() }\n",
+		"id_test.go": "package fixture\nimport \"testing\"\nfunc TestNew(t *testing.T) { if New() != \"cached\" { t.Fatal(New()) } }\n",
 	})
+	t.Setenv("GOMODCACHE", cache)
+	path := filepath.ToSlash(proxy)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	download := exec.Command("go", "mod", "download", module)
+	download.Dir = root
+	download.Env = append(os.Environ(), "GOPROXY="+(&url.URL{Scheme: "file", Path: path}).String(), "GOSUMDB=off", "GOTOOLCHAIN=local", "GOFLAGS=-modcacherw")
+	if out, err := download.CombinedOutput(); err != nil {
+		t.Fatalf("populate isolated module cache: %v %s", err, out)
+	}
+	commitRunnerFixture(t, root)
 	argv := []string{"go", "test", "-json", "./..."}
 	r, err := Run(context.Background(), root, "HEAD", plan(argv), argv, 2*time.Minute)
 	if err != nil {
@@ -468,6 +500,32 @@ func TestSetupCompileErrorIsSourceFailure(t *testing.T) {
 	// sh is not a build driver: its output is not read as a compiler's.
 	if r.Status != "error" || r.Phase != "setup" {
 		t.Fatalf("non-build setup failure: %+v", r)
+	}
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("make"); err != nil {
+			t.Skip("native make unavailable")
+		}
+		makefile := filepath.Join(root, "Makefile")
+		writeMake := func(message string) {
+			t.Helper()
+			data := "all:\n\t@echo " + message + "\n\t@exit 2\n"
+			if err := os.WriteFile(makefile, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			commitRunnerFixture(t, root)
+		}
+		p.Acceptance[0].Rule.Setup = [][]string{{"make"}}
+		writeMake("src/a.c:1:25: error: implicit declaration of function 'reserve'")
+		r, err = Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+		if err != nil || r.Status != "failed" || r.Phase != "setup" {
+			t.Fatalf("native setup compile failure: %+v %v", r, err)
+		}
+		writeMake("CMake Error: could not load cache")
+		r, err = Run(context.Background(), root, "HEAD", p, argv, 10*time.Second)
+		if err != nil || r.Status != "error" || r.Phase != "setup" {
+			t.Fatalf("native setup environment failure: %+v %v", r, err)
+		}
+		return
 	}
 	bin := t.TempDir()
 	if e := os.WriteFile(filepath.Join(bin, "make"), []byte("#!/bin/sh\necho \"$PWD/src/a.c:1:25: error: implicit declaration of function 'reserve'\"\nexit 2\n"), 0o755); e != nil {

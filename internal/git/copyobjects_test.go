@@ -9,7 +9,9 @@ import (
 
 func objectCopyFixture(t *testing.T) (string, string) {
 	t.Helper()
-	source, dest := t.TempDir(), t.TempDir()
+	// Match private candidate preparation: resolve trusted temporary-directory
+	// aliases before testing the object store's stricter canonical-path guard.
+	source, dest := realTempDir(t), realTempDir(t)
 	ctx := context.Background()
 	for _, root := range []string{source, dest} {
 		if _, err := RunPrivate(ctx, root, "init", "--quiet"); err != nil {
@@ -118,5 +120,20 @@ func TestCopyObjectStoreRejectsUnsafeStoresAndOccupiedDestination(t *testing.T) 
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestCopyObjectStoreRejectsSymlinkDestination(t *testing.T) {
+	source, dest := objectCopyFixture(t)
+	objects := filepath.Join(dest, ".git", "objects")
+	outside := filepath.Join(t.TempDir(), "objects")
+	if err := os.Rename(objects, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, objects); err != nil {
+		t.Skip(err)
+	}
+	if copied, err := CopyObjectStore(context.Background(), source, dest); copied || err == nil {
+		t.Fatalf("symlink destination accepted: copied=%v err=%v", copied, err)
 	}
 }

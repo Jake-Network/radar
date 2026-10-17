@@ -445,3 +445,79 @@ func TestCandidateJUnitDirectoryDoesNotExemptSourceInputs(t *testing.T) {
 		})
 	}
 }
+
+func TestCandidateSourceStreamsLargeTrackedFiles(t *testing.T) {
+	root := fixture(t, map[string]string{"source.txt": "source\n"})
+	// Both a single blob and the total exceed the snapshot-copy budget. The
+	// integrity guard must compare them without imposing that unrelated budget.
+	for _, name := range []string{"large.bin", "other.bin"} {
+		f, err := os.Create(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		size := int64(70 << 20)
+		if name == "other.bin" {
+			size = 1 << 20
+		}
+		if err := f.Truncate(size); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(t, root, "add", ".")
+	git(t, root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "large source")
+	cp := candidateCheckpoint(t, root)
+	before, err := InspectCandidateSource(context.Background(), root, cp, nil)
+	if err != nil || !before.Matches {
+		t.Fatalf("large pristine source: %+v %v", before, err)
+	}
+	again, err := InspectCandidateSource(context.Background(), root, cp, nil)
+	if err != nil || again != before {
+		t.Fatalf("unstable digest: %+v %v", again, err)
+	}
+	f, err := os.OpenFile(filepath.Join(root, "large.bin"), os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteAt([]byte("mutation"), 35<<20); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	changed, err := InspectCandidateSource(context.Background(), root, cp, nil)
+	if err != nil || changed.Matches || changed.Digest == before.Digest {
+		t.Fatalf("same-length mutation hidden: %+v %v", changed, err)
+	}
+	if err := os.Truncate(filepath.Join(root, "large.bin"), (70<<20)+1); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = InspectCandidateSource(context.Background(), root, cp, nil)
+	if err != nil || changed.Matches {
+		t.Fatalf("append hidden: %+v %v", changed, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := InspectCandidateSource(ctx, root, cp, nil); err == nil {
+		t.Fatal("cancellation ignored")
+	}
+}
+
+func TestCandidateSourceReportsFilesystemInspectionErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix directory permission fixture")
+	}
+	root := fixture(t, map[string]string{"nested/source.py": "source"})
+	cp := candidateCheckpoint(t, root)
+	directory := filepath.Join(root, "nested")
+	if err := os.Chmod(directory, 0000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(directory, 0700)
+	if _, err := os.Lstat(filepath.Join(directory, "source.py")); err == nil {
+		t.Skip("current user bypasses directory permissions")
+	}
+	if _, err := InspectCandidateSource(context.Background(), root, cp, nil); err == nil {
+		t.Fatal("filesystem inspection failure was treated as content mismatch")
+	}
+}

@@ -18,20 +18,22 @@ import (
 
 // doctorProject is what doctor found in this repository: what `radar gate`
 // would combine, what it would leave out, and how its tests would run. It
-// reads Git metadata and committed files only; nothing is executed or written.
+// reads Git metadata, committed files and bounded local resource configuration;
+// nothing is executed or written.
 type doctorProject struct {
-	Base      string          `json:"base,omitempty"`
-	Branches  []string        `json:"branches"`
-	Skipped   []string        `json:"skipped_branches"`
-	Worktrees int             `json:"worktrees"`
-	Dirty     []doctorDirty   `json:"dirty_worktrees"`
-	Languages []string        `json:"languages"`
-	Tests     []doctorRunner  `json:"test_runners"`
-	Contracts bool            `json:"contracts_declared"`
-	Agents    map[string]bool `json:"agent_skills_installed"`
-	Problems  []string        `json:"problems"`
-	Workspace string          `json:"workspace,omitempty"`
-	Next      string          `json:"next"`
+	Base      string           `json:"base,omitempty"`
+	Branches  []string         `json:"branches"`
+	Skipped   []string         `json:"skipped_branches"`
+	Worktrees int              `json:"worktrees"`
+	Dirty     []doctorDirty    `json:"dirty_worktrees"`
+	Languages []string         `json:"languages"`
+	Tests     []doctorRunner   `json:"test_runners"`
+	Contracts bool             `json:"contracts_declared"`
+	Agents    map[string]bool  `json:"agent_skills_installed"`
+	Problems  []string         `json:"problems"`
+	Workspace string           `json:"workspace,omitempty"`
+	Next      string           `json:"next"`
+	Resources []doctorResource `json:"resource_advisories"`
 
 	testsErr            error
 	worktreesIncomplete bool
@@ -142,6 +144,13 @@ func (a *app) doctor(_ options) int {
 			}
 			more(fmt.Sprintf("%s %s: %d staged, %d unstaged, %d untracked — not checked until committed", p.mark("!"), p.cyan(name), d.Staged, d.Unstaged, d.Untracked))
 		}
+		for _, advisory := range proj.Resources {
+			mark := "!"
+			if advisory.Status == "unknown" {
+				mark = "?"
+			}
+			line("Resources", fmt.Sprintf("%s %s: %s (%s)", p.mark(mark), advisory.Kind, advisory.Key, strings.Join(advisory.Worktrees, ", ")))
+		}
 		if len(proj.Languages) == 0 {
 			line("Languages", p.dim("none Radar parses (TypeScript/JavaScript, Python, Go, Rust, Java, C/C++)"))
 		} else {
@@ -206,6 +215,8 @@ func (a *app) doctor(_ options) int {
 		} else {
 			line("State", a.stateRoot+"/.radar")
 		}
+		line("Limits", "candidate integrity: 10000 tracked files, 20000 filesystem inputs; no total byte limit")
+		line("Snapshot", "radar test: 10000 tracked entries, 64 MiB total copied file content")
 		line("Privacy", "local only: no telemetry, no cloud inference; runs repository code only with --run")
 		fmt.Fprintf(w, "\n%s %s\n", p.bold("Next:"), p.next(proj.Next))
 	})
@@ -237,6 +248,12 @@ func (a *app) inspectProject() *doctorProject {
 		d.Problems = append(d.Problems, "worktree inspection unavailable: "+err.Error())
 	} else {
 		d.Worktrees = len(worktrees)
+		roots := []string{}
+		for _, w := range worktrees {
+			roots = append(roots, w.Path)
+		}
+		d.Resources = inspectResources(roots)
+		d.Resources = append(d.Resources, editableAdvisories(a.root, os.Getenv("VIRTUAL_ENV"))...)
 		for _, w := range worktrees {
 			if w.InspectionError != "" {
 				d.worktreesIncomplete = true
@@ -247,6 +264,7 @@ func (a *app) inspectProject() *doctorProject {
 			}
 		}
 	}
+	d.Resources = mergeDoctorResources(d.Resources)
 	if files, err := gitrepo.Files(a.ctx, a.root, "HEAD"); err == nil {
 		d.Languages = detectLanguages(files)
 	}
@@ -257,8 +275,19 @@ func (a *app) inspectProject() *doctorProject {
 		for _, r := range testselection.Runners(inv) {
 			d.Tests = append(d.Tests, runnerStatus(r))
 		}
-		if len(inv.Diagnostics) > 0 {
-			d.Problems = append(d.Problems, plural(len(inv.Diagnostics), "test or configuration file was", "test or configuration files were")+" skipped by discovery; radar gate --run will report the inventory as incomplete")
+		blocking, informational := 0, 0
+		for _, diagnostic := range inv.Diagnostics {
+			if testselection.InventoryDiagnosticBlocks(diagnostic) {
+				blocking++
+			} else {
+				informational++
+			}
+		}
+		if blocking > 0 {
+			d.Problems = append(d.Problems, plural(blocking, "test or configuration file was", "test or configuration files were")+" skipped by discovery; radar gate --run will report the inventory as incomplete")
+		}
+		if informational > 0 {
+			d.Problems = append(d.Problems, plural(informational, "non-test source file was", "non-test source files were")+" skipped by discovery due to its size; this omission does not block the test inventory")
 		}
 	}
 	for _, r := range d.Tests {
@@ -268,9 +297,11 @@ func (a *app) inspectProject() *doctorProject {
 	}
 	_, err := os.Stat(filepath.Join(a.root, ".radar", "contracts.json"))
 	d.Contracts = err == nil
-	for name, skill := range map[string]string{"claude": ".claude/skills/radar/SKILL.md", "codex": ".agents/skills/radar-architecture/SKILL.md"} {
-		_, err := os.Stat(filepath.Join(a.root, filepath.FromSlash(skill)))
-		d.Agents[name] = err == nil
+	for name, skills := range map[string][]string{"claude": {".claude/skills/radar/SKILL.md"}, "codex": {".agents/skills/radar/SKILL.md", ".agents/skills/radar-architecture/SKILL.md"}} {
+		for _, skill := range skills {
+			_, err := os.Stat(filepath.Join(a.root, filepath.FromSlash(skill)))
+			d.Agents[name] = d.Agents[name] || err == nil
+		}
 	}
 	if inv, err := a.workspaceInvocation(options{}); err == nil && inv != nil {
 		d.Workspace = inv.scope.Workspace

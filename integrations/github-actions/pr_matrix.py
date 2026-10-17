@@ -101,7 +101,7 @@ def evaluate(root, radar, base, prs, trigger=None, max_pairs=1000):
                         "verdict": verdict, "failed_checks": [c for c in report.get("checks", []) if c.get("status") == "failed"],
                         "reproduce_argv": argv, "report": report})
     status = "fail" if any(r["verdict"] == "fail" for r in results) else "error" if any(r["verdict"] == "error" for r in results) else "incomplete" if skipped or not results or any(r["verdict"] == "blocked" for r in results) else "pass"
-    return {"version": 1, "status": status, "base": base, "chains": tips, "pairs": results, "skipped": skipped,
+    return {"version": 1, "status": status, "base": base, "member_heads": {str(pr["number"]): pr["head"] for pr in prs}, "chains": tips, "pairs": results, "skipped": skipped,
             "limitations": ["Static evidence only; repository code was not executed.", "Comment publication is a separate explicitly enabled workflow step."]}
 
 

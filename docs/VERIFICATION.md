@@ -157,10 +157,38 @@ during execution invalidate passing evidence.
 
 ## Test selection
 
+`gate --landing` adds a pair matrix and deterministic landing estimate; it keeps
+the gate v1 verdict contract. A pair result cannot replace the separately built
+N-way candidate. `land --apply` publishes an immutable private integration ref
+only after the selected policy and configuration-stability checks pass, using
+the same captured `--policy`/`--plan` inputs as gate; it grants no test execution
+or branch update. Structural merge drivers require their own explicit execution opt-in and
+record which files they resolved. Conflict-brief symbol/test links are inferred.
+
+`gate --overlap` and watch/hook drift reuse supported detectors on saved snapshots.
+No findings does not establish complete compatibility. Hook blocking is limited
+to current dirty additions; inherited peer conflicts remain informational.
+Workspace pair reports bind every repository's own base and candidate separately;
+dirty contracts and static link cells do not prove runtime interoperability.
+
+`gate --trailer` emits a trailer only for a passing selected policy. Its local
+content-addressed record binds the full candidate report (and every workspace
+candidate when applicable); omitted optional commands and no-test execution remain
+explicit. `show` replays historical evidence, not a new result for today's HEAD.
+Record digests detect changes, not owner authentication. Actions check publication
+is opt-in and tied to the evaluated PR heads; it does not transfer tip evidence to
+an unevaluated ancestor. The v1 JSON additions are optional, not new success rules.
+
 Selection establishes a static relationship, not behavioral coverage. Inventory
 reads configuration as data, without evaluating scripts, importing Python or
 running collection hooks. Limits: 10,000 files, 1 MiB per file, 32 MiB total;
 skipped input remains visible.
+Oversized files that cannot match supported test path conventions leave a
+warning without making inventory incomplete. Oversized tests and configuration
+still block selection. Rust source remains potentially test-bearing because
+tests can be inline. This exception does not establish import relationships for
+skipped helpers: indexing has a separate 2 MiB source limit, and missing import
+relationships remain unknown.
 
 | Mode | Selection |
 | --- | --- |
@@ -255,13 +283,91 @@ account's `~/.m2`; Gradle user-home properties remain visible to builds.
 | Python `ImportError` for a removed name | `failed`. |
 | Missing modules/toolchains/headers/libraries, checksum/registry errors, unresolved JVM dependencies, CMake configuration errors | Environment `error`. |
 | Compiler location outside candidate, generated/dependency source or nonexistent file | Environment `error`. |
+| First-party Python package or import location is outside the candidate, or import preflight cannot verify it | Environment `error` (`python_import_unverified`); no branch lead. |
 | Missing runner/command, timeout or output limit | `error`. |
 | Exit 0 without recognized tests | `unknown`. |
+
+Before Python test execution on a combined candidate, Radar probes the
+command's interpreter with the same runner prefix, CWD and scrubbed
+environment. Python versioned executables, pytest console entry points and
+supported `uv run` forms are checked. On Windows, `pytest.exe` has no readable
+interpreter line, so bare `pytest` is unverified; use `python -m pytest`. Another
+`uv` form, a separate `pytest` argument behind another program, or a known
+launcher such as `env`, `timeout`, `coverage` or `poetry run` that names a
+Python interpreter is an environment problem, because its interpreter cannot be
+established. Opaque wrappers such as `sh -c "pytest -q"` or `make test` are not
+checked. The probe runs no
+first-party code, never calls an import hook it does not recognise, and does
+not inject `PYTHONPATH`. It refuses:
+
+- an import path, symlink in site-packages, editable-install mapping or
+  preloaded module outside both the candidate and the interpreter's own
+  standard library, site-packages and prefix directories, or an import hook it
+  cannot inspect;
+- a distribution installed from a remote `file:` URL or from a local path
+  outside the candidate that still exists, and any installed distribution named
+  like a project in this repository that was not built from the candidate;
+- a first-party package of the command's projects (the repository root and the
+  projects containing the CWD or a path argument) that resolves outside the
+  candidate, including a namespace portion or a standard-library name that
+  hides it;
+- a package of any other project in the repository that resolves outside the
+  candidate, unless the standard library or a distribution of another name
+  hides it. When that project's `pyproject.toml` has no readable name, any
+  installed copy is refused.
+
+On macOS, Homebrew's shared site-packages may link individual Python modules to
+another versioned package in the same installation. Matching Python-version file aliases
+are treated as installed site content and retain the distribution and first-party
+origin checks above. Trust remains limited to the exact file targets.
+
+The interpreter's own environment is not candidate source even inside the
+candidate directory: its checkouts (such as pip's `src/` for `-e git+…`) are refused like any outside
+path. A site-packages copy counts as candidate code only when every
+distribution that installs the name was built from the candidate's source tree
+itself (not from a wheel, sdist or VCS snapshot, which may be an old release)
+and recorded the file that loads. Namespace packages are checked member by
+member, so other distributions may install into the same namespace, but a file
+there that no distribution installed is refused.
+
+The location checks do not depend on names, so a package that a merge deleted
+or renamed cannot load from the original checkout unnoticed. As a consequence,
+any editable install of a project outside the candidate is refused, even an
+unrelated one. Packages are found by name in conventional flat/src layouts
+under every `pyproject.toml`; a project in another layout is covered only by
+its distribution name. `test` and `tests` are not probed by name because the
+test runner puts them on `sys.path` itself. A namespace package nested more
+than 32 levels deep is unverified. Use runner profile `prefix`/`setup` to build
+a candidate-local environment, or deactivate the external environment.
+
+The probe only sees what the interpreter can find at startup. It does not
+check a package that an index-installed distribution provides under a name the
+candidate no longer has (including the old name of a renamed project),
+`setup.py`-only or custom layouts by name, or paths a test adds at runtime. The
+preflight shares the command timeout. This is not a full runtime import trace.
 
 Dependency/toolchain diagnostics prevent source attribution, even when mixed
 with apparent compile errors. Source locations must be repository-relative and
 validated inside the candidate. Missing headers receive `module_missing`, which
 may mean either a system dependency or a branch-renamed header.
+
+After candidate commands finish, verification automatically repeats failed
+commands once on one private base candidate, reusing each declared runner setup.
+Only the remaining selected-command budget and total timeout are available to
+these comparisons, so baseline diagnostics cannot displace candidate commands. The original
+candidate observation stays intact; `base_comparison` records the bound base
+execution and matching failed-case identities. If every candidate failure also
+fails on unchanged base, `integration_execution` is `incomplete` (NOT VERIFIED),
+with no branch repair lead. With complete identities, mixed failures narrow leads
+to candidate-only cases. Missing identities retain FAIL and uncertain potential
+leads rather than subtracting unidentified failures. Pytest collection-error file
+paths are locations, not case identities: different collection causes in the same
+file cannot be treated as the same base failure. A passing base keeps candidate
+failures as FAIL. Unavailable, unidentified,
+source-mutating or budget-exhausted baseline comparisons retain FAIL and explain
+the gap. Case identities are bounded; omitted or truncated identities cannot
+clear the whole command. Pytest parameter IDs are omitted to avoid persisting
+parameter values. These are single observations; flakiness can affect the comparison.
 
 Optional `--attribution-runs N` diagnoses source failures on base/subset candidates
 under execution authorization; default is 0. `isolated` means all smaller

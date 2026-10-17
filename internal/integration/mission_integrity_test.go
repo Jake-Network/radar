@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,16 +53,29 @@ func TestFullMultilingualSuiteReportsExecutionAndCoverageGaps(t *testing.T) {
 	}
 	t.Run("missing runner", func(t *testing.T) {
 		bin := t.TempDir()
+		var runnerPaths []string
 		for _, tool := range []string{"git", "python3"} {
 			resolved, err := exec.LookPath(tool)
 			if err != nil {
 				t.Fatal(err)
 			}
+			if runtime.GOOS == "windows" {
+				// Native Python needs its adjacent runtime DLLs. Keep the real
+				// executable directory rather than an extensionless Unix alias.
+				runnerPaths = append(runnerPaths, filepath.Dir(resolved))
+				continue
+			}
 			if err = os.Symlink(resolved, filepath.Join(bin, tool)); err != nil {
-				t.Skip("controlled runner PATH requires symlinks: " + err.Error())
+				t.Fatal("controlled runner PATH requires symlinks: " + err.Error())
 			}
 		}
-		t.Setenv("PATH", bin)
+		if runtime.GOOS != "windows" {
+			runnerPaths = []string{bin}
+		}
+		t.Setenv("PATH", strings.Join(runnerPaths, string(os.PathListSeparator)))
+		if _, err := exec.LookPath("node"); err == nil {
+			t.Skip("controlled PATH cannot omit node because it shares a Git or Python executable directory")
+		}
 		r, err := Preview(context.Background(), root, o)
 		if err != nil {
 			t.Fatal(err)

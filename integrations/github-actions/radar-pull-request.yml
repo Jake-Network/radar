@@ -1,4 +1,5 @@
-# Copy this file to .github/workflows/radar.yml and the reviewed run.py/report.py
+# Copy this file to .github/workflows/radar.yml and the reviewed run.py/report.py and optional
+# publish_checks.py/publish_matrix.py
 # to .github/radar/. Set RADAR_REVISION to a reviewed immutable Radar commit.
 # Static inspection is the default. See the adjacent README before execution.
 name: Radar integration gate
@@ -12,6 +13,9 @@ permissions:
 
 jobs:
   radar:
+    permissions:
+      contents: read
+      checks: write # Remove when RADAR_PUBLISH_CHECKS is disabled
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -19,6 +23,7 @@ jobs:
       RADAR_BASE: ${{ github.event.pull_request.base.sha }}
       RADAR_HEAD: ${{ github.event.pull_request.head.sha }}
       RADAR_EXECUTE: ${{ vars.RADAR_EXECUTE == 'true' && 'true' || 'false' }}
+      RADAR_PUBLISH_CHECKS: ${{ vars.RADAR_PUBLISH_CHECKS == 'true' && 'true' || 'false' }}
       RADAR_TRUSTED: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'true' || 'false' }}
       # Explicit PR numbers only. The helper validates and fetches these refs.
       RADAR_ADDITIONAL_PRS: ${{ vars.RADAR_ADDITIONAL_PRS }}
@@ -79,6 +84,17 @@ jobs:
           else
             echo '::error::Radar produced no gate report; verification is unavailable. Review earlier setup errors.'
           fi
+      - name: Publish pinned PR check when explicitly enabled
+        if: always() && vars.RADAR_PUBLISH_CHECKS == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RADAR_REPOSITORY: ${{ github.repository }}
+          RADAR_PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          python3 radar-control/.github/radar/publish_checks.py \
+            --repo "$RADAR_REPOSITORY" --number "$RADAR_PR_NUMBER" \
+            --base "$RADAR_BASE" --head "$RADAR_HEAD" --report "$RUNNER_TEMP/radar-report.json"
       - name: Preserve machine-readable evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

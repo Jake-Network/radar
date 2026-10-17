@@ -12,12 +12,40 @@ with or without color; JSON and MCP output are never styled.
 control color.
 Terminal gate progress goes to stderr and is erased before the report.
 
-`radar doctor` reads Git metadata and committed files to report the base,
+`radar doctor` reads Git metadata, committed files and bounded local resource
+configuration to report the base,
 participating worktree branches, excluded dirty changes, discovered languages
 and test frameworks, available runner programs, and a next command. Its JSON
 adds these facts under `project`. Runner availability does not establish that
 framework dependencies are installed: `node_modules` is not copied into private
 candidates, and frameworks such as pytest are checked when tests run.
+
+Doctor also warns when worktrees declare the same literal database URL, port or
+Compose project name in conventional root `.env`/Compose files. Values are
+compared privately and omitted from reports. Each warning lists only worktrees
+sharing that same literal value; different values under one key stay separate.
+Expressions remain `unknown` and are not assumed to share a literal resource.
+Static `.pth` inspection of `VIRTUAL_ENV` warns about external paths or
+uninterpreted loaders without running Python. These are configuration advisories,
+not runtime isolation checks; nested settings and full Compose semantics are
+not interpreted.
+
+Candidate source integrity compares tracked blobs and files with bounded
+streaming buffers, so total tracked bytes have no integrity limit. The 10,000
+tracked-file and 20,000 filesystem-input bounds still apply. The separate
+single-checkpoint `radar test` command copies at most 10,000 tracked entries
+and 64 MiB of regular-file content into its execution snapshot; a larger input
+is rejected before setup or tests run. That copy limit does not apply to
+integrity inspection of private Git candidates used by `gate --run` or
+`merge-check --verify --allow-execution`. Static parsing retains its own limits.
+Same-length content changes, extra
+inputs and supported executable-mode changes invalidate execution proof.
+Declared runner preparation errors appear in `runner_preparations[].error` and
+human output; inspection errors remain distinct from source mismatches.
+
+Static Suggested tests show the actual targeted selection first. Conservative
+package-root fallbacks are summarized with their count and `--suite balanced`;
+JSON `verification_proposal.commands` retains the full proposal.
 
 ## Explicit inputs
 
@@ -41,11 +69,73 @@ it does not combine branches. Its `--suite` previews selection without execution
 metadata to a new file; candidate construction leaves source refs and files alone.
 
 `gate --run` authorizes selected test execution with a default balanced suite,
-10-minute budget and 16-command limit. Gate and watch default to zero diagnostic
-reruns; `--run --attribution-runs 8` opts into smaller branch-subset executions.
+10-minute budget and 16-command limit. Gate and watch default to zero optional subset
+diagnostic reruns. Failed commands receive one automatic base comparison
+within the shared command/time budget; failures reproduced there leave
+verification incomplete. `--run --attribution-runs 8` opts into smaller branch-subset executions.
 These observations are repair leads, do not change the verdict, and are not
 available in `merge-check`. Selection modes, omitted-command handling, policies,
 contract obligations and exit codes are in [VERIFICATION](VERIFICATION.md).
+
+## Landing parallel branches
+
+```sh
+radar land api client docs --base main
+radar land api client --base main --conflict-brief --json
+radar land api client --base main --apply
+# Explicitly authorize an installed structural merge driver:
+radar land api client --base main --driver mergiraf --allow-execution
+```
+
+Landing reports pair conflicts, ancestry constraints, a deterministic order and
+independent branches. Up to 12 branches use all pairs and exact optimization of
+a pair-based rebase estimate; larger sets use changed-file overlap and a greedy
+order. Estimates are not measured rebase counts, and omitted pairs remain
+unverified. A conflict brief requires exactly two branches and includes bounded
+committed source/hunks, inferred symbols and related tests, and reproduction
+arguments. Related tests are static leads, not observed coverage.
+
+`--apply` publishes only `refs/radar/integration/<run-id>` after a static PASS;
+it preserves branch refs, index and working files and prints a fast-forward
+command when ancestry permits. Review the result and select the intended base
+before running that command. Tests require a separate `gate --run`.
+Pass the same `--policy PATH` and `--plan PATH` to landing as to gate; missing
+requirements or configuration changes prevent ref publication.
+Branches that conflict with base alone appear in `landing.restack_first`. Their
+names and pinned commits remain in `landing.branches`, while pairs, order, and
+candidate evidence cover the remaining inputs. The required `landing_input_scope`
+check keeps the full selection NOT VERIFIED even under a custom policy; failures
+in the remaining combination still fail. If every input needs restack, no
+candidate commit or tree is reported. `land --apply` refuses these plans before
+importing objects or creating a ref.
+
+`landing_apply` reports whether a ref was published, whether immutable candidate
+objects were imported, and the refusal reason. Imported objects may remain after
+a refusal; they do not update branches or establish verification. Existing base
+and branch history is excluded from the candidate object pack.
+`mergiraf` and `weave` require `--allow-execution`, run with host permissions in
+the private candidate, and record successful repairs as `resolved_by`; merely
+installing a driver does not authorize it. MCP `radar_land` and
+`radar_conflict_brief` expose static previews only. Workspace landing adds
+repository-local plans and declared cross-repository contract comparisons;
+it does not perform cross-repository runtime tests or apply refs atomically.
+
+## Recording a verified run
+
+```sh
+radar gate api client --base main --trailer
+radar show RUN-ID --json
+```
+
+Only a passing gate emits a `Radar-Verified:` trailer and saves its immutable
+report in local Radar state. The trailer lists supported static checks and
+observed tests/selected commands, or `not_run`. Append it to a commit message
+only after reviewing the result. `show` reads the historical candidate report;
+it does not verify today's HEAD. Records bind repository identity and content
+digests, not an authenticated signer, and require the original local state.
+For PR check runs and report types, see
+[Actions integration](../integrations/github-actions/README.md) and
+[report package](../integrations/report/README.md).
 
 ## Agent setup
 
@@ -74,6 +164,7 @@ in linked worktrees. It never merges into your checkout.
 radar watch --base main
 radar watch --base main agent-api agent-web
 radar watch --base main --include-dirty
+radar gate --base main --overlap --file src/api.py --json
 radar watch --base main --include-dirty --run --suite full --jsonl
 ```
 
@@ -99,6 +190,12 @@ Automatically selected `--run` sessions also authorize newly discovered
 worktrees; watch prints this scope on stderr. Code runs with your permissions.
 Private candidates are not an OS sandbox; Radar does not install dependencies
 or fetch history.
+
+Saved previews also report supported pairwise `drift` findings across worktrees.
+`gate --overlap` provides an on-demand saved-state map; `--file` and `--symbol`
+filter findings, and MCP exposes `radar_overlap`. Drift is an inferred repair
+lead. No findings does not prove absence of cross-worktree relationships or
+runtime compatibility. Watch completion JSON carries the current drift list.
 
 ### Saved snapshots
 
@@ -283,6 +380,31 @@ blocks a supported check where the necessary declarations cannot be established.
 C++ cross-translation-unit function ownership and complex overloads remain outside
 this static scope. No relationship is compiler-resolved.
 
+### External SCIP input
+
+```sh
+radar index --ref HEAD --scip index.scip --scip-binding index.binding.json
+```
+
+Both flags are required. Generate the index yourself; Radar runs no producer.
+The binding has exactly these fields (replace placeholders with actual values):
+
+```json
+{
+  "version": 1,
+  "revision": "exact indexed revision from Radar's snapshot",
+  "index_sha256": "lowercase SHA-256 of the index.scip bytes",
+  "sources": {"src/api.py": "lowercase SHA-256 of that source file's bytes"}
+}
+```
+
+Supply every indexed document's repository-relative path and source digest.
+Stale revisions, mismatched bytes, malformed or unsupported input remain
+unverified and are rejected. Imported occurrences add `verified_tool` links to
+the structural graph; this is a producer assertion, not proof of compiler
+execution or producer identity. Existing inferred relationships remain inferred.
+An imported index does not automatically replace gate's candidate analysis.
+
 ### Migration, dependency and uniqueness checks
 
 Conventional migration locations are detected automatically. Explicit locations:
@@ -348,6 +470,21 @@ means tests ran.
 ```json
 {"version":1,"profiles":[{"root":".","prefix":["uv","run","--frozen"],"setup":[["uv","sync","--frozen"]],"lockfiles":["uv.lock"],"artifacts":[".venv"],"exclude":["-m","not integration"]}]}
 ```
+
+A profile matches its `root` and descendant command directories; the most specific
+matching profile wins. Setup runs at `root`, and lockfiles and artifacts are
+relative to that directory. Selected test commands keep their own CWD, so a
+relative `prefix` executable resolves from that CWD, not from the profile root.
+For a package-local `.venv/bin/python`, declare the package directory as the
+profile root and use it as the selected command CWD. A root `uv run` profile can
+cover nested commands through uv's project lookup; it does not relocate relative
+executable paths.
+
+On Windows, candidate-relative native runners use `.exe` or `.com` files rather
+than Unix executable bits. Known `.cmd`/`.bat` build wrappers still receive the
+static distribution-cache check, but direct batch-script execution is unsupported.
+A batch runner needs an explicitly declared interpreter command; Radar does not
+construct a shell command from repository paths or arguments.
 
 Only `--run` (or the equivalent explicit merge-check opt-in) runs declared setup.
 Explicit profile setup may download dependencies from registries; it keeps the

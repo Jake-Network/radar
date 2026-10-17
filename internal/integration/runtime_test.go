@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -44,7 +45,11 @@ func selectionForRuntime(r Report, mode string) (testselection.Selection, error)
 func TestRuntimeProfileCacheAndLockfileInvalidation(t *testing.T) {
 	t.Setenv("RADAR_STATE_DIR", t.TempDir())
 	root := runtimeFixture(t)
-	cfg := runners.Config{Version: 1, Profiles: []runners.Profile{{Root: ".", Prefix: []string{".venv/bin/python"}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}}}
+	interpreter := ".venv/bin/python"
+	if runtime.GOOS == "windows" {
+		interpreter = ".venv/Scripts/python.exe"
+	}
+	cfg := runners.Config{Version: 1, Profiles: []runners.Profile{{Root: ".", Prefix: []string{interpreter}, Setup: [][]string{{"python3", "-m", "venv", "--without-pip", "--copies", ".venv"}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}}}
 	data, _ := json.Marshal(cfg)
 	put(t, root, runners.Manifest, string(data))
 	gitTest(t, root, "add", ".")
@@ -167,5 +172,55 @@ func TestRuntimeCoverageUnrelatedBaselineRejected(t *testing.T) {
 	edges := loadCoverage(ctx, root, root, &r)
 	if len(edges) != 1 || !edges[0].Stale {
 		t.Fatal(edges, r.Diagnostics)
+	}
+}
+
+func TestRuntimeLargeCandidateRunsDeclaredSetupAndTests(t *testing.T) {
+	t.Setenv("RADAR_STATE_DIR", t.TempDir())
+	root := runtimeFixture(t)
+	f, err := os.Create(filepath.Join(root, "large.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(70 << 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Setup creates only a disposable dependency directory; no host project code
+	// runs and all test execution remains behind the normal explicit opt-in.
+	cfg := runners.Config{Version: 1, Profiles: []runners.Profile{{Root: ".", Prefix: []string{"python3"}, Setup: [][]string{{"python3", "-c", "from pathlib import Path; Path('.venv').mkdir()"}}, Lockfiles: []string{"uv.lock"}, Artifacts: []string{".venv"}}}}
+	data, _ := json.Marshal(cfg)
+	put(t, root, runners.Manifest, string(data))
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "large candidate setup")
+	gitTest(t, root, "branch", "-f", "baseline")
+	gitTest(t, root, "checkout", "-qb", "feature")
+	put(t, root, "app.py", "VALUE = 2\n")
+	gitTest(t, root, "commit", "-qam", "feature")
+	gitTest(t, root, "checkout", "baseline")
+	r, err := Preview(context.Background(), root, Options{Base: "baseline", Branches: []string{"feature"}, Verify: true, AllowExecution: true, Suite: "full", Timeout: 30 * time.Second, MaxCommands: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkStatus(t, r, "integration_execution", model.StatusPassed)
+	if len(r.RunnerPreparations) != 1 || r.RunnerPreparations[0].SetupCommands != 1 || r.RunnerPreparations[0].Status != model.StatusPassed || len(r.Executions) == 0 || r.Executions[0].Observation.TestsRun == 0 {
+		t.Fatalf("preparations=%+v executions=%+v", r.RunnerPreparations, r.Executions)
+	}
+	if r.Executions[0].SourceAfterExecution != "unchanged" {
+		t.Fatalf("source: %+v", r.Executions[0])
+	}
+	// A passing harness cannot establish integration evidence after changing a
+	// byte in the large tracked blob during the authorized test command.
+	put(t, root, "tests/test_runtime.py", "import unittest\nclass Mutating(unittest.TestCase):\n def test_mutates(self):\n  with open('large.bin','r+b') as source:\n   source.seek(35 << 20)\n   source.write(b'X')\n")
+	gitTest(t, root, "add", ".")
+	gitTest(t, root, "commit", "-qm", "test mutates large tracked input")
+	mutated, err := Preview(context.Background(), root, Options{Base: "baseline", Branches: []string{"feature"}, Verify: true, AllowExecution: true, Suite: "full", Timeout: 30 * time.Second, MaxCommands: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mutated.Executions) != 1 || mutated.Executions[0].SourceAfterExecution != "modified" || mutated.Executions[0].IntegrationStatus() == model.StatusPassed {
+		t.Fatalf("mutated source accepted: %+v", mutated.Executions)
 	}
 }

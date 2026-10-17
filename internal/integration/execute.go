@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
+	"runtime"
 
 	"strings"
 	"time"
@@ -31,7 +33,15 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	}
 	provider := indexer.NewCommit(temp, r.CandidateCommit)
 	defer provider.Close()
-	profiles, profileErr := runners.Load(ctx, provider)
+	profiles, profileErr := verificationProfiles(ctx, provider)
+	if errors.Is(profileErr, context.DeadlineExceeded) {
+		explanation := "Verification budget expired while reading runner metadata; no verification command started."
+		r.Checks = append(r.Checks, Check{ID: "integration_execution", Status: model.StatusTimeout, Evidence: model.Unknown, Explanation: explanation})
+		if o.Suite != "" {
+			r.Checks = append(r.Checks, Check{ID: "test_selection", Status: model.StatusIncomplete, Evidence: model.Unknown, Explanation: "Suite selection could not be completed before the verification budget expired."})
+		}
+		return nil
+	}
 	if profileErr != nil {
 		return fmt.Errorf("runner profiles: %w", profileErr)
 	}
@@ -74,6 +84,11 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 	}
 	prepared := map[string]evidence.RunnerPreparation{}
 	artifacts := []string{}
+	type executedCommand struct {
+		selection testselection.Command
+		options   Options
+	}
+	executed := []executedCommand{}
 	for i, selection := range selections {
 		if executionCtx.Err() != nil {
 			skipped(selection, "time_budget_exhausted", fmt.Sprintf("the total verification timeout of %s elapsed before this command started", o.Timeout))
@@ -97,7 +112,8 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 				preparation, err = evidence.PrepareRunnerBudget(executionCtx, temp, identity, *profile, runners.Cache{Dir: cacheDir, MaxBytes: profiles.MaxCacheBytes}, o.Timeout, func() bool { return o.budget == nil || o.budget.take(1) })
 				if err != nil {
 					preparation.Status = model.StatusIncomplete
-					coverageDiagnostic(r, "Declared runner preparation unavailable: "+err.Error())
+					preparation.Error = evidence.PreparationDiagnostic(temp, err)
+					coverageDiagnostic(r, "Declared runner preparation unavailable: "+preparation.Error)
 				}
 				prepared[profile.Root] = preparation
 				artifacts = append(artifacts, preparation.Artifacts...)
@@ -105,8 +121,13 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 				inspection, inspectErr := evidence.InspectCandidateSource(executionCtx, temp, cp, artifacts)
 				if inspectErr != nil || !inspection.Matches {
 					preparation.Status = model.StatusIncomplete
+					if inspectErr != nil {
+						preparation.Error = "Runner source inspection unavailable: " + evidence.PreparationDiagnostic(temp, inspectErr)
+					} else {
+						preparation.Error = "Runner setup changed candidate source"
+					}
 					prepared[profile.Root] = preparation
-					coverageDiagnostic(r, "Runner setup changed source or source integrity could not be established; selected tests were not run.")
+					coverageDiagnostic(r, preparation.Error+"; selected tests were not run.")
 				}
 				r.RunnerPreparations = append(r.RunnerPreparations, preparation)
 			}
@@ -181,48 +202,80 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		if isolated != nil {
 			_ = isolated.Close()
 		}
-		ev.SelectionID = selection.ID
-		// Selection identity is also bound into the serialized artifact digest.
-		ev.ID = ""
-		data, _ := json.Marshal(ev)
-		ev.ID = model.StableID("integration-evidence-v1", string(data))
 		r.Executions = append(r.Executions, ev)
+		executed = append(executed, executedCommand{selection: selection, options: executionOptions})
 		if ev.Status == model.StatusPassed && ev.SourceAfterExecution == "unchanged" {
 			confirmExecutedRunner(r.Selection, selection)
 		}
+		if ev.SourceAfterExecution != "unchanged" {
+			break
+		}
+	}
+
+	// Complete candidate verification before spending anything on baseline
+	// diagnostics. Baselines share only the remaining timeout and commands.
+	baselines := baseVerifier{}
+	defer baselines.close()
+	for i, command := range executed {
+		selection, executionOptions := command.selection, command.options
+		ev := r.Executions[i]
+		if ev.Status == model.StatusFailed {
+			var profile *runners.Profile
+			if o.Suite != "" && !planSelected(selection) {
+				profile = profiles.Match(selection.CWD)
+			}
+			ev.BaseComparison = baselines.compare(executionCtx, temp, *r, ev, executionOptions, profile, profiles.MaxCacheBytes)
+			r.Limitations = append(r.Limitations, ev.BaseComparison.Explanation)
+		}
+		ev.ID = ""
+		data, _ := json.Marshal(ev)
+		ev.ID = model.StableID("integration-evidence-v1", string(data))
+		r.Executions[i] = ev
 		if o.Suite == "" {
-			r.Execution = &r.Executions[len(r.Executions)-1]
+			r.Execution = &r.Executions[i]
 		}
 		if selection.ID != "" {
-			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.Status, Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
+			r.Checks = append(r.Checks, Check{ID: "test:" + selection.ID, Status: ev.IntegrationStatus(), Evidence: model.ObservedTest, Explanation: "Selected command observed against the candidate; inspect bound execution metadata."})
 		}
-		executionStatus = aggregateExecution(executionStatus, ev.Status)
+		executionStatus = aggregateExecution(executionStatus, ev.IntegrationStatus())
 		if ev.Status != model.StatusPassed {
 			f := model.NewFinding("integration_execution_"+string(ev.Status), fmt.Sprintf("Combined verification command %q in %q returned %s (exit %d).", executionOptions.Command, executionOptions.CWD, ev.Status, ev.ExitCode), model.ObservedTest)
 			f.Severity = model.SeverityError
+			if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+				f.Code = "integration_base_failure"
+				f.Explanation = "The selected command already fails on base. " + ev.BaseComparison.Explanation
+				f.Severity = model.SeverityWarning
+			}
 			if ev.Status == model.StatusUnknown || ev.Status == model.StatusIncomplete {
 				f.Severity = model.SeverityWarning
 			}
 			// Finding revisions must not mutate locations already hashed into
 			// immutable execution evidence.
-			f.Locations = append([]model.Provenance(nil), ev.Observation.Locations...)
+			for _, l := range ev.Observation.Locations {
+				if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+					continue
+				}
+				if len(ev.FailurePaths([]string{l.Path})) > 0 {
+					f.Locations = append(f.Locations, l)
+				}
+			}
 			for i := range f.Locations {
 				f.Locations[i].Revision = r.CandidateCommit
 			}
-			if len(ev.Observation.FailedCases) > 0 {
-				f.Explanation += " Failed cases: " + strings.Join(ev.Observation.FailedCases, ", ")
+			if len(ev.NewFailedCases()) > 0 {
+				f.Explanation += " Failed cases: " + strings.Join(ev.NewFailedCases(), ", ")
 			}
 			if d := ev.Observation.Diagnosis; d != nil {
 				f.Explanation += " Cause: " + d.Message + "."
 			}
 			f.ID = model.StableID(r.CandidateTree, executionOptions.CWD, strings.Join(executionOptions.Command, "\x00"), strings.Join(ev.Observation.FailedCases, "\x00"), f.Code)
 			f.Remediation = executionRemediation(ev)
+			if ev.BaseComparison != nil && ev.BaseComparison.AllExisting {
+				f.Remediation = "Repair the failures on base, then rerun verification; existing base failures cannot prove this integration."
+			}
 			f.Verification = "Repeat merge-check --verify with the same command after repair; individual branch results are insufficient."
 			r.Findings = append(r.Findings, f)
 
-		}
-		if ev.SourceAfterExecution != "unchanged" {
-			break
 		}
 	}
 
@@ -255,6 +308,37 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 		r.Checks = append(r.Checks, Check{ID: "test_selection", Status: status, Evidence: model.Inferred, Explanation: fmt.Sprintf("Mode %s selected %d of %d candidate commands (%d omitted, %d uncovered changed files). %s", r.Selection.Mode, len(r.Selection.Commands), r.Selection.Candidates, len(r.Selection.Omitted), len(r.Selection.Uncovered), message)})
 	}
 	return nil
+}
+
+// Preserve manifest validation failures as errors, even if the deadline arrives
+// while parsing. Track metadata read deadlines separately from validation.
+type verificationMetadata struct {
+	indexer.Provider
+	timedOut bool
+}
+
+func (p *verificationMetadata) Entries(ctx context.Context) ([]indexer.Entry, error) {
+	entries, err := p.Provider.Entries(ctx)
+	p.timedOut = p.timedOut || err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
+	return entries, err
+}
+
+func (p *verificationMetadata) Read(ctx context.Context, entry indexer.Entry, limit int64) ([]byte, error) {
+	data, err := p.Provider.Read(ctx, entry, limit)
+	p.timedOut = p.timedOut || err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded)
+	return data, err
+}
+
+func verificationProfiles(ctx context.Context, provider indexer.Provider) (runners.Config, error) {
+	metadata := &verificationMetadata{Provider: provider}
+	profiles, err := runners.Load(ctx, metadata)
+	if metadata.timedOut {
+		return profiles, context.DeadlineExceeded
+	}
+	if err == nil && ctx.Err() != nil {
+		return profiles, ctx.Err()
+	}
+	return profiles, err
 }
 
 // A planning-time PATH probe cannot establish candidate-local runner
@@ -353,7 +437,7 @@ func execute(ctx context.Context, root string, r Report, o Options) ExecutionEvi
 		if ev.Status != model.StatusFailed {
 			ev.Status = model.StatusError
 		}
-		ev.ExecutionError = sourceErr.Error()
+		ev.ExecutionError = evidence.PreparationDiagnostic(root, sourceErr)
 	} else if !after.Matches {
 		ev.SourceAfterExecution = "modified"
 		if ev.Status == model.StatusPassed {
@@ -433,8 +517,12 @@ func unavailable(root string, c testselection.Command) string {
 		return "working directory " + c.CWD + " does not exist in the candidate"
 	}
 	tool := c.Command[0]
-	if strings.Contains(tool, "/") {
-		path, e := pathutil.ResolveInside(dir, tool)
+	if strings.ContainsAny(tool, "/\\") {
+		pathTool := tool
+		if runtime.GOOS == "windows" {
+			pathTool = filepath.ToSlash(tool)
+		}
+		path, e := pathutil.ResolveInside(dir, pathTool)
 		if errors.Is(e, fs.ErrNotExist) {
 			if strings.Contains(tool, "node_modules/") {
 				return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
@@ -444,15 +532,51 @@ func unavailable(root string, c testselection.Command) string {
 		if e != nil {
 			return "runner " + tool + " is outside the candidate"
 		}
-		if info, e := os.Stat(path); e != nil || info.IsDir() || info.Mode()&0111 == 0 {
+		info, statErr := os.Stat(path)
+		if statErr != nil || !info.Mode().IsRegular() || runtime.GOOS != "windows" && info.Mode()&0111 == 0 {
 			return "runner " + tool + " is absent from the private candidate (untracked dependency directories such as node_modules are not copied)"
 		}
-		return evidence.WrapperUnavailable(dir, c.Command)
+		if why := evidence.WrapperUnavailable(dir, c.Command); why != "" {
+			return why
+		}
+		if runtime.GOOS == "windows" {
+			if why := windowsRunnerUnavailable(path); why != "" {
+				return why
+			}
+			if strings.Contains(tool, "\\") {
+				return "runner path uses unsupported backslash separators; use snapshot-relative forward slashes"
+			}
+			return ""
+		}
+		return ""
 	}
-	if _, e := exec.LookPath(tool); e != nil {
+	resolved, e := exec.LookPath(tool)
+	if e != nil {
 		return "runner " + tool + " is not on PATH"
 	}
+	resolvedCommand := append([]string{}, c.Command...)
+	resolvedCommand[0] = resolved
+	if why := evidence.WrapperUnavailable(dir, resolvedCommand); why != "" {
+		return why
+	}
+	if runtime.GOOS == "windows" {
+		return windowsRunnerUnavailable(resolved)
+	}
 	return ""
+}
+
+// Windows native executables do not carry Unix execute bits. Batch files can
+// invoke the command interpreter with parsing rules that differ from argv; keep
+// that unsupported boundary explicit instead of relying on implicit shell parsing.
+func windowsRunnerUnavailable(filename string) string {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".exe", ".com":
+		return ""
+	case ".cmd", ".bat":
+		return "runner is a Windows batch script; direct batch execution is unsupported (declare an explicit launcher command)"
+	default:
+		return "runner does not have a supported native Windows executable extension (.exe or .com)"
+	}
 }
 
 // executionRemediation fits the repair advice to what was observed: only a
@@ -465,6 +589,8 @@ func executionRemediation(ev ExecutionEvidence) string {
 		return "The branches do not compile together. Open the reported location in a checkout of the combined branches, then either update the branch that still uses the old code or restore what another branch renamed or removed. Commit and rerun the same gate."
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."
+	case d != nil && d.Kind == "python_import_unverified":
+		return "Use a runner profile prefix and declared setup to create a Python environment inside the candidate, or deactivate the external virtual environment and remove import paths, editable or local-path installs and import hooks that point outside the candidate and installed copies of repository projects not built from it, then rerun the same gate. The combined source was not tested."
 	case d.Environment():
 		return fmt.Sprintf("Install or activate %s where you run radar (Radar copies committed files; dependency installation requires declared setup and execution opt-in), then rerun the same gate. The combined source was not tested.", d.Name)
 	case d != nil:

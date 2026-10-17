@@ -1,0 +1,25 @@
+[
+  {
+    "id": "agenticflict",
+    "concept_url": "https://zenodo.org/records/19396916",
+    "revision": "20118379:6",
+    "url": "https://zenodo.org/api/records/20118379/files/AgenticFlict.tar.gz/content",
+    "file": "AgenticFlict.tar.gz",
+    "size": 148517335,
+    "checksum": "md5:1d6b79f1fed77c39e195b116cd2ad46d",
+    "format": "tar.csv",
+    "member": "data/clean/agenticflict_pr_clean.csv",
+    "license": "CC-BY-4.0"
+  },
+  {
+    "id": "aidev",
+    "concept_url": "https://huggingface.co/datasets/hao-li/AIDev/tree/v4",
+    "revision": "a1a0e853682c2396474538c2026930802505c1d5",
+    "url": "https://huggingface.co/datasets/hao-li/AIDev/resolve/a1a0e853682c2396474538c2026930802505c1d5/pull_request.parquet",
+    "file": "pull_request.parquet",
+    "size": 57572515,
+    "checksum": "sha256:c0b8e81e1d099905ef9ea420bf907d45179771ff5972afce6c219d8cafcef3e8",
+    "format": "parquet",
+    "license": "CC-BY-4.0"
+  }
+]

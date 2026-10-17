@@ -26,6 +26,14 @@ var (
 // cTestFile recognizes C/C++ test sources by directory or file name and a
 // framework macro or a main function outside comments.
 func cTestFile(file, content string) bool {
+	if !cTestPath(file) {
+		return false
+	}
+	text := withoutComments(content)
+	return cppTestMarker.MatchString(text) || cMain.MatchString(text)
+}
+
+func cTestPath(file string) bool {
 	if !cTestSources[strings.ToLower(path.Ext(file))] {
 		return false
 	}
@@ -37,8 +45,7 @@ func cTestFile(file, content string) bool {
 	for _, dir := range strings.Split(path.Dir(file), "/") {
 		conventional = conventional || cTestDirs[dir]
 	}
-	text := withoutComments(content)
-	return conventional && (cppTestMarker.MatchString(text) || cMain.MatchString(text))
+	return conventional
 }
 
 // cmakeRun returns the CMake project that builds a C/C++ test and the

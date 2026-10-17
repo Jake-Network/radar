@@ -128,6 +128,10 @@ func gitTest(t *testing.T, root string, args ...string) string {
 	if e != nil {
 		t.Fatalf("git %v: %v %s", args, e, b)
 	}
+	// Fixtures use literal saved bytes. Tests of normalization opt in locally.
+	if len(args) > 0 && args[0] == "init" {
+		gitTest(t, root, "config", "core.autocrlf", "false")
+	}
 	return strings.TrimSpace(string(b))
 }
 func TestCLICommittedConflictAndWIP(t *testing.T) {

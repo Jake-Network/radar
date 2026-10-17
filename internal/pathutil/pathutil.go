@@ -56,29 +56,41 @@ func ResolveInside(root, rel string) (string, error) {
 // StatePath returns a location for Radar-owned state below root. It never
 // follows a symlink in any existing component, so state cannot be redirected.
 func StatePath(root, rel string) (string, error) {
+	candidate, _, err := StatePathInfo(root, rel)
+	return candidate, err
+}
+
+// StatePathInfo validates every existing component and also returns the leaf
+// metadata already read during validation. A missing leaf has nil metadata.
+func StatePathInfo(root, rel string) (string, os.FileInfo, error) {
 	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("expected repository-relative path")
+		return "", nil, fmt.Errorf("expected repository-relative path")
 	}
 	candidate := filepath.Join(root, filepath.Clean(rel))
 	if !inside(root, candidate) {
-		return "", fmt.Errorf("path escapes repository: %q", rel)
+		return "", nil, fmt.Errorf("path escapes repository: %q", rel)
 	}
 	r, _ := filepath.Rel(root, candidate)
 	cur := root
-	for _, part := range strings.Split(r, string(filepath.Separator)) {
+	var leaf os.FileInfo
+	parts := strings.Split(r, string(filepath.Separator))
+	for i, part := range parts {
 		cur = filepath.Join(cur, part)
 		st, e := os.Lstat(cur)
 		if os.IsNotExist(e) {
 			continue
 		}
 		if e != nil {
-			return "", e
+			return "", nil, e
+		}
+		if i == len(parts)-1 {
+			leaf = st
 		}
 		if st.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("refusing symlink in state path: %q", cur)
+			return "", nil, fmt.Errorf("refusing symlink in state path: %q", cur)
 		}
 	}
-	return candidate, nil
+	return candidate, leaf, nil
 }
 
 func inside(root, candidate string) bool {

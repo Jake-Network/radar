@@ -17,7 +17,11 @@ type Diagnosis struct {
 	// (an import or #include failed: a dependency absent from this
 	// environment, or a module or header a branch renamed or removed) or
 	// build_failed (the compiler rejected repository source; Name is the
-	// undefined symbol or the file).
+	// undefined symbol or the file), or python_import_unverified (first-party
+	// Python imports are external or could not be verified, or the
+	// interpreter can load modules from outside the candidate; Name is the
+	// package, module or distribution, sys.path or sys.meta_path, or python
+	// when the interpreter or probe could not be established).
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Message string `json:"message"`
@@ -26,7 +30,7 @@ type Diagnosis struct {
 // Environment reports whether the diagnosis is about the machine running the
 // command rather than about the combined source.
 func (d *Diagnosis) Environment() bool {
-	return d != nil && (d.Kind == "runner_missing" || d.Kind == "command_missing")
+	return d != nil && (d.Kind == "runner_missing" || d.Kind == "command_missing" || d.Kind == "python_import_unverified")
 }
 
 var (

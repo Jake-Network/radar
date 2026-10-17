@@ -78,11 +78,62 @@ The hook builds a private saved-change candidate. It runs no repository tests,
 hooks or dependency installation, fetches nothing and changes no source branch.
 
 Supported static failures return Stop JSON requesting investigation and repair.
+Committed textual conflicts produce an informational `systemMessage`: restack or
+reconcile those branches before landing. New conflict hunks introduced by saved changes still block, including additional
+hunks in an already conflicted file. Marker labels and unrelated context edits
+do not count as new hunks. Binary conflicts compare unmerged index blob IDs. Other supported failures, including committed migration
+heads, remain repairable in the current branch and still block.
+If an earlier merge stops before a later input is inspected, the hook reports
+that scope as NOT VERIFIED; it cannot claim the saved changes introduced no conflict.
+Known new dirty conflict hunks still block even when a later input is unchecked.
+With inherited conflicts, Radar separately checks the current saved snapshot
+against its own HEAD for repairable failures; this does not verify the combined tree.
+
+The current selected preview runs before peer inspection and is cached separately.
+Peer selection prioritizes shared paths, imports in both directions, declared
+contracts, migration histories, unique rules and supported route relationships.
+Unresolved or omitted peers remain NOT VERIFIED. Detached peers are excluded by
+default. A peer at base whose saved snapshot has no changes adds nothing to the
+combination and is counted as unchanged, not NOT VERIFIED. The check uses the
+same saved snapshot as pair analysis, not Git diff alone: a different HEAD,
+sparse, assume-unchanged or unmerged index entries, exec-bit changes hidden by
+`core.fileMode=false`, or an unsupported snapshot keep the peer NOT VERIFIED.
+This confirmation runs after related pairs, with the remaining peer budget;
+peers it cannot confirm before the deadline also remain NOT VERIFIED.
+Completed pair comparisons are cached independently; partial calls can resume
+remaining pairs and rotate expensive work rather than restarting at the same
+peer. Incomplete standalone or dirty baselines cannot establish new drift.
+The default 20-second budget reserves its final two seconds for revalidation and
+response. A peer deadline preserves completed self findings.
+
+For measurements add `--json` to the native command. The optional `radar` object
+reports `stages_ms`, `self`, and peer total/candidate/checked/reused/omitted/unchanged counts.
+The native response without this flag retains `decision`, `reason` and
+`systemMessage`, and protocol responses exit zero. A completed self preview is
+not verification of unexamined peers.
+
+Unchanged previews reuse the last result for that worktree. The key includes
+HEAD, base and selected commits, saved content and index digests, configuration,
+Radar version and Go linker build identity, read from bounded executable metadata.
+Changes invalidate it; malformed cache
+records are ignored. Cache files use the existing run/coverage state directory
+(`RADAR_STATE_DIR`, otherwise the user cache directory's `radar/hook-previews`),
+so an uninitialized checkout does not acquire untracked cache inputs. Cached
+previews remain static checks and never count as test evidence.
 One hook-induced continuation is allowed: when `stop_hook_active` is true, Radar
 skips the check to prevent a loop. **After repair, explicitly rerun Radar**;
 the continuation does not automatically validate the fix. For saved previews,
 use `radar watch --include-dirty` with the same base and branch scope;
 after committing, use `radar gate` with that scope.
+
+Cross-worktree drift is computed from peer saved snapshots. Only drift newly
+introduced by the current worktree's saved changes blocks Stop; pre-existing
+peer drift produces an informational `systemMessage`. The cache also binds peer
+state, so another agent's saved changes invalidate the preview. A bounded syntax
+cache reuses unchanged parses while import resolution and manifests are checked
+again; cache hits never become test evidence. Stop checks only current-to-peer
+pairs (at most 11); full overlap scans inspect at most 66 pairs. Larger sets
+retain the ordinary preview and explicitly report omitted pair scope as unverified.
 
 Unknown or incomplete results remain informational. A successful static check
 does not prove runtime compatibility; final reports must list remaining gaps.
@@ -95,6 +146,8 @@ Use one branch/worktree per agent, then check the exact branches to combine:
 ```sh
 radar doctor
 radar gate api client --base main
+radar land api client --base main
+radar gate --base main --overlap --json
 radar gate api client --base main --run
 ```
 
@@ -106,8 +159,22 @@ cannot substitute for verification of final commits.
 
 When a finding appears, inspect its remediation and named files, repair, commit
 and rerun the same command. Attribution is an investigation lead, not proof of
-blame. Diagnostic reruns default to zero; opt in with `--run --attribution-runs 8`.
+blame. Failed commands automatically receive one budgeted base comparison; base-existing
+failures leave verification incomplete and have no branch lead. Optional subset
+diagnostic reruns default to zero; opt in with `--run --attribution-runs 8`.
 Never remove tests, contracts or plan criteria to make a result pass.
+
+Use `radar land A B --conflict-brief --json` or MCP
+`radar_conflict_brief` to hand committed conflict excerpts and inferred test
+links to the repairing agent. A brief does not prove coverage. The CLI alone
+can explicitly authorize a named installed driver or publish a private
+integration ref with `--apply`; MCP does neither. Review the printed
+fast-forward command before changing the intended base.
+
+A passing `radar gate --trailer` records an immutable historical report and
+prints a commit trailer; `radar show RUN-ID` reads it from local state.
+The trailer is a digest-bound declaration, not authentication or verification
+of the commit that later contains it. See [Usage](USAGE.md#recording-a-verified-run).
 
 ## Reading results and agent access
 
@@ -146,7 +213,20 @@ For project-local removal, delete only Radar's Stop handler from
 `.claude/settings.json` or `.codex/hooks.json`, preserving other handlers and
 settings. Native plugins can also be disabled in the agent's plugin browser.
 Package tests validate wiring; `scripts/agent-hooks-test.py` exercises hook
-behavior against a built binary. The opt-in native smoke needs both agent CLIs,
-uses temporary configuration homes and checks the continuation guard. These
-checks do not prove an authenticated model session or activation after trust
-review.
+behavior against a built binary. The opt-in native smoke needs both agent CLIs
+and uses temporary configuration homes with credential environment variables
+removed.
+It checks installed skill bytes against the canonical source and verifies native
+discovery through Codex app-server `skills/list` and Claude's SDK initialization
+command list. No user message or model turn is sent. With `--radar`, it also
+checks the installed Stop adapter's continuation guard.
+
+Codex `hooks/list` is reported separately: discovering a hook does not prove
+activation. The Codex package follows the [native hook manifest format](https://learn.chatgpt.com/docs/hooks#plugin-bundled-hooks)
+in `.codex-plugin/plugin.json`; in Codex 0.162.1,
+a root universal `plugin.json` takes precedence and does not expose its bundled
+hooks. In the Linux check, the native manifest returned the enabled `radar:radar`
+skill and Stop hook with plugin origin and `trustStatus=untrusted`. No hook trust
+was changed. Claude Code 2.1.301 returned `radar:radar` during local SDK
+initialization. These checks do not prove a model selected the skill or an
+agent host ran Stop after trust review.

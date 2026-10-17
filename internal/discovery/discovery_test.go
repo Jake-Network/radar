@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,13 +164,13 @@ func TestProposedPointerEscaping(t *testing.T) {
 }
 
 func TestInitializerAndImportMustBeActualSyntax(t *testing.T) {
-	for _, source := range []string{
+	for i, source := range []string{
 		"import type { User } from './types';\nconst user: User = \"fetch('/users').json()\";\nconsole.log(user.email);\n",
 		"import type { User } from './types';\nconst user: User = unrelated(/* fetch('/users').json() */);\nconsole.log(user.email);\n",
 		"import type { User } from './types';\nconst user: User = await other(fetch('/users')).json();\nconsole.log(user.email);\n",
 		"import type { Other } from './types'; // import type { User } from './types';\nconst user: User = await (await fetch('/users')).json();\nconsole.log(user.email);\n",
 	} {
-		t.Run(source, func(t *testing.T) {
+		t.Run(fmt.Sprintf("syntax_%d", i), func(t *testing.T) {
 			root := fixture(t)
 			write(t, root, "client.ts", source)
 			r, e := Discover(context.Background(), root, "WORKTREE")

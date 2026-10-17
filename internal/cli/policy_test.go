@@ -30,8 +30,9 @@ func TestMergePolicyPassFailAndEnvironmentError(t *testing.T) {
 	put(t, root, "test_real.py", "import unittest\nclass Case(unittest.TestCase):\n def test_real(self): self.assertEqual(1+1,2)\n")
 	gitTest(t, root, "add", ".")
 	gitTest(t, root, "commit", "-qm", "base")
+	gitTest(t, root, "branch", "baseline")
 	put(t, root, ".radar/policy.json", `{"version":1,"require":["textual_merge","no_breaking_contracts","integration_execution"]}`)
-	prefix := []string{"merge-check", "--base", "HEAD", "--branches", "HEAD", "--policy", ".radar/policy.json"}
+	prefix := []string{"merge-check", "--base", "baseline", "--branches", "HEAD", "--policy", ".radar/policy.json"}
 	r := invoke(t, root, 1, prefix...)
 	if r["gate"].(map[string]any)["verdict"] != "blocked" {
 		t.Fatal(r)

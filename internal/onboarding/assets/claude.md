@@ -24,7 +24,10 @@ Repair findings on the branch named in `attribution`, commit, and rerun the
 gate; results for individual branches never prove the combination works. After
 `--run`, an `attribution` whose `basis` starts with `observed` comes from
 rerunning the failed test on fewer branches; `inferred` comes from imports.
-Gate and watch default to zero diagnostic reruns. After execution is authorized,
+Gate and watch default to zero optional subset diagnostic reruns. Failed commands automatically
+receive one budgeted base comparison; base-existing cases are not branch leads,
+and all-base failures leave verification incomplete. Inspect `base_comparison`
+without treating its base execution as candidate proof. After execution is authorized,
 opt in with `--run --attribution-runs 8` for diagnostic subset observations.
 
 Reading the result: `gate.verdict` is `pass`, `fail`, `blocked` or `error`
@@ -203,6 +206,12 @@ covers only the checks and supported scope listed in the report.
 
 `.radar/runners.json` declares runner prefixes and setup argv; only explicit
 execution opt-in can run them. Dependency cache hits are not test evidence.
+For a directly launched Python interpreter, pytest or `uv run`, imports that can
+come from outside the candidate (editable installs, import paths, import hooks,
+local-path installs of another checkout, or an installed copy of a repository
+project not built from the candidate) produce environment diagnostics, not test
+evidence or branch leads. Known launchers such as `poetry run` are unverified. Follow the repair hint to create a
+candidate-local environment with runner prefix/setup, or deactivate the external one.
 `.radar/generated.json` declares sources, outputs and generator argv. Static
 observations are warnings; --run regenerates in a separate private copy.
 Contract bindings may declare `generate` argv, also execution-only. Generated
@@ -211,3 +220,26 @@ Protobuf and GraphQL checks support a bounded literal subset; unsupported gramma
 cannot establish compatibility. `--observe-coverage` requires execution opt-in;
 fresh observed file relationships supplement static selection, and stale or
 unrelated baseline records do not count as coverage.
+
+## Landing, saved drift and retained proof
+
+For parallel work, `radar_land` (`radar gate --landing --json`) gives a bounded
+pair matrix and ancestry-aware landing estimate. It is not N-way or runtime
+proof. `radar_conflict_brief` reads bounded committed hunks with inferred symbol
+and related-test links; repair in your branch, then rerun the full gate.
+`radar_overlap` (`radar gate --overlap --json`) inspects saved peer drift before
+editing a symbol; it is a query, not a lock. No findings does not prove complete
+compatibility. The Stop hook warns about inherited textual conflicts and still
+checks current saved changes for repairable static failures. Static MCP tools cannot authorize merge
+drivers, repository execution, or `land --apply` private-ref publication.
+For an authorized `land --apply`, inspect `landing_apply.published` and its
+`reason`. `objects_imported` records immutable object import, which may complete
+even when no ref is published; it does not mean a user branch changed.
+
+When the user requests a commit, a passing `radar gate --trailer` can supply the
+exact `Radar-Verified:` trailer to preserve in its message. Never invent one,
+attach a failed/blocked run, or imply tests ran for a static-only result.
+`radar show RUN-ID` replays historical candidate evidence, not today's HEAD.
+Only use `--run` when repository execution has already been authorized within
+the current scope; otherwise obtain that authorization first. Preserve existing
+authorization and constraints rather than asking again for the same execution.

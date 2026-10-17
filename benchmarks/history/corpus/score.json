@@ -1,0 +1,156 @@
+{
+  "cases": 60,
+  "dataset_digest": "cd865e0e7336630ac93e21a2c3457277b388333c81eddd7048121b58219a36df",
+  "label_counts": {
+    "broken": 0,
+    "clean": 0,
+    "unknown": 0,
+    "unlabeled": 60
+  },
+  "schema_version": 1,
+  "target_cases": 60,
+  "tools": {
+    "radar": {
+      "causes": {
+        "contract": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "generated": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "lockfile": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "migration": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "other": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "route": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "runtime": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "symbol": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "textual": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        },
+        "unique_key": {
+          "available": 0,
+          "detected": 0,
+          "false_positives": [],
+          "labeled_positives": 0,
+          "missed": [],
+          "negative_available": 0,
+          "recall": null,
+          "recall_lower_bound": null,
+          "recall_scope": "available adjudicated positives only",
+          "unavailable": 0
+        }
+      },
+      "clean_available": 0,
+      "false_positive_rate": null,
+      "false_positives": [],
+      "unavailable": [
+        "8fbfd09b02d0290bb20aa96c3c1336188317c25b905a44c663aef713e1b4a3cf",
+        "e356adc8c9db38791d17c2e7fcaea1c2980537f5a3da126983df38a70c249e89",
+        "fa7c98d64178b975882757002038842088c9a49803b8b9cdabf6284116cc53a0",
+        "266f431e08a69963c80f3820c2dadbb1eeb437b5d09d35b786a8c8c0fb089c07",
+        "c23619953cdec1d232bfa524fd3fdb3743c376440e317a8b241c8bad2e4078ee",
+        "70e1792a190e470f8eeb1b1e3b4a8e57f4fdd1c97c646e505027b569b00ec4a0",
+        "0a896e79953a7864196bfa05b6475eb9cc7e067e327de86a34f02799720bb3fd",
+        "9515be58ae528db522e81857ebff520de87a7aa69427b982259c5a0fc7877c93",
+        "bbf4050fc389b9e8366037de490d956686c12225095c94fd84673682da82e3ea",
+        "ccd702737ee260f5138388c6bcc0e6eb3591306004e73f2e94134c5251fb9534",
+        "e466e79f7b60d496e516b64a0ccb2151fba5c6d20bffe44d5a1c7ba93578dc0b",
+        "38a3e064ec26465411619d947a492e4961d6aa82a3dbcd522a2cbeee8048ca2c",
+        "0bf90a67e9881c4876acda467896fefdf6009b0666590b9ee588c44e3ecf184c"
+      ]
+    }
+  }
+}

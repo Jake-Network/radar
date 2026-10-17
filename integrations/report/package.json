@@ -1,0 +1,23 @@
+{
+  "name": "@radar/report",
+  "version": "0.1.0",
+  "description": "Dependency-free Radar v1 report types and accessible summary component",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test.mjs",
+    "typecheck": "tsc --strict --noEmit --target ES2022 --lib ES2022,DOM --module ESNext --moduleResolution Bundler test-types.ts"
+  },
+  "license": "MIT"
+}

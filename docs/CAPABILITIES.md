@@ -153,6 +153,35 @@ declared with `junit`: one file, or a directory of `TEST-*.xml` files.
 Inventory, selection and result interpretation are described in
 [verification](VERIFICATION.md#test-selection).
 
+## Parallel work and landing
+
+`land` reuses supported static checks for pair conflicts and ancestry-aware
+ordering. Its rebase count is an estimate, not observed workflow performance.
+Pair bounds and unsupported relationships remain unknown. Conflict briefs expose
+bounded committed hunks, inferred symbol/test links and reproduction arguments;
+they do not establish coverage. Explicit CLI opt-in can run an installed
+`mergiraf`/`weave` in private state or publish `refs/radar/integration/*` after
+complete-candidate static verification. User branch movement remains explicit.
+
+`watch --include-dirty`, `gate --overlap` and Stop hooks inspect saved peer
+worktree drift. These are static repair leads, not a lock or runtime guarantee.
+The hook only blocks new drift caused by the current worktree's saved changes;
+pre-existing textual conflicts/drift are informational. Doctor's bounded local
+resource advisories compare literals privately, keep distinct values in separate
+worktree groups, and leave expressions unknown.
+
+Passing gate trailers refer to immutable local historical reports; `show` does
+not revalidate current commits or authenticate a signer. Actions check runs and
+report rendering are described in the [integration](../integrations/github-actions/README.md)
+and [report package](../integrations/report/README.md) guides.
+
+Explicit `index --scip ... --scip-binding ...` adds producer-asserted occurrences
+after checking revision, index digest and every indexed source digest. It does
+not run a compiler, authenticate the producer or replace candidate analysis.
+A bounded content-based syntax cache reuses unchanged parsing; import resolution,
+manifest reads and diagnostics are recomputed. This is not incremental updating
+of the entire dependency graph. See [Usage](USAGE.md#external-scip-input).
+
 ## Plans
 
 Plans hold requirements, decisions, constraints, contract and graph deltas,
@@ -163,23 +192,44 @@ property is there and nothing more.
 
 ## Not supported
 
-- compiler-backed semantics or SCIP ingestion
-- incremental indexing
-- Windows binaries (Git defaults such as `core.autocrlf` are not handled yet)
+- built-in compiler/type-checker execution
+- incremental updating of the entire dependency graph
+- published Windows binaries (native qualification jobs are configured, not demonstrated by local Linux checks)
 - release signing or notarization
 - an OS sandbox for executed tests
 - automatic dependency installation or `git fetch`
 
 ## Future work
 
-Unscheduled priorities: Windows Git defaults and native binaries;
-cross-repository candidate test scenarios and pinned CI workspace inputs;
-TypeScript project references and package-based `extends`; symbol-level Python
-imports; Java endpoint discovery; configuration-aware C/C++ includes and
-per-test CTest selection; compiler-backed semantics and incremental indexing;
-signed releases and OS-level test isolation. Each needs reproducible positive
-and negative fixtures before it becomes a capability. Agent orchestration,
-dependency installation and automatic remote fetching remain out of scope.
+Cross-repository runtime scenarios, TypeScript project references and package-based
+`extends`, symbol-level Python imports, Java endpoint discovery,
+configuration-aware C/C++ includes and per-test CTest selection remain future
+work. Task-footprint Split prediction is conditional on interviews or observed
+drift showing a useful prediction opportunity; no new predictive command is
+implemented. A hosted GitHub App is conditional on self-host adoption and is not
+implemented. Agent orchestration, dependency installation and automatic remote
+fetching remain out of scope.
 
 
 Configuration examples are in [Usage](USAGE.md#advanced-configuration).
+
+### Proposed release sequence
+
+This table describes follow-up work and acceptance targets, not shipped commands
+or a release schedule. Phase 0 stabilizes existing behavior for 0.3.0; publication
+still requires the native CI, benchmark and installation evidence in the release
+guide. Retracted 0.4.0/0.4.1 versions must not be reused.
+
+| Phase / target | Dependency and proposed work | Completion evidence |
+| --- | --- | --- |
+| 1 — Land / 0.4.2 | Phase 0 landing scope and restack classification; chain restack guidance and hunk-related tests. | Deterministic independent, pair-conflict, migration-chain and base-conflict fixtures; installed mergiraf/weave qualification. Rebase remains advice. |
+| 2 — Work / 0.5.0 | Hook stage measurements; incrementally update syntax, affected nodes/edges and imports; lightweight post-tool textual checks. | Saved changes reach watch drift within 5 seconds; a cold 1600-file, 12-worktree hook responds within its 20-second budget on a stated machine. |
+| 3 — Prove / 0.6.0 | Stable candidate evidence; real GitHub checks, required-check configuration and FE/BE static contract pairs. | Check attached to exact SHA; stale, excluded-input and other-candidate evidence rejected; blocked required checks prevent merge. |
+| 4 — Queue / 0.7.0 | Prove check publication; trusted `merge_group: checks_requested` helper and separate execution argv/policy requirements. | Publish to the group SHA; after removing a failing PR rerun the entire remaining combination before showing subset PASS. |
+| 5 — Split / conditional | Interviews and observed drift establish a useful prediction opportunity; task/AGENTS footprints and imports suggest parallel work. | Reproducible useful predictions with counterexamples; inferred suggestions never become compatibility evidence. |
+| 6 — ongoing foundation | Detector contribution rules, TS monorepo fixtures, opt-in SCIP, large-repository limits and native CI. | Every detector has positive and benign fixtures; Windows distribution follows native release qualification. |
+
+Queue must define deduplication of repeated attempts and avoid assigning a combined
+failure to every individual PR before implementing its attempt budget. A policy
+file never grants execution permission. GitHub's event contract is documented in
+[the official merge-group reference](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group).

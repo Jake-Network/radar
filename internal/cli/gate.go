@@ -13,6 +13,7 @@ import (
 	"github.com/Jake-Network/radar/internal/gate"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/landing"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/testselection"
 	"github.com/Jake-Network/radar/internal/workspace"
@@ -45,6 +46,11 @@ type gateAttribution struct {
 // gateReport is merge-check's report plus branch attribution and the single
 // next command a person or agent should run.
 type gateReport struct {
+	Landing                 *landing.Report            `json:"landing,omitempty"`
+	ConflictBrief           *landing.ConflictBrief     `json:"conflict_brief,omitempty"`
+	IntegrationRef          *landing.Applied           `json:"integration_ref,omitempty"`
+	LandingApply            *landing.ApplyOutcome      `json:"landing_apply,omitempty"`
+	RunID                   string                     `json:"run_id,omitempty"`
 	WorktreeInspectionError string                     `json:"worktree_inspection_error,omitempty"`
 	Worktrees               []gitrepo.WorktreeStatus   `json:"worktrees"`
 	Configuration           []ConfigurationInput       `json:"configuration_inputs,omitempty"`
@@ -66,6 +72,12 @@ func gateCommand() command {
 		summary:       "Combine branches (default: every worktree branch) and tell whether they integrate; --run also tests the combined tree.",
 		advancedFlags: []string{"only", "replay", "attribution-runs"},
 		flags: func(fs *flag.FlagSet, o *options) {
+			fs.BoolVar(&o.landing, "landing", false, "compute the static pair matrix and landing order")
+			fs.BoolVar(&o.conflictBrief, "conflict-brief", false, "return a static conflict brief for exactly two branches")
+			fs.BoolVar(&o.overlap, "overlap", false, "inspect saved changes across worktrees for supported drift")
+			fs.StringVar(&o.symbol, "symbol", "", "filter --overlap by symbol name")
+			fs.StringVar(&o.file, "file", "", "filter --overlap by repository-relative file")
+			fs.BoolVar(&o.trailer, "trailer", false, "persist a passing gate and emit its Radar-Verified commit trailer")
 			fs.Var(baseFlag{o}, "base", "integration `REF` (default: origin/HEAD's branch, main, master or trunk)")
 			fs.Var(listFlag{&o.with}, "with", "also check the repository at `PATH` in this run (repeatable; relative to the repository root)")
 			fs.BoolVar(&o.again, "again", false, "repeat the previous workspace run's selection on the latest commits")
@@ -83,6 +95,28 @@ func gateCommand() command {
 }
 
 func (a *app) gate(o options) int {
+	if o.overlap {
+		if o.verify || o.trailer || o.landing || o.conflictBrief || o.plan != "" || o.policy != "" || o.suite != "" || o.observeCoverage {
+			return a.fail(errors.New("--overlap is a static query and cannot be combined with execution, plan, policy, trailer or landing options"))
+		}
+		inv, err := a.workspaceInvocation(o)
+		if err != nil {
+			return a.fail(err)
+		}
+		if inv != nil {
+			return a.workspaceOverlap(o, inv)
+		}
+		return a.overlap(o)
+	}
+	if o.landing || o.conflictBrief {
+		return a.land(o)
+	}
+	if o.symbol != "" || o.file != "" {
+		return a.fail(errors.New("--symbol and --file require --overlap"))
+	}
+	if o.trailer && a.machine {
+		return a.fail(errors.New("--trailer emits commit text; omit --json"))
+	}
 	if o.observeCoverage && !o.verify {
 		return a.fail(errors.New("--observe-coverage requires --run"))
 	}
@@ -183,6 +217,9 @@ func (a *app) gate(o options) int {
 		g.Next = strings.TrimSpace("radar gate --run " + rerun)
 	}
 	recordVerdict(a.ctx, r.Gate.Verdict)
+	if o.trailer {
+		return a.emitGateTrailer(g, o.verify)
+	}
 	a.report(g, func(w io.Writer) { renderGate(w, g, o.verify) })
 	if policy != nil || o.verify || configurationUnstable(configuration.Inputs) {
 		return gate.Exit(r.Gate)
@@ -332,20 +369,29 @@ func (g *gateReport) attribute() {
 				paths = append(paths, p, model.PathFromID(p))
 			}
 		}
+		if f.Code == "integration_base_failure" {
+			continue
+		}
 		if f.Code == "integration_textual_conflict" {
 			paths = append(paths, r.Conflicts...)
 		}
 		if strings.HasPrefix(f.Code, "integration_execution_") {
+			// Missing or inconclusive execution does not establish a source
+			// failure, even when the selected tests import a changed file.
+			if f.Code != "integration_execution_failed" {
+				continue
+			}
+			failed := false
 			environment := false
 			for _, ev := range r.Executions {
 				// integration names the command and directory exactly this way.
-				if strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
-					paths = append(paths, testFiles[ev.SelectionID]...)
+				if ev.Status == model.StatusFailed && strings.Contains(f.Explanation, fmt.Sprintf("%q in %q", ev.Command, ev.CWD)) {
+					failed = true
+					paths = append(paths, ev.FailurePaths(testFiles[ev.SelectionID])...)
 					environment = environment || ev.Observation.Diagnosis.Environment()
 				}
 			}
-			// A missing runner says nothing about which branch is at fault.
-			if environment {
+			if !failed || environment {
 				continue
 			}
 			reached := []string{}
@@ -605,20 +651,14 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 	if warnings > 5 {
 		fmt.Fprintf(w, "  … %s; see --json\n", plural(warnings-5, "more warning", "more warnings"))
 	}
-	if !ran && r.VerificationProposal != nil && len(r.VerificationProposal.Commands) > 0 {
-		fmt.Fprintf(w, "\n%s %s\n", p.bold("Suggested tests"), p.dim("(static relationships; not run)"))
-		for i, c := range r.VerificationProposal.Commands {
-			if i == 5 {
-				fmt.Fprintf(w, "  … %d more\n", len(r.VerificationProposal.Commands)-5)
-				break
-			}
-			fmt.Fprintf(w, "  %s  %s\n", p.cyan(displayCommand(c.Command)), p.dim("(in "+c.CWD+")"))
-		}
+	if !ran && r.VerificationProposal != nil {
+		renderSuggestedTests(w, *r.VerificationProposal, r.Changed, p)
 	}
+	renderRunnerPreparationErrors(w, r.RunnerPreparations, "  ", p)
 	if ran && r.Selection != nil {
 		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Tests ("+r.Selection.Mode+"):"), len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 		for _, ev := range r.Executions {
-			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(fmt.Sprintf("(in %s; %s)", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))))
+			fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.IntegrationStatus())), p.cyan(displayCommand(ev.Command)), p.dim(executionDetail(ev)))
 		}
 		renderGaps(w, gateGaps(r), p)
 		fmt.Fprintf(w, "  %s\n", p.dim(fmt.Sprintf("Test files: %d inventoried, %d selected (relationships are not behavioral coverage)", r.Selection.Inventory, r.Selection.TestFiles)))
@@ -814,7 +854,7 @@ func readableExplanation(text string, executions []integration.ExecutionEvidence
 func missingRunner(executions []integration.ExecutionEvidence) string {
 	names := []string{}
 	for _, ev := range executions {
-		if d := ev.Observation.Diagnosis; d.Environment() && !slices.Contains(names, d.Name) {
+		if d := ev.Observation.Diagnosis; d != nil && (d.Kind == "runner_missing" || d.Kind == "command_missing") && !slices.Contains(names, d.Name) {
 			names = append(names, d.Name)
 		}
 	}
@@ -930,6 +970,20 @@ func gateMark(s model.Status) string {
 	return "?"
 }
 
+func executionDetail(ev integration.ExecutionEvidence) string {
+	detail := fmt.Sprintf("in %s; %s", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))
+	if ev.BaseComparison != nil {
+		if unknown := ev.UnidentifiedFailureCount(); unknown > 0 {
+			detail += "; " + plural(unknown, "failure lacks a reliable identity", "failures lack reliable identities") + "; candidate failure retained"
+		} else if ev.BaseComparison.AllExisting {
+			detail += "; already fails on base; integration not verified"
+		} else if n := len(ev.BaseComparison.ExistingCases); n > 0 {
+			detail += fmt.Sprintf("; %d failed cases already fail on base; %d remaining candidate failures", n, len(ev.NewFailedCases()))
+		}
+	}
+	return "(" + detail + ")"
+}
+
 // gateCheckName names a required check for people; IDs stay in --json.
 func gateCheckName(id string) string {
 	switch id {
@@ -987,7 +1041,7 @@ func gateLabel(c gate.Check, r integration.Report) string {
 		if c.ID == "integration_execution" && len(r.Executions) > 0 {
 			failed := 0
 			for _, ev := range r.Executions {
-				if gateMark(ev.Status) == "✗" {
+				if gateMark(ev.IntegrationStatus()) == "✗" {
 					failed++
 				}
 			}
@@ -1006,6 +1060,15 @@ func gateLabel(c gate.Check, r integration.Report) string {
 			return "incomplete — " + strings.Join(gaps, "; ")
 		}
 	case c.ID == "integration_execution" && r.Selection != nil && c.Status == model.StatusIncomplete:
+		existing := 0
+		for _, ev := range r.Executions {
+			if ev.Status == model.StatusFailed && ev.IntegrationStatus() == model.StatusIncomplete {
+				existing++
+			}
+		}
+		if existing > 0 {
+			return fmt.Sprintf("incomplete — %d of %s already fail on base; integration not verified", existing, plural(len(r.Executions), "test command", "test commands"))
+		}
 		return fmt.Sprintf("incomplete — ran %d of %s; required verification has gaps", len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 	}
 	if !ok {

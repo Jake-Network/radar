@@ -135,7 +135,12 @@ func tomlValue(content, table, key string) string {
 	lines := strings.Split(content, "\n")
 	for i, line := range lines {
 		line = strings.TrimSpace(stripManifestComment(line))
-		if strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "[[") {
+		if strings.HasPrefix(line, "[[") {
+			// An array-of-tables entry is never a looked-up table.
+			section = "[["
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
 			section = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(line, "["), "]"))
 			continue
 		}
@@ -156,6 +161,18 @@ func tomlValue(content, table, key string) string {
 	}
 	return ""
 }
+
+// PyProjectName returns the literal [project] (or legacy [tool.poetry]) name
+// of a pyproject.toml, or "" when neither is a literal string.
+func PyProjectName(content []byte) string {
+	for _, table := range []string{"project", "tool.poetry"} {
+		if name := literalScalar(tomlValue(string(content), table, "name")); len(name) == 1 {
+			return name[0]
+		}
+	}
+	return ""
+}
+
 func (r *resolver) workspaceUnknown(p, reason string) {
 	r.workspace.diagnostics = append(r.workspace.diagnostics, model.Diagnostic{Path: p, Severity: model.SeverityWarning, Message: "workspace import resolution unknown: " + reason})
 }

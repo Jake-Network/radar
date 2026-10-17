@@ -1,4 +1,5 @@
 # Copy this file to .github/workflows/radar.yml and the reviewed pr_matrix.py/publish_matrix.py
+# plus report.py/publish_checks.py when enabling check runs
 # to .github/radar/. Set RADAR_REVISION to a reviewed immutable Radar commit.
 # Static inspection is the default. See the adjacent README before execution.
 name: Radar open PR matrix
@@ -9,10 +10,13 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write # Required only for the explicitly enabled publisher below
 
 jobs:
   radar:
+    permissions:
+      contents: read
+      checks: write # Remove when RADAR_PUBLISH_CHECKS is disabled
+      pull-requests: write # Remove when RADAR_PUBLISH_COMMENTS is disabled
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -22,6 +26,7 @@ jobs:
       RADAR_REPOSITORY: ${{ github.repository }}
       RADAR_BASE_REF: ${{ github.event.pull_request.base.ref }}
       RADAR_PUBLISH_COMMENTS: ${{ vars.RADAR_PUBLISH_COMMENTS == 'true' && 'true' || 'false' }}
+      RADAR_PUBLISH_CHECKS: ${{ vars.RADAR_PUBLISH_CHECKS == 'true' && 'true' || 'false' }}
       RADAR_TRUSTED: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'true' || 'false' }}
       RADAR_TRIGGER: ${{ github.event.pull_request.number }}
     steps:
@@ -78,6 +83,14 @@ jobs:
         shell: bash
         run: |
           python3 radar-control/.github/radar/publish_matrix.py \
+            --repo "$RADAR_REPOSITORY" --report "$RUNNER_TEMP/radar-matrix.json"
+      - name: Publish pair checks on both pinned PR heads when enabled
+        if: always() && vars.RADAR_PUBLISH_CHECKS == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 radar-control/.github/radar/publish_checks.py \
             --repo "$RADAR_REPOSITORY" --report "$RUNNER_TEMP/radar-matrix.json"
       - name: Preserve static pair reports
         if: always()

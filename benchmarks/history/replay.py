@@ -38,6 +38,7 @@ FIX = re.compile(r'\b(fix|fixes|fixed|revert|reverts|hotfix|broken|repair|unbrea
 PR_NUMBER = re.compile(r'\(#([1-9][0-9]{0,8})\)\s*$')
 DJANGO_MERGE = re.compile(r'(^|/)migrations/[0-9]+_merge[^/]*\.py$')
 ALEMBIC_MERGE = re.compile(r'^\s*down_revision\s*(?::[^=]*)?=\s*[\(\[]', re.M)
+ERROR_KINDS = ('unsupported_repository_layout', 'radar_error_response', 'invalid_json_response', 'timeout')
 CAUSES = ('symbol', 'migration', 'lockfile', 'generated', 'route', 'runtime', 'other', 'none')
 
 
@@ -152,6 +153,19 @@ def mine(repo, base, since=None, limit=200, window_hours=48):
 
 def replay(candidates, repo, radar, timeout=300):
     repo = pathlib.Path(repo).resolve()
+    # Candidate files are data: a forged branch such as --run must never become
+    # an execution flag. Mining always emits full immutable commit hashes.
+    commit_hash = re.compile(r'(?:[0-9a-f]{40}|[0-9a-f]{64})\Z')
+    refs = [candidates['repository']['base_sha']]
+    for candidate in candidates['candidates']:
+        if len(candidate['branches']) != 2:
+            raise ValueError('history replay requires exactly two pinned branches')
+        refs.extend([candidate['base'], *candidate['branches']])
+    if any(not isinstance(ref, str) or not commit_hash.fullmatch(ref) for ref in refs):
+        raise ValueError('history replay inputs must be full immutable commit hashes')
+    actual_roots = sorted(git(repo, 'rev-list', '--max-parents=0', candidates['repository']['base_sha']).split())
+    if actual_roots != candidates['repository']['identity']:
+        raise ValueError('replay clone identity does not match mined repository')
     rows = []
     with tempfile.TemporaryDirectory(prefix='radar-history-') as tmp:
         # Run a private copy so a rebuild mid-run cannot mix binaries.
@@ -170,13 +184,20 @@ def replay(candidates, repo, radar, timeout=300):
             except subprocess.TimeoutExpired:
                 code, out, err = None, '', 'timeout'
             seconds = round(time.monotonic() - started, 3)
-            row = {'id': c['id'], 'suspect': c['suspect'], 'exit_code': code, 'seconds': seconds}
+            row = {'id': c['id'], 'base': c['base'], 'branches': c['branches'],
+                   'suspect': c['suspect'], 'exit_code': code, 'seconds': seconds}
             try:
                 report = json.loads(out)
             except json.JSONDecodeError:
                 report = None
-            if report is None or 'gate' not in report:
-                row.update(verdict='error', error=(err.strip().splitlines() or ['no JSON report'])[-1][:300], checks={}, problems=[])
+            if not isinstance(report, dict) or 'gate' not in report:
+                error_kind = 'timeout' if code is None else 'invalid_json_response'
+                if isinstance(report, dict) and report.get('status') == 'error':
+                    message = str(report.get('error', ''))
+                    error_kind = ('unsupported_repository_layout' if 'preview refuses symlink or submodule:' in message
+                                  else 'radar_error_response')
+                row.update(verdict='error', error=error_kind, error_kind=error_kind,
+                           response_digest=hashlib.sha256(out.encode()).hexdigest(), checks={}, problems=[])
             else:
                 row.update(verdict=report['gate']['verdict'],
                            checks={x['id']: x['status'] for x in report['gate'].get('required_checks', [])},
@@ -194,7 +215,10 @@ def load_labels(path):
             cause = (row.get('cause') or '').strip()
             if cause not in CAUSES:
                 raise ValueError('unknown cause %r for %s; use one of %s' % (cause, row.get('id'), ', '.join(CAUSES)))
-            labels[row['id'].strip()] = cause
+            case_id = row['id'].strip()
+            if not case_id or case_id in labels:
+                raise ValueError('empty or duplicate label id: %r' % case_id)
+            labels[case_id] = cause
     return labels
 
 

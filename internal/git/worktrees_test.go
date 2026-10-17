@@ -193,7 +193,7 @@ func TestInspectWorktreesRetainsListingOrderAndDirtyCategories(t *testing.T) {
 	var expected []string
 	for _, field := range strings.Split(string(listing), "\x00") {
 		if path, ok := strings.CutPrefix(field, "worktree "); ok {
-			expected = append(expected, path)
+			expected = append(expected, filepath.Clean(filepath.FromSlash(path)))
 		}
 	}
 	for range 3 {

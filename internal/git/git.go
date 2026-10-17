@@ -451,9 +451,15 @@ type TreeEntry struct {
 }
 
 func Entries(ctx context.Context, root, ref string) ([]TreeEntry, error) {
+	if entries, ok := cachedTree(ctx, root, ref); ok {
+		return entries, nil
+	}
 	sha, err := Resolve(ctx, root, ref)
 	if err != nil {
 		return nil, err
+	}
+	if entries, ok := cachedTree(ctx, root, sha); ok {
+		return entries, nil
 	}
 	b, err := runListing(ctx, root, "ls-tree", "-r", "-l", "-z", sha)
 	if err != nil {
@@ -478,6 +484,7 @@ func Entries(ctx context.Context, root, ref string) ([]TreeEntry, error) {
 		}
 		entries = append(entries, TreeEntry{Path: parts[1], Mode: fields[0], Type: fields[1], OID: fields[2], Size: size})
 	}
+	cacheTree(ctx, root, sha, entries)
 	return entries, nil
 }
 
@@ -534,46 +541,65 @@ func OpenBlobReader(ctx context.Context, root string) (*BlobReader, error) {
 // Read returns a blob's content. Blobs above limit are skipped and reported
 // with ErrBlobTooLarge without loading them into memory.
 func (r *BlobReader) Read(oid string, limit int64) ([]byte, error) {
+	var content []byte
+	err := r.Stream(oid, func(size int64, source io.Reader) error {
+		if size > limit {
+			return ErrBlobTooLarge
+		}
+		var err error
+		content, err = io.ReadAll(source)
+		return err
+	})
+	return content, err
+}
+
+// Stream visits an immutable blob without allocating its full contents. The
+// callback must not retain source or call this reader recursively. Unconsumed
+// bytes are drained before another request is accepted, including on errors.
+func (r *BlobReader) Stream(oid string, visit func(int64, io.Reader) error) error {
 	if err := validOID(oid); err != nil {
-		return nil, err
+		return err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, err := io.WriteString(r.stdin, oid+"\n"); err != nil {
-		return nil, fmt.Errorf("git cat-file: %w: %s", err, strings.TrimSpace(r.errout.String()))
+		return fmt.Errorf("git cat-file: %w: %s", err, strings.TrimSpace(r.errout.String()))
 	}
 	header, err := r.stdout.ReadString('\n')
 	if err != nil {
-		return nil, fmt.Errorf("git cat-file: %w", err)
+		return fmt.Errorf("git cat-file: %w", err)
 	}
 	fields := strings.Fields(header)
 	if len(fields) == 2 && fields[1] == "missing" {
-		return nil, fmt.Errorf("Git object %s: %w", oid, os.ErrNotExist)
+		return fmt.Errorf("Git object %s: %w", oid, os.ErrNotExist)
 	}
 	if len(fields) != 3 {
-		return nil, errors.New("malformed git cat-file header")
+		return errors.New("malformed git cat-file header")
 	}
 	size, err := strconv.ParseInt(fields[2], 10, 64)
 	if err != nil || size < 0 {
-		return nil, errors.New("malformed git cat-file size")
+		return errors.New("malformed git cat-file size")
 	}
+	source := &io.LimitedReader{R: r.stdout, N: size}
 	if fields[1] != "blob" {
-		if _, err = r.stdout.Discard(int(size) + 1); err != nil {
-			return nil, err
-		}
-		return nil, errors.New("Git object is not a blob")
+		err = errors.New("Git object is not a blob")
+	} else {
+		err = visit(size, source)
 	}
-	if size > limit {
-		if _, err = r.stdout.Discard(int(size) + 1); err != nil {
-			return nil, err
-		}
-		return nil, ErrBlobTooLarge
+	if _, drainErr := io.Copy(io.Discard, source); drainErr != nil {
+		return drainErr
 	}
-	content := make([]byte, size+1)
-	if _, err = io.ReadFull(r.stdout, content); err != nil {
-		return nil, err
+	if source.N != 0 {
+		return io.ErrUnexpectedEOF
 	}
-	return content[:size], nil
+	delimiter, readErr := r.stdout.ReadByte()
+	if readErr != nil {
+		return readErr
+	}
+	if delimiter != '\n' {
+		return errors.New("malformed git cat-file delimiter")
+	}
+	return err
 }
 
 // Close stops the batch process.

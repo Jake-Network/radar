@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Jake-Network/radar/internal/graph"
 )
 
 func write(t *testing.T, root, path, content string) {
@@ -110,6 +112,38 @@ func BenchmarkOrganizationFixture(b *testing.B) {
 		}
 		if len(s.Nodes) < 20 {
 			b.Fatal("fixture not indexed")
+		}
+	}
+}
+
+func TestRepeatedPythonImportProducesValidGraphAndDependency(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "app.py", "import helper, os, helper as alternate, helper\nimport helper\n")
+	write(t, root, "helper.py", "VALUE = 1\n")
+	cache := NewParseCache()
+	for _, revision := range []string{"cold", "warm"} {
+		provider, err := NewWorktree(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := BuildWithCache(context.Background(), "repo", revision, provider, cache)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.New(snapshot); err != nil {
+			t.Fatal("valid repeated imports rejected by graph validation", err)
+		}
+		dependencies, imports := 0, 0
+		for _, edge := range snapshot.Edges {
+			if edge.From == "file:app.py" && edge.To == "file:helper.py" && edge.Kind == "DEPENDS_ON" {
+				dependencies++
+			}
+			if edge.From == "file:app.py" && edge.To == "module:python:helper" && edge.Kind == "IMPORTS" {
+				imports++
+			}
+		}
+		if dependencies != 1 || imports != 2 {
+			t.Fatal("dependency or separate import occurrence lost", dependencies, imports)
 		}
 	}
 }

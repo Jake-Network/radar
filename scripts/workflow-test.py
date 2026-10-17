@@ -27,7 +27,7 @@ def violations(text):
     for action in re.findall(r"^\s*(?:-\s*)?uses:\s*(\S+)", text, re.M):
         if not re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", action):
             errors.append("action must use an immutable SHA: " + action)
-    if not re.search(r"^permissions:\s*\n  contents: read\s*$", text, re.M):
+    if not re.search(r"^permissions:\s*\n(?:  [^\n]+\n)*?  contents: read\s*$", text, re.M):
         errors.append("workflow default token must be read only")
     # Expressions must enter scripts through env, where quotes preserve data.
     in_run = False
@@ -79,6 +79,19 @@ class WorkflowPolicyTests(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, source)
+        macos = source.split("\n  macos-default-tmpdir:\n", 1)[1].split("\n  windows-native:\n", 1)[0]
+        for command in ("release.py", "validate-release.py"):
+            self.assertIn('python3 scripts/' + command + ' "$RUNNER_TEMP/radar-release" 0.0.0-ci', macos)
+
+    def test_native_ci_keeps_default_interpreter_and_parallel_coverage(self):
+        source = (ROOT / WORKFLOWS[0]).read_text()
+        macos = source.split("\n  macos-default-tmpdir:\n", 1)[1].split("\n  windows-native:\n", 1)[0]
+        self.assertNotIn("setup-python", macos)
+        self.assertIn("python3 - <<'PY'", macos)
+        self.assertIn("go test -count=1 -v ./internal/evidence ./internal/git ./internal/integration", macos)
+        windows = source.split("\n  windows-native:\n", 1)[1]
+        self.assertIn("go test -count=1 ./... -timeout 45m", windows)
+        self.assertNotRegex(windows, r"go test[^\n]*\s-p(?:=|\s)")
 
     def test_publication_requires_explicit_manual_request(self):
         source = (ROOT / WORKFLOWS[1]).read_text()
@@ -93,7 +106,7 @@ class WorkflowPolicyTests(unittest.TestCase):
 
     def test_every_native_platform_must_qualify(self):
         source = (ROOT / WORKFLOWS[1]).read_text()
-        for target in ("linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64"):
+        for target in ("linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64", "windows_amd64"):
             self.assertIn("target: " + target, source)
         for required in ("CGO_ENABLED: \"1\"", "go vet ./...", "go test ./...", "go test -race ./...", "scripts/release-test.py", "scripts/validate-release.py", "scripts/install-release-test.ps1", "sha256sum --check"):
             self.assertIn(required, source)
@@ -107,8 +120,10 @@ class WorkflowPolicyTests(unittest.TestCase):
             body = re.split(r"\n  [a-z]+:\n", source.split("\n  " + job + ":\n", 1)[1], maxsplit=1)[0]
             self.assertIn("ref: ${{ needs.resolve.outputs.sha }}", body)
         self.assertIn('test "$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")" = "$SOURCE_SHA"', source)
-        self.assertIn('tmpdir="$(cd "$TMPDIR" && pwd -P)"', source)
-        self.assertLess(source.index("Canonicalize macOS temporary directory"), source.index("Vet and test"))
+        self.assertNotIn("Canonicalize macOS temporary directory", source)
+        ci = (ROOT / WORKFLOWS[0]).read_text()
+        self.assertIn("macos-default-tmpdir:", ci)
+        self.assertIn("git config core.autocrlf true", ci)
 
     def test_source_resolution_uses_existing_tags_and_rejects_untrusted_input(self):
         source = (ROOT / WORKFLOWS[1]).read_text()

@@ -17,7 +17,7 @@ func compactVerification(raw string) string {
 		return compactWorkspace(full)
 	}
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for full provenance and inventory.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"error", "gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error"} {
+	for _, key := range []string{"error", "gate", "status", "base", "base_ref", "head", "candidate_tree", "checks", "coverage", "feedback_digest", "limitations", "attribution", "skipped_branches", "next", "configuration_inputs", "worktree_inspection_error", "landing", "landing_apply", "conflict_brief", "overlap", "drift", "cross_repo_pairs", "run_id"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
@@ -92,6 +92,7 @@ func compactVerification(raw string) string {
 	// An error report has no gate; an empty brief would read like a clean result.
 	if _, failed := full["error"]; !failed {
 		out["agent_brief"] = agentBrief(full)
+		compactRoadmap(out)
 	}
 	for key, limit := range map[string]int{"checks": 20, "coverage": 12, "limitations": 10} {
 		if values, ok := out[key].([]any); ok && len(values) > limit {
@@ -265,7 +266,7 @@ func agentBrief(full map[string]any) map[string]any {
 // command. Full reports stay available with detail=true or CLI --json.
 func compactWorkspace(full map[string]any) string {
 	out := map[string]any{"detail_hint": "Use detail=true or CLI --json for each repository's full report.", "suggested_repair_attempts": 2}
-	for _, key := range []string{"version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "cross_repo", "cross_repo_execution", "again", "replay_of", "digest", "run_id", "record_error", "verdict", "next", "configuration_inputs", "team_file", "excluded_repos"} {
+	for _, key := range []string{"version", "workspace", "scope_source", "scope_summary", "one_off", "only", "repo_count", "branch_count", "cross_repo", "cross_repo_execution", "again", "replay_of", "digest", "run_id", "record_error", "verdict", "next", "configuration_inputs", "team_file", "excluded_repos", "landing", "cross_repo_pairs"} {
 		if v, ok := full[key]; ok {
 			out[key] = v
 		}
@@ -331,9 +332,142 @@ func compactWorkspace(full map[string]any) string {
 		}
 		out["suggested_links"] = suggestions
 	}
+	compactRoadmap(out)
 	data, err := json.Marshal(out)
 	if err != nil {
 		return "{}"
 	}
 	return string(data)
+}
+
+// Compact the potentially quadratic pair evidence without hiding its verdict,
+// analysis completeness or omitted-detail count. The CLI retains all details.
+func compactRoadmap(out map[string]any) {
+	trim := func(value map[string]any) {
+		for _, key := range []string{"pairs", "omitted"} {
+			items, ok := value[key].([]any)
+			if !ok {
+				continue
+			}
+			value[key+"_count"] = len(items)
+			if len(items) > 16 {
+				items = items[:16]
+				value["detail_truncated"] = true
+			}
+			rows := []any{}
+			for _, raw := range items {
+				row, ok := raw.(map[string]any)
+				if !ok {
+					continue
+				}
+				entry := map[string]any{}
+				for _, k := range []string{"left", "right", "status", "explanation", "reason", "resolved_by", "inputs", "conflicts"} {
+					if v, ok := row[k]; ok {
+						if text, ok := v.(string); ok && len(text) > 800 {
+							v = text[:800] + "..."
+						}
+						entry[k] = v
+					}
+				}
+				if f, ok := row["findings"].([]any); ok {
+					entry["finding_count"] = len(f)
+				}
+				rows = append(rows, entry)
+			}
+			value[key] = rows
+		}
+	}
+	if value, ok := out["landing"].(map[string]any); ok {
+		if _, single := value["order"]; single {
+			trim(value)
+		} else {
+			for _, raw := range value {
+				if repo, ok := raw.(map[string]any); ok {
+					trim(repo)
+				}
+			}
+		}
+	}
+	if value, ok := out["cross_repo_pairs"].(map[string]any); ok {
+		trim(value)
+	}
+	if value, ok := out["overlap"].(map[string]any); ok {
+		for _, key := range []string{"drift", "limitations"} {
+			if rows, ok := value[key].([]any); ok && len(rows) > 8 {
+				value[key+"_count"] = len(rows)
+				value[key] = rows[:8]
+			}
+		}
+	}
+	for _, key := range []string{"drift"} {
+		if values, ok := out[key].([]any); ok {
+			out[key+"_count"] = len(values)
+			if len(values) > 8 {
+				out[key] = values[:8]
+			}
+		}
+	}
+}
+
+func compactConflictBrief(raw string) string {
+	var out map[string]any
+	if json.Unmarshal([]byte(compactVerification(raw)), &out) != nil {
+		return raw
+	}
+	brief, ok := out["conflict_brief"].(map[string]any)
+	if !ok {
+		return raw
+	}
+	files, _ := brief["files"].([]any)
+	brief["file_count"] = len(files)
+	if len(files) > 4 {
+		files = files[:4]
+		brief["detail_truncated"] = true
+	}
+	for _, raw := range files {
+		file, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, key := range []string{"base", "left", "right"} {
+			if text, ok := file[key].(string); ok && len(text) > 1024 {
+				file[key] = text[:1024]
+				file["complete"] = false
+				brief["detail_truncated"] = true
+			}
+		}
+		for _, key := range []string{"symbols", "tests"} {
+			if rows, ok := file[key].([]any); ok && len(rows) > 8 {
+				file[key+"_count"] = len(rows)
+				file[key] = rows[:8]
+				brief["detail_truncated"] = true
+			}
+		}
+		hunks, _ := file["hunks"].([]any)
+		if len(hunks) > 2 {
+			file["hunk_count"] = len(hunks)
+			hunks = hunks[:2]
+			file["complete"] = false
+			brief["detail_truncated"] = true
+		}
+		for _, raw := range hunks {
+			if h, ok := raw.(map[string]any); ok {
+				for _, key := range []string{"left", "right"} {
+					if text, ok := h[key].(string); ok && len(text) > 512 {
+						h[key] = text[:512]
+						file["complete"] = false
+						brief["detail_truncated"] = true
+					}
+				}
+			}
+		}
+		file["hunks"] = hunks
+	}
+	brief["files"] = files
+	brief["detail_hint"] = "CLI --json retains bounded 64 KiB source versions; this MCP view truncates excerpts explicitly."
+	b, err := json.Marshal(out)
+	if err != nil {
+		return raw
+	}
+	return string(b)
 }

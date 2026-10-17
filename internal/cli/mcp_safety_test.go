@@ -21,7 +21,7 @@ func TestMCPRejectsWrongArgumentTypes(t *testing.T) {
 
 func TestMCPIntegrationToolsCannotAuthorizeExecutionOrReview(t *testing.T) {
 	for _, tool := range mcpTools {
-		if tool.name != "radar_gate" && tool.name != "radar_merge_check" && tool.name != "radar_check" && tool.name != "radar_contracts_discover" {
+		if tool.name != "radar_gate" && tool.name != "radar_merge_check" && tool.name != "radar_check" && tool.name != "radar_contracts_discover" && tool.name != "radar_land" && tool.name != "radar_conflict_brief" && tool.name != "radar_overlap" && tool.name != "radar_show" {
 			continue
 		}
 		valid := map[string]any{}
@@ -33,7 +33,7 @@ func TestMCPIntegrationToolsCannotAuthorizeExecutionOrReview(t *testing.T) {
 		if _, err := tool.args(valid); err != nil {
 			t.Fatal("valid analysis tool arguments rejected", tool.name, err)
 		}
-		for _, arg := range []string{"run", "verify", "allow_execution", "allow-execution", "observe_coverage", "observe-coverage", "reviewer", "approve"} {
+		for _, arg := range []string{"run", "verify", "allow_execution", "allow-execution", "observe_coverage", "observe-coverage", "reviewer", "approve", "driver", "apply"} {
 			attempted := map[string]any{}
 			for k, v := range valid {
 				attempted[k] = v

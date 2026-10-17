@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -223,8 +224,13 @@ func outcome(timedOut bool, exit int, result harnessResult, exceeded bool, argv 
 }
 
 func execute(ctx context.Context, argv []string, dir string, env []string, out *output) (*os.ProcessState, error) {
+	return executeInput(ctx, argv, dir, env, nil, out)
+}
+
+func executeInput(ctx context.Context, argv []string, dir string, env []string, stdin io.Reader, out *output) (*os.ProcessState, error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	cmd.Stdin = stdin
 	cmd.Env = env
 	configureProcess(cmd)
 	cmd.WaitDelay = time.Second

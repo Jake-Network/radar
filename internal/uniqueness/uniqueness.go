@@ -593,6 +593,13 @@ var pythonRouteSignal = regexp.MustCompile(`(?m)^\s*@\w+(?:\.\w+)*\.(?:get|post|
 var routeCallSignal = regexp.MustCompile(`\.(?:get|post|put|patch|delete|head|options|GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|route)\(`)
 var springRouteSignal = regexp.MustCompile(`@(?:Get|Post|Put|Patch|Delete|Request)Mapping`)
 
+// RouteRelevant reports whether this source participates in the supported route
+// detector. It is a conservative selection signal, never route validity evidence.
+func RouteRelevant(file, source string) bool {
+	signature, composition := routeSignature(file, source)
+	return signature != "" || composition
+}
+
 // routeSignature is a relevance filter, never failure evidence. Keep complete
 // routing/import/composition lines so computed registrations become unknown
 // when changed, while ordinary application configuration edits do no route scan.

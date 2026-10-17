@@ -57,17 +57,63 @@ func TestGateNamesMissingRunnerInsteadOfBlamingBranches(t *testing.T) {
 	}
 }
 
-func TestGateKeepsLeadsForFailedTestsAndAmbiguousImports(t *testing.T) {
-	for _, g := range []gateReport{
-		gateWithExecution(model.StatusFailed, nil),
-		// A module that cannot be imported may be one a branch removed.
-		gateWithExecution(model.StatusError, &evidence.Diagnosis{Kind: "module_missing", Name: "backend", Message: "Python could not import backend"}),
-	} {
-		if len(g.Attribution) != 1 {
-			t.Fatalf("lead dropped: %+v", g.Report.Executions[0].Observation)
-		}
+func TestGateKeepsLeadsOnlyForObservedSourceFailures(t *testing.T) {
+	g := gateWithExecution(model.StatusFailed, nil)
+	if len(g.Attribution) != 1 {
+		t.Fatalf("observed failure lead dropped: %+v", g.Report.Executions[0].Observation)
+	}
+	// A missing module can be environmental; its name alone does not establish
+	// an observed source failure, even when that file changed in a branch.
+	g = gateWithExecution(model.StatusError, &evidence.Diagnosis{Kind: "module_missing", Name: "backend", Message: "Python could not import backend"})
+	if len(g.Attribution) != 0 {
+		t.Fatalf("inconclusive import blamed branch: %+v", g.Attribution)
 	}
 	if got := gateHeadline(gateWithExecution(model.StatusError, nil), true); got != "could not complete: tests (see Problems)" {
 		t.Fatal(got)
+	}
+}
+
+func TestGateExternalPythonImportHasNoLeadOrMissingRunnerClaim(t *testing.T) {
+	g := gateWithExecution(model.StatusError, &evidence.Diagnosis{Kind: "python_import_unverified", Name: "backend", Message: "Python resolves first-party package backend outside the private candidate"})
+	if len(g.Attribution) != 0 {
+		t.Fatalf("external import blamed branch: %+v", g.Attribution)
+	}
+	var out bytes.Buffer
+	renderGate(&out, g, true)
+	text := out.String()
+	if strings.Contains(text, "look at") || strings.Contains(text, "not installed") || !strings.Contains(text, "outside the private candidate") {
+		t.Fatal(text)
+	}
+}
+
+func TestGateMetadataDeadlineReportsUnstartedVerification(t *testing.T) {
+	root, agent := agentRepo(t, map[string]string{
+		"backend.py":      "VALUE = 1\n",
+		"test_backend.py": "import unittest\nfrom backend import VALUE\nclass Backend(unittest.TestCase):\n def test_backend(self): self.assertEqual(VALUE, 1)\n",
+	})
+	agent("agent-backend", map[string]string{"backend.py": "VALUE = 2\n"})
+	report := invoke(t, root, 2, "gate", "--run", "--timeout", "1ns")
+	if report["gate"].(map[string]any)["verdict"] != "error" || report["execution"] != nil || report["executions"] != nil || report["observed_attributions"] != nil {
+		t.Fatal("metadata deadline invented execution or passed the gate", report)
+	}
+	if attribution, ok := report["attribution"].(map[string]any); ok && len(attribution) != 0 {
+		t.Fatal("metadata deadline blamed a branch", attribution)
+	}
+	found := false
+	for _, raw := range report["checks"].([]any) {
+		check := raw.(map[string]any)
+		if check["id"] == "integration_execution" {
+			found = true
+			if check["status"] != "timeout" || check["evidence"] != "unknown" {
+				t.Fatal("unstarted verification claimed observed evidence", check)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing structured timeout check", report)
+	}
+	code, output, _ := run(t, root, "gate", "--run", "--timeout", "1ns")
+	if code != 2 || !strings.Contains(output, "Verification budget expired") || strings.Contains(output, "look at:") || strings.Contains(output, "runner profiles:") {
+		t.Fatal("human output lost metadata timeout scope", code, output)
 	}
 }

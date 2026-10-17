@@ -64,7 +64,7 @@ def archive(stage, output, target, epoch=0):
 
 
 def dependency_notices(stage):
-    data = subprocess.check_output(["go", "list", "-deps", "-json", "./cmd/radar"], cwd=ROOT, text=True)
+    data = subprocess.check_output(["go", "list", "-deps", "-json", "./cmd/radar"], cwd=ROOT, text=True, encoding="utf-8")
     decoder = json.JSONDecoder()
     modules = {}
     while data.strip():
@@ -86,7 +86,7 @@ def dependency_notices(stage):
 
 
 def package(output, version):
-    config = json.loads(subprocess.check_output(["go", "env", "-json", "GOOS", "GOARCH", "CGO_ENABLED"], text=True))
+    config = json.loads(subprocess.check_output(["go", "env", "-json", "GOOS", "GOARCH", "CGO_ENABLED"], text=True, encoding="utf-8"))
     target = config["GOOS"] + "_" + config["GOARCH"]
     if target not in TARGETS or target != host_target() or config["CGO_ENABLED"] != "1":
         raise ValueError("Native supported host with CGO_ENABLED=1 required; host " + host_target() + ", target " + target)
@@ -98,13 +98,15 @@ def package(output, version):
         stage = pathlib.Path(temporary) / ("radar-" + target)
         stage.mkdir()
         binary = stage / ("radar.exe" if target.startswith("windows_") else "radar")
-        flags = "-buildid="
+        # Preserve Go's content-bound build ID for cross-process cache
+        # invalidation. -trimpath still removes checkout-specific paths.
+        flags = ""
         if version:
             flags += " -X github.com/Jake-Network/radar/internal/cli.Version=" + version
         if target.startswith("windows_"):
             flags += " -linkmode external -extldflags=-static"
         subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-ldflags=" + flags, "-o", str(binary), "./cmd/radar"], cwd=ROOT, check=True)
-        actual = subprocess.check_output([str(binary), "version"], text=True).strip()
+        actual = subprocess.check_output([str(binary), "version"], text=True, encoding="utf-8").strip()
         if version and actual != "radar " + version:
             raise ValueError("Packaged executable version mismatch")
         (stage / "VERSION.txt").write_text(actual + "\n", encoding="utf-8")

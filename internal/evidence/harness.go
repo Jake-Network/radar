@@ -81,7 +81,7 @@ func isUnittest(argv []string) bool {
 		return false
 	}
 	name := filepath.Base(argv[0])
-	return (name == "python" || name == "python3") && len(argv) > 2 && argv[1] == "-m" && argv[2] == "unittest"
+	return pythonExecutableName.MatchString(strings.ToLower(name)) && len(argv) > 2 && argv[1] == "-m" && argv[2] == "unittest"
 }
 
 func uses(argv []string, tool string) bool {
@@ -91,6 +91,12 @@ func uses(argv []string, tool string) bool {
 		}
 	}
 	return false
+}
+
+// normalizedHarnessOutput gives counts and failure identities the same view
+// of terminal output; raw bytes remain the input to the evidence digest.
+func normalizedHarnessOutput(data []byte) string {
+	return strings.ReplaceAll(ansi.ReplaceAllString(string(data), ""), "\r\n", "\n")
 }
 
 // harnessCounts recognizes explicit results from supported harnesses, never
@@ -103,7 +109,7 @@ func harnessCounts(argv []string, data []byte, dir string) harnessResult {
 	if len(argv) == 0 || len(argv) < 2 && !buildDriver(argv) && filepath.Base(argv[0]) != "ctest" && !uses(argv, "pytest") && !uses(argv, "py.test") {
 		return harnessResult{}
 	}
-	text := ansi.ReplaceAllString(string(data), "")
+	text := normalizedHarnessOutput(data)
 	name := filepath.Base(argv[0])
 	switch {
 	case buildDriver(argv):
@@ -499,6 +505,7 @@ var missingModule = regexp.MustCompile(`(?m)^(?:E\s+)?ModuleNotFoundError: No mo
 func environmentFailure(argv []string, data []byte) bool {
 	switch {
 	case isUnittest(argv):
+		data = []byte(normalizedHarnessOutput(data))
 		if !dependencyError.Match(data) {
 			return false
 		}
@@ -511,7 +518,7 @@ func environmentFailure(argv []string, data []byte) bool {
 		}
 		return true
 	case uses(argv, "pytest") || uses(argv, "py.test"):
-		text := ansi.ReplaceAllString(string(data), "")
+		text := normalizedHarnessOutput(data)
 		if !missingModule.MatchString(text) {
 			return false
 		}

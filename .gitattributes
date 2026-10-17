@@ -1,0 +1,2 @@
+# Keep public-output fixtures byte-identical in native checkouts.
+internal/cli/testdata/single-repo/*.golden text eol=lf

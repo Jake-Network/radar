@@ -62,7 +62,7 @@ func TestParseTargets(t *testing.T) {
 }
 
 func loc(name string) Location {
-	root := filepath.Join(string(filepath.Separator), "src", name)
+	root, _ := filepath.Abs(filepath.Join(string(filepath.Separator), "src", name))
 	return Location{Root: root, CommonDir: filepath.Join(root, ".git"), MainPath: root}
 }
 
@@ -194,7 +194,8 @@ func TestAddAndRemove(t *testing.T) {
 		}
 	}
 	// Default ID collision requires --id.
-	other := Location{Root: "/x/payments", CommonDir: "/x/payments/.git", MainPath: "/x/payments"}
+	otherRoot := filepath.Join(t.TempDir(), "payments")
+	other := Location{Root: otherRoot, CommonDir: filepath.Join(otherRoot, ".git"), MainPath: otherRoot}
 	if _, err = r.Add(orders, other, "", "", allUsable); err == nil || !strings.Contains(err.Error(), "--id payments_2") {
 		t.Fatal("ID collision", err)
 	}
@@ -202,7 +203,8 @@ func TestAddAndRemove(t *testing.T) {
 		t.Fatal("invalid ID", err)
 	}
 	// A moved repository: same ID, new location.
-	moved := Location{Root: "/moved/payments", CommonDir: "/moved/payments/.git", MainPath: "/moved/payments"}
+	movedRoot := filepath.Join(t.TempDir(), "payments")
+	moved := Location{Root: movedRoot, CommonDir: filepath.Join(movedRoot, ".git"), MainPath: movedRoot}
 	if res, err = r.Add(orders, moved, "payments", "", allUsable); err != nil || res.Updated == nil || res.Updated.Old != payments.MainPath || res.Updated.New != moved.MainPath {
 		t.Fatal("moved with --id", res, err)
 	}
@@ -239,7 +241,7 @@ func TestRegistryConcurrentUpdates(t *testing.T) {
 			defer wg.Done()
 			errs <- Update(dir, func(r *Registry) error {
 				name := fmt.Sprintf("w%02d", i)
-				root := filepath.Join(string(filepath.Separator), "src", name)
+				root, _ := filepath.Abs(filepath.Join(string(filepath.Separator), "src", name))
 				r.Workspaces = append(r.Workspaces, Workspace{Name: name, Repos: []Repo{{ID: name, Path: root, CommonDir: filepath.Join(root, ".git")}}})
 				return nil
 			})

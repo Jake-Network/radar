@@ -193,3 +193,37 @@ func TestLazyAttributionCombinations(t *testing.T) {
 		}
 	}
 }
+
+func TestCompareFailureRequiresCompleteReliableIdentities(t *testing.T) {
+	failed := func(harness string, count int, cases ...string) ExecutionEvidence {
+		return ExecutionEvidence{Status: model.StatusFailed, SourceAfterExecution: "unchanged", Observation: evidence.CandidateObservation{Harness: harness, TestsFailed: count, FailedCases: cases}}
+	}
+	for _, tc := range []struct {
+		name             string
+		original, subset ExecutionEvidence
+		want             string
+	}{
+		{"pytest collection file", failed("pytest", 1, "tests/test_x.py"), failed("pytest", 1, "tests/test_x.py"), SubsetNotComparable},
+		{"historical collection file without count", failed("pytest", 0, "tests/test_x.py"), failed("pytest", 0, "tests/test_x.py"), SubsetNotComparable},
+		{"truncated cases", failed("unittest", 2, "pkg.Cases.test_old"), failed("unittest", 1, "pkg.Cases.test_old"), SubsetNotComparable},
+		{"duplicated cases", failed("unittest", 2, "pkg.Cases.test_old", "pkg.Cases.test_old"), failed("unittest", 1, "pkg.Cases.test_old"), SubsetNotComparable},
+		{"known JUnit case", failed("junit", 1, "Suite.test_old"), failed("junit", 1, "Suite.test_old"), SubsetReproduced},
+		{"known pytest node", failed("pytest", 1, "tests/test_x.py::test_old"), failed("pytest", 1, "tests/test_x.py::test_old"), SubsetReproduced},
+		{"unknown original still permits observed pass", failed("unittest", 2, "pkg.Cases.test_old"), ExecutionEvidence{Status: model.StatusPassed, SourceAfterExecution: "unchanged"}, SubsetPassed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if result, why := compareFailure(tc.original, tc.subset); result != tc.want {
+				t.Fatalf("result=%s want=%s reason=%s", result, tc.want, why)
+			}
+		})
+	}
+	original := failed("junit", 2, "Suite.test_old", "Suite.test_new")
+	original.Observation.Diagnosis = &evidence.Diagnosis{Kind: "build_failed", Name: "Price"}
+	original.Observation.Locations = []model.Provenance{{Path: "source.go", Line: 3}}
+	subset := failed("junit", 1, "Suite.test_old")
+	subset.Observation.Diagnosis = original.Observation.Diagnosis
+	subset.Observation.Locations = original.Observation.Locations
+	if result, _ := compareFailure(original, subset); result != SubsetDifferentFailure {
+		t.Fatal("same build diagnosis hid a missing failed case", result)
+	}
+}

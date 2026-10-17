@@ -2,6 +2,7 @@ package onboarding
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,7 +101,7 @@ func TestRejectSymlinkAndModifiedSkill(t *testing.T) {
 		t.Fatal("symlink accepted")
 	}
 	r = fixtureRoot(t)
-	put(t, r, ".agents/skills/radar-architecture/SKILL.md", "custom")
+	put(t, r, ".agents/skills/radar/SKILL.md", "custom")
 	if _, e := Setup(context.Background(), r, Options{Agent: "codex"}); e == nil {
 		t.Fatal("overwrote custom skill")
 	}
@@ -159,7 +160,7 @@ func TestMalformedAncestorGitMarkerDoesNotRedirectSetup(t *testing.T) {
 }
 
 func TestQuotedCodexMCPDeclarationsPreserved(t *testing.T) {
-	for _, config := range []string{
+	for i, config := range []string{
 		"[\"mcp_servers\"]\n\"radar\" = { command = \"existing-agent-server\", args = [] }\n",
 		"['mcp_servers']\n'radar' = { command = 'existing-agent-server', args = [] }\n",
 		"[mcp_servers]\n\"radar\" = { command = \"existing\" }\n",
@@ -168,7 +169,7 @@ func TestQuotedCodexMCPDeclarationsPreserved(t *testing.T) {
 		"'mcp_servers' = { radar = { command = 'existing' } }\n",
 		"[\"\\u006dcp_servers\"]\nradar = { command = \"existing\" }\n",
 	} {
-		t.Run(config, func(t *testing.T) {
+		t.Run(fmt.Sprintf("invalid-%d", i), func(t *testing.T) {
 			root := fixtureRoot(t)
 			put(t, root, ".codex/config.toml", config)
 			if _, e := Setup(context.Background(), root, Options{Agent: "codex"}); e == nil {
@@ -221,7 +222,7 @@ func TestNativeHooksPreserveLegacyAndUnrelatedConfiguration(t *testing.T) {
 }
 
 func TestNativeHookConflictValidationBeforeWrites(t *testing.T) {
-	for _, config := range []string{
+	for i, config := range []string{
 		`{"hooks":{"Stop":{}}}`,
 		`{"hooks":{"Stop":[null]}}`,
 		`{"hooks":{"Stop":[{"hooks":{}}]}}`,
@@ -234,7 +235,7 @@ func TestNativeHookConflictValidationBeforeWrites(t *testing.T) {
 		`{"hooks":{"Stop":[]},"hooks":{"Stop":[]}}`,
 		`{"hooks":{"Stop":[],"Stop":[]}}`,
 	} {
-		t.Run(config, func(t *testing.T) {
+		t.Run(fmt.Sprintf("invalid-%d", i), func(t *testing.T) {
 			root := fixtureRoot(t)
 			put(t, root, ".codex/hooks.json", config)
 			if _, err := Setup(context.Background(), root, Options{Agent: "both", Hook: true}); err == nil {
@@ -289,5 +290,51 @@ func TestHookScopeShellQuoting(t *testing.T) {
 	data, err := cmd.CombinedOutput()
 	if err != nil || string(data) != "hook\nstop\n--agent\nclaude\n--base\n"+value+"\n" {
 		t.Fatalf("unsafe shell parsing: %s %v", data, err)
+	}
+}
+
+func TestSharedSkillMigrationPreservesUserEdits(t *testing.T) {
+	for _, edited := range []bool{false, true} {
+		t.Run(fmt.Sprintf("edited-%v", edited), func(t *testing.T) {
+			root := fixtureRoot(t)
+			legacy, _ := assets.ReadFile("assets/codex.md")
+			claude, _ := assets.ReadFile("assets/claude.md")
+			canonical, _ := assets.ReadFile("assets/radar.md")
+			if edited {
+				legacy = []byte("user edits")
+			}
+			old := ".agents/skills/radar-architecture/SKILL.md"
+			put(t, root, old, string(legacy))
+			put(t, root, ".claude/skills/radar/SKILL.md", string(claude))
+			_, err := Setup(context.Background(), root, Options{Agent: "both", DryRun: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(filepath.Join(root, old))
+			if string(before) != string(legacy) {
+				t.Fatal("dry-run changed legacy skill")
+			}
+			_, err = Setup(context.Background(), root, Options{Agent: "both"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{".agents/skills/radar/SKILL.md", ".claude/skills/radar/SKILL.md"} {
+				got, err := os.ReadFile(filepath.Join(root, path))
+				if err != nil || string(got) != string(canonical) {
+					t.Fatalf("shared installation %s: %v", path, err)
+				}
+			}
+			got, err := os.ReadFile(filepath.Join(root, old))
+			if edited {
+				if err != nil || string(got) != string(legacy) {
+					t.Fatal("edited legacy changed", err)
+				}
+			} else if !os.IsNotExist(err) {
+				t.Fatal("owned legacy not retired", err)
+			}
+			if _, err := Setup(context.Background(), root, Options{Agent: "both"}); err != nil {
+				t.Fatal("not idempotent", err)
+			}
+		})
 	}
 }

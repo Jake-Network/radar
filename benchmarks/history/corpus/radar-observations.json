@@ -1,0 +1,1230 @@
+{
+  "dataset_digest": "cd865e0e7336630ac93e21a2c3457277b388333c81eddd7048121b58219a36df",
+  "observations": [
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.482,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c8a45c5356f8e5d47cb954a73395e63d0219785871f2eb6e5f3c02d2f08572c0",
+      "input_digest": "c8a45c5356f8e5d47cb954a73395e63d0219785871f2eb6e5f3c02d2f08572c0",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.541,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "55aa38dc2ef6f2ff3850e280034d946a3c1dbe956597777f728e7ae408bf232e",
+      "input_digest": "55aa38dc2ef6f2ff3850e280034d946a3c1dbe956597777f728e7ae408bf232e",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.428,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "05b1514193715cd46ac0530fb6ae7be536ed234eef70d574bd8be7f6183fac71",
+      "input_digest": "05b1514193715cd46ac0530fb6ae7be536ed234eef70d574bd8be7f6183fac71",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.433,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "af121fc6a707012aee8879d2c590bb42b5328a7a64463d2c7b959a48dea22536",
+      "input_digest": "af121fc6a707012aee8879d2c590bb42b5328a7a64463d2c7b959a48dea22536",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.423,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a224ce4f17a3d08604227c76cc7ab9ac0b0089022c5afe4bcc2a679f42ed7879",
+      "input_digest": "a224ce4f17a3d08604227c76cc7ab9ac0b0089022c5afe4bcc2a679f42ed7879",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.456,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a2cf9c54c5db6e79b9a25b58ec99ff70dbe199848c02cca320b033bea0efb158",
+      "input_digest": "a2cf9c54c5db6e79b9a25b58ec99ff70dbe199848c02cca320b033bea0efb158",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.507,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2af47fbf752887bfc63aa88ee96e4318932586465526115ef158ca23c69b7200",
+      "input_digest": "2af47fbf752887bfc63aa88ee96e4318932586465526115ef158ca23c69b7200",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.541,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a10aa662caa41657f742edb3c6c9319afd151a684908860f85730b47f343a78f",
+      "input_digest": "a10aa662caa41657f742edb3c6c9319afd151a684908860f85730b47f343a78f",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.71,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d79d9e3a741df3a0505123c4c29d28a6254ef8222b26bbdd557a372529365394",
+      "input_digest": "d79d9e3a741df3a0505123c4c29d28a6254ef8222b26bbdd557a372529365394",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.533,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "274c93d39151a1dc45b904b01fc30bb5105c793841fc1de52f163a346d9a0bb5",
+      "input_digest": "274c93d39151a1dc45b904b01fc30bb5105c793841fc1de52f163a346d9a0bb5",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.683,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "2912e79f1b6e95865510fa06a8b18c0f59992e3c99bb2be93547c296082b73ea",
+      "input_digest": "2912e79f1b6e95865510fa06a8b18c0f59992e3c99bb2be93547c296082b73ea",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.558,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "8fbfd09b02d0290bb20aa96c3c1336188317c25b905a44c663aef713e1b4a3cf",
+      "input_digest": "8fbfd09b02d0290bb20aa96c3c1336188317c25b905a44c663aef713e1b4a3cf",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.498,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9cda20dc3700680e1fe3d388ce616caa66b3bc7f677f8b1ee568519797038270",
+      "input_digest": "9cda20dc3700680e1fe3d388ce616caa66b3bc7f677f8b1ee568519797038270",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.531,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "cb59e57aadbabc97caedcf7302ff01486d32971df0e12edc13aaaf22fff81ec5",
+      "input_digest": "cb59e57aadbabc97caedcf7302ff01486d32971df0e12edc13aaaf22fff81ec5",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.498,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e356adc8c9db38791d17c2e7fcaea1c2980537f5a3da126983df38a70c249e89",
+      "input_digest": "e356adc8c9db38791d17c2e7fcaea1c2980537f5a3da126983df38a70c249e89",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.527,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "fa7c98d64178b975882757002038842088c9a49803b8b9cdabf6284116cc53a0",
+      "input_digest": "fa7c98d64178b975882757002038842088c9a49803b8b9cdabf6284116cc53a0",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.498,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d7125219727caea95639b76071bc2260ad1ece2a0b9c1cca7b9dc73f5e5817a4",
+      "input_digest": "d7125219727caea95639b76071bc2260ad1ece2a0b9c1cca7b9dc73f5e5817a4",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.471,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5d484037a5327ef36b6f726dc3f45ca91df571a312c465defaa999dd6049a7a0",
+      "input_digest": "5d484037a5327ef36b6f726dc3f45ca91df571a312c465defaa999dd6049a7a0",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.545,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "fb017f6d4bbdd73702cc2555b4dad2be4130a7f8aa6d35568842f59e03b25df2",
+      "input_digest": "fb017f6d4bbdd73702cc2555b4dad2be4130a7f8aa6d35568842f59e03b25df2",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.628,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7cd359ad783c0cb61da2ac093b1b26c59833e260d4f9d50eaac908f3b79a983c",
+      "input_digest": "7cd359ad783c0cb61da2ac093b1b26c59833e260d4f9d50eaac908f3b79a983c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.442,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0f310bf8af0731830acf49b7d1d9231f303f82360c8443023fc9acea79838907",
+      "input_digest": "0f310bf8af0731830acf49b7d1d9231f303f82360c8443023fc9acea79838907",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.007,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "816ae410d575a9c682d87b6f4f48f6cd3168c0b8ceece5a487e7a044eb4f348c",
+      "input_digest": "816ae410d575a9c682d87b6f4f48f6cd3168c0b8ceece5a487e7a044eb4f348c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.012,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "266f431e08a69963c80f3820c2dadbb1eeb437b5d09d35b786a8c8c0fb089c07",
+      "input_digest": "266f431e08a69963c80f3820c2dadbb1eeb437b5d09d35b786a8c8c0fb089c07",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.292,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "19d08e41834e1d51f0f057ffd3291bbc22adb3922b0fe006e52e4d1c08b4ebd4",
+      "input_digest": "19d08e41834e1d51f0f057ffd3291bbc22adb3922b0fe006e52e4d1c08b4ebd4",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.356,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "c23619953cdec1d232bfa524fd3fdb3743c376440e317a8b241c8bad2e4078ee",
+      "input_digest": "c23619953cdec1d232bfa524fd3fdb3743c376440e317a8b241c8bad2e4078ee",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.323,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "55119893d0646accc96a8231b93ede4ae78f04957f4f037475e51e7680a440c9",
+      "input_digest": "55119893d0646accc96a8231b93ede4ae78f04957f4f037475e51e7680a440c9",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.242,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "f576111bc06728e3d60110c184ac33775a85b8d910e320e41bcef4469c1ddf4f",
+      "input_digest": "f576111bc06728e3d60110c184ac33775a85b8d910e320e41bcef4469c1ddf4f",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.014,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "70e1792a190e470f8eeb1b1e3b4a8e57f4fdd1c97c646e505027b569b00ec4a0",
+      "input_digest": "70e1792a190e470f8eeb1b1e3b4a8e57f4fdd1c97c646e505027b569b00ec4a0",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.174,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0a896e79953a7864196bfa05b6475eb9cc7e067e327de86a34f02799720bb3fd",
+      "input_digest": "0a896e79953a7864196bfa05b6475eb9cc7e067e327de86a34f02799720bb3fd",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [
+        "textual"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "unknown",
+          "textual_merge": "failed"
+        },
+        "finding_codes": [
+          "integration_textual_conflict"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 0.466,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "06d251d9536f3de51b1e1327a8f787560f5fc00c4dec842595498a20fa6b5847",
+      "input_digest": "06d251d9536f3de51b1e1327a8f787560f5fc00c4dec842595498a20fa6b5847",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.405,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "9515be58ae528db522e81857ebff520de87a7aa69427b982259c5a0fc7877c93",
+      "input_digest": "9515be58ae528db522e81857ebff520de87a7aa69427b982259c5a0fc7877c93",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.527,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "839493f7b86b76db4a80e0556aa5cc473a2bde5d78dba6293e2c02e08c8e28ac",
+      "input_digest": "839493f7b86b76db4a80e0556aa5cc473a2bde5d78dba6293e2c02e08c8e28ac",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 3.409,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "bbf4050fc389b9e8366037de490d956686c12225095c94fd84673682da82e3ea",
+      "input_digest": "bbf4050fc389b9e8366037de490d956686c12225095c94fd84673682da82e3ea",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.927,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "ccd702737ee260f5138388c6bcc0e6eb3591306004e73f2e94134c5251fb9534",
+      "input_digest": "ccd702737ee260f5138388c6bcc0e6eb3591306004e73f2e94134c5251fb9534",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.671,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "1fe80045be4a16369862cf2f653fc81fe562fc95af7a038aa5b4438670f178c4",
+      "input_digest": "1fe80045be4a16369862cf2f653fc81fe562fc95af7a038aa5b4438670f178c4",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "passed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 2.357,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "e466e79f7b60d496e516b64a0ccb2151fba5c6d20bffe44d5a1c7ba93578dc0b",
+      "input_digest": "e466e79f7b60d496e516b64a0ccb2151fba5c6d20bffe44d5a1c7ba93578dc0b",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "passed",
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 0.721,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "fb2e1be095987e56042cf3c901cb8b6004a1d680440562f3fbe9c5ca4c173a8c",
+      "input_digest": "fb2e1be095987e56042cf3c901cb8b6004a1d680440562f3fbe9c5ca4c173a8c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.262,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "13aee4cca1259cb78f7e787ca1fa2c0e2dfe78faea85391f1ff531cf3c2ab385",
+      "input_digest": "13aee4cca1259cb78f7e787ca1fa2c0e2dfe78faea85391f1ff531cf3c2ab385",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.484,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "7a44816f21a0c836c2c246a9b505a54300aa9870e469826bb41880afe9d31620",
+      "input_digest": "7a44816f21a0c836c2c246a9b505a54300aa9870e469826bb41880afe9d31620",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 1.682,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "a0f95fe350ab085962dda39af7cad202897fbb582377b1b784a106d3a3c87eaa",
+      "input_digest": "a0f95fe350ab085962dda39af7cad202897fbb582377b1b784a106d3a3c87eaa",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 19.873,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d6731bfe73313becc6f29deb234379ae69a80d1945401f4b093543bfeb55e543",
+      "input_digest": "d6731bfe73313becc6f29deb234379ae69a80d1945401f4b093543bfeb55e543",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 23.919,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "4231ddf6209975b1a5be76329466aa1a433fd70f1f03d54198643488f3a69014",
+      "input_digest": "4231ddf6209975b1a5be76329466aa1a433fd70f1f03d54198643488f3a69014",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 19.272,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "aba5930f4bcaf2ff641a65799faab42778be96870249cb72ef90a45329d90241",
+      "input_digest": "aba5930f4bcaf2ff641a65799faab42778be96870249cb72ef90a45329d90241",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 17.594,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5b097d3e9402081a967871aecf6ac31c561a14bff43e02da6dbd513d7201ac67",
+      "input_digest": "5b097d3e9402081a967871aecf6ac31c561a14bff43e02da6dbd513d7201ac67",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 17.46,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "aff11985e68d85b1b57216550527dc2677903176ec2751e9f06fd17fe3596176",
+      "input_digest": "aff11985e68d85b1b57216550527dc2677903176ec2751e9f06fd17fe3596176",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 17.679,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "877137abf15f262eef0409ae232a2f75cdc100eaf1a4ef03aa1d1680980a9b3c",
+      "input_digest": "877137abf15f262eef0409ae232a2f75cdc100eaf1a4ef03aa1d1680980a9b3c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 20.787,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "b3296e2cce0019791152f3aaf5685a976c08fb2d3252ad733ef53208bd8566f6",
+      "input_digest": "b3296e2cce0019791152f3aaf5685a976c08fb2d3252ad733ef53208bd8566f6",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 19.735,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "ac5758e280f4310f5a09f947fd1b1c532f0571321f7cdf1de68f17b7d2e61304",
+      "input_digest": "ac5758e280f4310f5a09f947fd1b1c532f0571321f7cdf1de68f17b7d2e61304",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "unknown",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 16.785,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "38a3e064ec26465411619d947a492e4961d6aa82a3dbcd522a2cbeee8048ca2c",
+      "input_digest": "38a3e064ec26465411619d947a492e4961d6aa82a3dbcd522a2cbeee8048ca2c",
+      "status": "unavailable"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 16.781,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "19c97af4b8fc4a823556db94c3c5861ce2e9e6adade7ba0032a743e65e352755",
+      "input_digest": "19c97af4b8fc4a823556db94c3c5861ce2e9e6adade7ba0032a743e65e352755",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "lockfile",
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "failed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "lockfile_dependency_missing",
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 17.183,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "ec2f2307f14ed3029e39b0ba1631b0149738b70a34225198957c84b8236ce557",
+      "input_digest": "ec2f2307f14ed3029e39b0ba1631b0149738b70a34225198957c84b8236ce557",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "passed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 17.278,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0c9101e0fff61809502b0bdbf5b24fb164b7c7ab2ec7b72d119cc8dda1551de6",
+      "input_digest": "0c9101e0fff61809502b0bdbf5b24fb164b7c7ab2ec7b72d119cc8dda1551de6",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 17.117,
+        "verdict": "pass",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "5bd2e4df5cabac72022a6d044db6b05e32f331d04610e2a60dfe2eaa213c1a1e",
+      "input_digest": "5bd2e4df5cabac72022a6d044db6b05e32f331d04610e2a60dfe2eaa213c1a1e",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 20.936,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "94b9ae1388c9bd89aa1e45f5f9451b556f15a803eaa1cfcca12aa6eb326ba1cc",
+      "input_digest": "94b9ae1388c9bd89aa1e45f5f9451b556f15a803eaa1cfcca12aa6eb326ba1cc",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 18.676,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "631fe803c1068655083788d8ff1e46c62bd53b143f1275b7ccfbe97da622f867",
+      "input_digest": "631fe803c1068655083788d8ff1e46c62bd53b143f1275b7ccfbe97da622f867",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "lockfile",
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "failed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "lockfile_dependency_missing",
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 22.093,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "ac631147cca2ec0ca9c79efb13cfcca4d1bb36513165928f2c7b945383849db9",
+      "input_digest": "ac631147cca2ec0ca9c79efb13cfcca4d1bb36513165928f2c7b945383849db9",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "lockfile",
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "failed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "lockfile_dependency_missing",
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 21.296,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "d12e026066f826ee99706fa4a983c4352f7e6c826d0b8d2baee0fec4026a4dc2",
+      "input_digest": "d12e026066f826ee99706fa4a983c4352f7e6c826d0b8d2baee0fec4026a4dc2",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 23.003,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "95f50313bdc2a3fdb34e0cd7c073c00ada978035c31183b6982fa07081ba3c9c",
+      "input_digest": "95f50313bdc2a3fdb34e0cd7c073c00ada978035c31183b6982fa07081ba3c9c",
+      "status": "available"
+    },
+    {
+      "detected_causes": [
+        "symbol"
+      ],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "passed",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "failed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [
+          "symbol_duplicate_definition"
+        ],
+        "scope": "static; no repository code executed",
+        "seconds": 16.748,
+        "verdict": "fail",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "388e6b5d4224151c1713ed653fa60b4be6d6cb00d0583b0c82faec245de6b770",
+      "input_digest": "388e6b5d4224151c1713ed653fa60b4be6d6cb00d0583b0c82faec245de6b770",
+      "status": "available"
+    },
+    {
+      "detected_causes": [],
+      "evidence": {
+        "binary_sha256": "84c676bcb1a085515e8af7c662e5bb622d477839eefb835d1f6c124296ed80a7",
+        "checks": {
+          "lockfile_consistency": "unknown",
+          "no_breaking_contracts": "passed",
+          "no_symbol_conflicts": "passed",
+          "textual_merge": "passed"
+        },
+        "finding_codes": [],
+        "scope": "static; no repository code executed",
+        "seconds": 16.891,
+        "verdict": "blocked",
+        "version": "radar 0.2.0-dev"
+      },
+      "id": "0bf90a67e9881c4876acda467896fefdf6009b0666590b9ee588c44e3ecf184c",
+      "input_digest": "0bf90a67e9881c4876acda467896fefdf6009b0666590b9ee588c44e3ecf184c",
+      "status": "unavailable"
+    }
+  ],
+  "schema_version": 1,
+  "tool": "radar"
+}

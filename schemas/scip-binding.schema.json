@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Jake-Network/radar/schemas/scip-binding.schema.json",
+  "title": "Radar SCIP freshness binding",
+  "description": "Local freshness assertion for a standard SCIP protobuf index. Hashes detect stale bytes; they do not authenticate the producer or prove a compiler ran.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "revision", "index_sha256", "sources"],
+  "properties": {
+    "version": {"const": 1},
+    "revision": {"type": "string", "minLength": 1},
+    "index_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 10000,
+      "propertyNames": {"pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:\\u0000])(?!.*//).+$"},
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }
+  }
+}

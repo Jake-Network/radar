@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
@@ -35,11 +37,29 @@ type DirtySnapshot struct {
 	Unstaged   []string `json:"unstaged"`
 	Untracked  []string `json:"untracked"`
 	files      map[string]dirtyFile
+	stable     bool
 }
 type dirtyFile struct {
 	data    []byte
 	mode    string
 	deleted bool
+}
+
+// IndexHidesWorktree reports skip-worktree or assume-unchanged entries, whose
+// saved content Git status and diff do not compare against the index.
+// With unmerged set, conflicted entries count as well: Git diff can report no
+// change for a conflicted path whose saved file equals the compared tree.
+func IndexHidesWorktree(ctx context.Context, root string, unmerged bool) (bool, error) {
+	flags, err := dirtyGit(ctx, root, nil, "ls-files", "-v", "-z")
+	if err != nil {
+		return false, err
+	}
+	for _, f := range strings.Split(string(flags), "\x00") {
+		if len(f) > 1 && (f[0] == 'S' || f[0] >= 'a' && f[0] <= 'z' || unmerged && f[0] == 'M') {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ObserveDirty captures twice, including index blob identities and saved file
@@ -63,6 +83,7 @@ func observeDirty(ctx context.Context, w gitrepo.WorktreeStatus, between func())
 	if a.Digest != b.Digest || (w.Commit != "" && a.Head != w.Commit) {
 		return b, errors.New("dirty snapshot changed during capture; retry after edits settle")
 	}
+	b.stable = true
 	return b, nil
 }
 
@@ -124,7 +145,11 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 	s.Staged = w.Staged
 	s.Unstaged = w.Unstaged
 	s.Untracked = w.Untracked
-	if err := validateTree(ctx, root, s.Head); err != nil {
+	entries, err := gitrepo.Entries(ctx, root, s.Head)
+	if err != nil {
+		return s, err
+	}
+	if err := validateTreeEntries(entries); err != nil {
 		return s, err
 	}
 	index, err := dirtyGit(ctx, root, nil, "ls-files", "--stage", "-z")
@@ -132,6 +157,7 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		return s, err
 	}
 	tracked := map[string]bool{}
+	indexModes := map[string]string{}
 	hidden := map[string]bool{}
 	for _, v := range strings.Split(string(index), "\x00") {
 		if v == "" {
@@ -145,15 +171,12 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		if f[0] != "100644" && f[0] != "100755" {
 			return s, &UnsupportedEntryError{Path: p}
 		}
-		abs, err := safeDirtyPath(root, p)
+		_, info, err := safeDirtyPathInfo(root, p)
 		if err != nil {
 			return s, err
 		}
-		info, err := os.Lstat(abs)
-		if os.IsNotExist(err) {
+		if info == nil {
 			hidden[p] = true
-		} else if err != nil {
-			return s, err
 		} else {
 			if !info.Mode().IsRegular() {
 				return s, &UnsupportedEntryError{Path: p}
@@ -162,20 +185,18 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 			if info.Mode()&0111 != 0 {
 				mode = "100755"
 			}
-			if mode != f[0] {
+			if runtime.GOOS != "windows" && mode != f[0] {
 				hidden[p] = true
 			}
 		}
 		tracked[p] = true
+		indexModes[p] = f[0]
 	}
-	flags, err := dirtyGit(ctx, root, nil, "ls-files", "-v", "-z")
-	if err != nil {
+	// Unmerged entries were already rejected from the staged listing above.
+	if flagged, err := IndexHidesWorktree(ctx, root, false); err != nil {
 		return s, err
-	}
-	for _, f := range strings.Split(string(flags), "\x00") {
-		if len(f) > 1 && (f[0] == 'S' || f[0] >= 'a' && f[0] <= 'z') {
-			return s, errors.New("sparse or assume-unchanged index entries cannot be previewed")
-		}
+	} else if flagged {
+		return s, errors.New("sparse or assume-unchanged index entries cannot be previewed")
 	}
 	for p := range hidden {
 		found := false
@@ -222,10 +243,6 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		for _, p := range ps {
 			paths[p] = true
 		}
-	}
-	entries, err := gitrepo.Entries(ctx, root, s.Head)
-	if err != nil {
-		return s, err
 	}
 	for _, e := range entries {
 		if !tracked[e.Path] {
@@ -294,7 +311,11 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 				}
 				f.data = data
 				f.mode = "100644"
-				if info.Mode()&0111 != 0 {
+				if runtime.GOOS == "windows" {
+					if mode := indexModes[p]; mode != "" {
+						f.mode = mode
+					}
+				} else if info.Mode()&0111 != 0 {
 					f.mode = "100755"
 				}
 				total += len(data)
@@ -333,54 +354,149 @@ func rejectDirtyNormalizationConfig(ctx context.Context, root string) error {
 }
 
 func safeDirtyPath(root, p string) (string, error) {
+	path, _, err := safeDirtyPathInfo(root, p)
+	return path, err
+}
+func safeDirtyPathInfo(root, p string) (string, os.FileInfo, error) {
 	clean, err := pathutil.RepoRelative(p)
 	if err != nil {
-		return "", &UnsupportedEntryError{Path: p, Unsafe: err}
+		return "", nil, &UnsupportedEntryError{Path: p, Unsafe: err}
 	}
 	for _, part := range strings.Split(clean, "/") {
 		if strings.EqualFold(part, ".git") {
-			return "", errors.New("dirty snapshot refuses Git metadata paths")
+			return "", nil, errors.New("dirty snapshot refuses Git metadata paths")
 		}
 	}
-	abs, err := pathutil.StatePath(root, clean)
+	abs, info, err := pathutil.StatePathInfo(root, clean)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return abs, nil
+	return abs, info, nil
+}
+
+// ReobserveDirty validates an already double-captured snapshot with one fresh
+// full capture. The prior stable digest is the comparison observation; a new
+// unanchored snapshot must always enter through ObserveDirty instead.
+func ReobserveDirty(ctx context.Context, prior DirtySnapshot) (DirtySnapshot, error) {
+	if prior.Digest == "" || prior.files == nil || !prior.stable {
+		return DirtySnapshot{}, errors.New("dirty snapshot has no captured contents")
+	}
+	fresh, err := captureDirty(ctx, prior.Worktree)
+	if err != nil {
+		return fresh, err
+	}
+	if fresh.Head != prior.Head || fresh.Digest != prior.Digest {
+		return fresh, errors.New("dirty snapshot superseded before candidate construction")
+	}
+	fresh.stable = true
+	return fresh, nil
+}
+
+func revalidateDirtySnapshots(ctx context.Context, snapshots []DirtySnapshot) error {
+	return revalidateDirtySnapshotsWith(ctx, snapshots, func(ctx context.Context, snapshot DirtySnapshot) error {
+		_, err := ReobserveDirty(ctx, snapshot)
+		return err
+	})
+}
+
+func revalidateDirtySnapshotsWith(ctx context.Context, snapshots []DirtySnapshot, validate func(context.Context, DirtySnapshot) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	jobs := make(chan int)
+	var firstErr error
+	var firstFailure sync.Once
+	var workers sync.WaitGroup
+	for range min(2, len(snapshots)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for i := range jobs {
+				err := validate(ctx, snapshots[i])
+				if err != nil {
+					firstFailure.Do(func() {
+						firstErr = err
+						cancel()
+					})
+				}
+			}
+		}()
+	}
+dispatch:
+	for i := range snapshots {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break dispatch
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	if firstErr != nil {
+		return firstErr
+	}
+	return ctx.Err()
 }
 
 // BuildDirtyCandidate overlays faithful snapshots on their pinned heads in
-// private repositories, then reuses the ordinary candidate merge engine.
+// one private object store, then reuses the ordinary candidate merge engine.
 // Every dirty input is a deterministic synthetic commit bound to its digest.
 func BuildDirtyCandidate(ctx context.Context, root, base string, branches []string, snapshots []DirtySnapshot) (*Candidate, error) {
-	seed, err := BuildCandidate(ctx, root, base, nil)
+	if len(snapshots) == 0 {
+		return BuildCandidate(ctx, root, base, branches)
+	}
+	// Include every snapshot head in the initial object copy. This also handles
+	// the pack-stream fallback, where heads outside the selected branches would
+	// otherwise be absent from the private store.
+	heads := append([]string(nil), branches...)
+	for _, snapshot := range snapshots {
+		heads = append(heads, snapshot.Head)
+	}
+	// Immutable object preparation and source revalidation are independent.
+	// Bound the source readers and join them before writing synthetic commits
+	// or removing the private repository, including every cancellation path.
+	prepareCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type validationResult struct {
+		err         error
+		failedFirst bool
+	}
+	validated := make(chan validationResult, 1)
+	go func() {
+		err := revalidateDirtySnapshots(prepareCtx, snapshots)
+		failedFirst := err != nil && prepareCtx.Err() == nil
+		if err != nil {
+			cancel()
+		}
+		validated <- validationResult{err, failedFirst}
+	}()
+	seed, err := prepareCandidate(prepareCtx, root, base, heads)
 	if err != nil {
+		cancel()
+	}
+	validation := <-validated
+	validationErr := validation.err
+	if err != nil {
+		if validation.failedFirst {
+			return seed, validationErr
+		}
 		return seed, err
 	}
-	defer seed.Close()
-	inputs := append([]string(nil), branches...)
+	if validationErr != nil {
+		seed.Close()
+		return seed, validationErr
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			seed.Close()
+		}
+	}()
+	pinned := append([]string(nil), seed.Inputs[:len(branches)]...)
+	inputs := append([]string(nil), pinned...)
+	assigned := map[int]bool{}
 	for _, s := range snapshots {
-		if s.Digest == "" || s.files == nil {
+		if s.Digest == "" || s.files == nil || !s.stable {
 			return nil, errors.New("dirty snapshot has no captured contents")
-		}
-		fresh, err := ObserveDirty(ctx, gitrepo.WorktreeStatus{Path: s.Worktree, Commit: s.Head})
-		if err != nil {
-			return nil, err
-		}
-		if fresh.Digest != s.Digest {
-			return nil, errors.New("dirty snapshot superseded before candidate construction")
-		}
-		branch, err := BuildCandidate(ctx, root, s.Head, nil)
-		if err != nil {
-			return branch, err
-		}
-		sha, err := writeDirtyCommit(ctx, branch.Dir, s)
-		if err == nil {
-			err = copyDirtyObjects(ctx, branch.Dir, seed.Dir, sha)
-		}
-		branch.Close()
-		if err != nil {
-			return nil, err
 		}
 		match := s.InputIndex
 		if match >= len(branches) {
@@ -394,11 +510,7 @@ func BuildDirtyCandidate(ctx context.Context, root, base string, branches []stri
 				}
 			}
 			if match < 0 {
-				for i, ref := range branches {
-					head, e := gitrepo.Resolve(ctx, root, ref)
-					if e != nil {
-						return nil, e
-					}
+				for i, head := range pinned {
 					if head == s.Head {
 						if match >= 0 {
 							return nil, errors.New("dirty snapshot requires explicit input association for branches sharing a head")
@@ -409,45 +521,39 @@ func BuildDirtyCandidate(ctx context.Context, root, base string, branches []stri
 			}
 		}
 		if match >= 0 {
-			head, e := gitrepo.Resolve(ctx, root, branches[match])
-			if e != nil {
-				return nil, e
-			}
-			if head != s.Head {
+			if pinned[match] != s.Head {
 				return nil, errors.New("dirty snapshot does not match selected branch head")
 			}
-			if inputs[match] != branches[match] {
+			if assigned[match] {
 				return nil, errors.New("multiple dirty snapshots target one branch")
 			}
+			assigned[match] = true
+		}
+		// writeDirtyCommit uses only the index and captured bytes. Keep the private
+		// worktree at base while independently resetting the index for each head.
+		if _, err := dirtyGit(ctx, seed.Dir, nil, "read-tree", s.Head); err != nil {
+			return nil, err
+		}
+		sha, err := writeDirtyCommit(ctx, seed.Dir, s)
+		if err != nil {
+			return nil, err
+		}
+		if match >= 0 {
 			inputs[match] = sha
 		} else {
 			inputs = append(inputs, sha)
 		}
 	}
-	// Clean heads were not copied into the seed yet.
-	for _, ref := range branches {
-		sha, err := gitrepo.Resolve(ctx, root, ref)
-		if err != nil {
-			return nil, err
-		}
-		if err = copyDirtyObjects(ctx, root, seed.Dir, sha); err != nil {
-			return nil, err
-		}
+	if _, err := dirtyGit(ctx, seed.Dir, nil, "read-tree", seed.Base); err != nil {
+		return nil, err
 	}
-	for i, ref := range inputs {
-		if i < len(branches) && ref == branches[i] {
-			sha, err := gitrepo.Resolve(ctx, root, ref)
-			if err != nil {
-				return nil, err
-			}
-			inputs[i] = sha
-		}
+	seed.Inputs = inputs
+	candidate, err := mergeCandidate(ctx, seed)
+	if err != nil {
+		return candidate, err
 	}
-	c, err := BuildCandidate(ctx, seed.Dir, seed.Base, inputs)
-	if c != nil {
-		c.Source = root
-	}
-	return c, err
+	keep = true
+	return candidate, nil
 }
 func writeDirtyCommit(ctx context.Context, root string, s DirtySnapshot) (string, error) {
 	paths := make([]string, 0, len(s.files))
@@ -477,33 +583,4 @@ func writeDirtyCommit(ctx context.Context, root string, s DirtySnapshot) (string
 	}
 	commit, err := dirtyGit(ctx, root, strings.NewReader("Radar dirty preview "+s.Digest+"\n"), "commit-tree", strings.TrimSpace(string(tree)), "-p", s.Head)
 	return strings.TrimSpace(string(commit)), err
-}
-func copyDirtyObjects(ctx context.Context, from, to, sha string) error {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	producer := gitrepo.PrivateCommand(ctx, from, "pack-objects", "--stdout", "--revs")
-	producer.Stdin = strings.NewReader(sha + "\n")
-	pipe, err := producer.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	consumer := gitrepo.PrivateCommand(ctx, to, "index-pack", "--stdin")
-	consumer.Stdin = pipe
-	consumer.Stdout = io.Discard
-	consumer.Stderr = io.Discard
-	producer.Stderr = io.Discard
-	if err = consumer.Start(); err != nil {
-		return err
-	}
-	if err = producer.Start(); err != nil {
-		pipe.Close()
-		consumer.Wait()
-		return err
-	}
-	pErr := producer.Wait()
-	cErr := consumer.Wait()
-	if pErr != nil || cErr != nil {
-		return errors.New("unable to copy dirty preview objects")
-	}
-	return nil
 }
