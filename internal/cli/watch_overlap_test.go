@@ -497,16 +497,26 @@ func hookPairWithContinuation(t *testing.T, root, current, code string) agentHoo
 		if response.Radar == nil || response.Radar.PeersTotal != 2 || response.Radar.Candidates != 1 {
 			t.Fatalf("hook pair selection scope lost: %+v", response)
 		}
-		if attempt == 0 && response.Radar.Self != "complete" || attempt > 0 && response.Radar.Self != "reused" || !strings.Contains(response.Message, "NOT VERIFIED") {
+		if attempt == 0 && response.Radar.Self != "complete" || attempt > 0 && response.Radar.Self != "reused" {
 			t.Fatalf("completed self or unresolved scope lost: %+v", response)
 		}
 		if response.Radar.Checked+response.Radar.Reused == 0 {
-			if attempt != 0 || response.Decision != "" || response.Radar.Omitted != 2 || !strings.Contains(response.Message, "peer inspection incomplete:") {
+			// The unconfirmed main worktree at base stays omitted.
+			if attempt != 0 || response.Decision != "" || response.Radar.Unchanged != 0 || response.Radar.Omitted != 2 || !strings.Contains(response.Message, "NOT VERIFIED: peer inspection incomplete:") {
 				t.Fatalf("pair inspection failed to make bounded progress: %+v", response)
 			}
 			continue
 		}
-		if response.Decision != "block" || !strings.Contains(response.Reason, code) || response.Radar.Omitted != 1 {
+		if response.Radar.Unchanged == 0 {
+			// The pair completed but the deadline cut unchanged confirmation:
+			// the base-identical peer stays NOT VERIFIED and the next call retries.
+			if attempt != 0 || response.Decision != "block" || response.Radar.OmissionReasons["inspection_incomplete"] != 1 || !strings.Contains(response.Message, "NOT VERIFIED") {
+				t.Fatalf("unconfirmed peer after completed pair was misreported: %+v", response)
+			}
+			continue
+		}
+		// The main worktree equals base: unchanged, not an omitted peer.
+		if response.Decision != "block" || !strings.Contains(response.Reason, code) || response.Radar.Unchanged != 1 || response.Radar.Omitted != 0 || strings.Contains(response.Message, "NOT VERIFIED") {
 			t.Fatalf("completed hook pair lost %s drift: %+v", code, response)
 		}
 		if completed {

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/indexer"
@@ -23,6 +24,7 @@ type hookDiagnostics struct {
 	Checked         int              `json:"peers_checked"`
 	Reused          int              `json:"peers_reused"`
 	Omitted         int              `json:"peers_omitted"`
+	Unchanged       int              `json:"peers_unchanged"`
 	OmissionReasons map[string]int   `json:"peer_omission_reasons,omitempty"`
 }
 
@@ -32,9 +34,14 @@ type hookPeer struct {
 }
 
 func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agentHookResponse, cache *indexer.ParseCache, diag *hookDiagnostics) (result agentHookResponse) {
+	// Pair notes and omitted scope are composed at return, scope first.
+	selectionOmissions, pairNotes, pendingCount := map[string]int{}, "", 0
 	incomplete := func(reason string) agentHookResponse {
-		self.Message = hookText(strings.TrimSpace(self.Message + " Radar NOT VERIFIED: peer inspection incomplete: " + reason))
-		diag.Omitted = diag.PeersTotal - diag.Checked - diag.Reused
+		if pendingCount > 0 {
+			reason += fmt.Sprintf("; %d peers at base not confirmed unchanged", pendingCount)
+		}
+		self.Message = hookPeerMessage(self.Message+" Radar NOT VERIFIED: peer inspection incomplete: "+reason, selectionOmissions, pairNotes)
+		diag.Omitted = diag.PeersTotal - diag.Checked - diag.Reused - diag.Unchanged
 		if remaining := diag.Omitted - hookOmissionCount(diag.OmissionReasons); remaining > 0 {
 			if diag.OmissionReasons == nil {
 				diag.OmissionReasons = map[string]int{}
@@ -136,7 +143,8 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 		return incomplete("current changed paths unavailable")
 	}
 	selectionStarted := time.Now()
-	peers, omissions, err := selectHookPeers(peerCtx, a.root, in.Base, ownPaths, peers, cache)
+	peers, pending, omissions, err := selectHookPeers(peerCtx, a.root, in.Base, ownPaths, peers, cache)
+	pendingCount = len(pending)
 	diag.StagesMS["peer_selection"] = time.Since(selectionStarted).Milliseconds()
 	if diag.OmissionReasons == nil {
 		diag.OmissionReasons = map[string]int{}
@@ -148,21 +156,10 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 	if err != nil {
 		return incomplete("peer relationship selection unavailable: " + err.Error())
 	}
-	if unresolved := hookOmissionCount(omissions); unresolved > 0 {
-		reasons := []string{}
-		if count := omissions["no_overlapping_paths"]; count > 0 {
-			reasons = append(reasons, fmt.Sprintf("skipped: no overlapping paths or resolved dependencies: %d", count))
-		}
-		if count := omissions["no_changed_paths"]; count > 0 {
-			reasons = append(reasons, fmt.Sprintf("skipped: no changed paths: %d", count))
-		}
-		if count := omissions["inspection_error"]; count > 0 {
-			reasons = append(reasons, fmt.Sprintf("inspection unavailable: %d", count))
-		}
-		self.Message = hookText(self.Message + fmt.Sprintf(" Radar NOT VERIFIED: %d peers have unresolved relationships and were not checked (%s).", unresolved, strings.Join(reasons, "; ")))
-	}
+	selectionOmissions = omissions
 	sort.SliceStable(peers, func(i, j int) bool { return peers[i].priority < peers[j].priority })
 	diag.Candidates = len(peers)
+	// Pending base-identical peers stay omitted until confirmed after the pairs.
 	diag.Omitted = diag.PeersTotal - diag.Candidates
 	cursorRoot := a.root + "#hook-peer-cursor"
 	cursorKey := hookCacheKey(ctx, a.root, "peer-rotation-v1")
@@ -239,11 +236,44 @@ func (a *app) hookPeers(ctx context.Context, o options, in watchInput, self agen
 			self.Reason = hookText(strings.TrimSpace(self.Reason + "\n" + pair.Reason))
 		}
 		if pair.Message != "" {
-			self.Message = hookText(strings.TrimSpace(self.Message + "\n" + pair.Message))
+			pairNotes = strings.TrimSpace(pairNotes + "\n" + pair.Message)
 		}
 	}
-
+	if len(pending) > 0 {
+		confirmStarted := time.Now()
+		unchanged, reasons := confirmUnchangedHookPeers(peerCtx, in.Base, pending)
+		diag.StagesMS["peer_unchanged"] = time.Since(confirmStarted).Milliseconds()
+		diag.Unchanged = unchanged
+		diag.Omitted = diag.PeersTotal - diag.Candidates - diag.Unchanged
+		for reason, count := range reasons {
+			diag.OmissionReasons[reason] += count
+			selectionOmissions[reason] += count
+		}
+		pendingCount = 0
+	}
+	self.Message = hookPeerMessage(self.Message, selectionOmissions, pairNotes)
 	return self
+}
+
+func hookOmissionText(message string, omissions map[string]int) string {
+	unresolved := hookOmissionCount(omissions)
+	if unresolved == 0 {
+		return message
+	}
+	reasons := []string{}
+	for _, r := range []struct{ code, text string }{
+		{"no_overlapping_paths", "skipped: no overlapping paths or resolved dependencies"},
+		{"head_not_base", "Git diff reports no change from base but HEAD differs"},
+		{"saved_snapshot_differs", "saved snapshot differs from base (not seen by the Git diff used for selection)"},
+		{"hidden_index_entries", "sparse, assume-unchanged or unmerged index entries hide saved content"},
+		{"inspection_error", "inspection unavailable"},
+		{"inspection_incomplete", "unchanged confirmation incomplete within the peer deadline"},
+	} {
+		if count := omissions[r.code]; count > 0 {
+			reasons = append(reasons, fmt.Sprintf("%s: %d", r.text, count))
+		}
+	}
+	return hookText(message + fmt.Sprintf(" Radar NOT VERIFIED: %d peers were not checked (%s).", unresolved, strings.Join(reasons, "; ")))
 }
 
 func hookInputPaths(ctx context.Context, root, base string, in overlap.Input) (map[string]bool, error) {
@@ -311,4 +341,27 @@ func hookOmissionCount(reasons map[string]int) int {
 		total += count
 	}
 	return total
+}
+
+// hookPeerMessage places unverified peer scope before pair notes, so that
+// truncation of long notes cannot remove a NOT VERIFIED statement.
+func hookPeerMessage(message string, omissions map[string]int, notes string) string {
+	prefix := hookText(strings.TrimSpace(hookOmissionText(message, omissions)))
+	notes = hookText(strings.TrimSpace(notes))
+	if notes == "" {
+		return prefix
+	}
+	// Only notes are shortened to fit; the scope prefix is kept whole.
+	room := 4096 - len(prefix) - len("\n…")
+	if room <= 0 {
+		return prefix
+	}
+	if len(notes) > room {
+		cut := room
+		for cut > 0 && !utf8.RuneStart(notes[cut]) {
+			cut--
+		}
+		notes = strings.TrimSpace(notes[:cut]) + "…"
+	}
+	return strings.TrimSpace(prefix + "\n" + notes)
 }

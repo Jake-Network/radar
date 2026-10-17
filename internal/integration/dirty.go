@@ -45,6 +45,23 @@ type dirtyFile struct {
 	deleted bool
 }
 
+// IndexHidesWorktree reports skip-worktree or assume-unchanged entries, whose
+// saved content Git status and diff do not compare against the index.
+// With unmerged set, conflicted entries count as well: Git diff can report no
+// change for a conflicted path whose saved file equals the compared tree.
+func IndexHidesWorktree(ctx context.Context, root string, unmerged bool) (bool, error) {
+	flags, err := dirtyGit(ctx, root, nil, "ls-files", "-v", "-z")
+	if err != nil {
+		return false, err
+	}
+	for _, f := range strings.Split(string(flags), "\x00") {
+		if len(f) > 1 && (f[0] == 'S' || f[0] >= 'a' && f[0] <= 'z' || unmerged && f[0] == 'M') {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ObserveDirty captures twice, including index blob identities and saved file
 // bytes. A changing, unreadable or unsupported snapshot is never verified.
 func ObserveDirty(ctx context.Context, w gitrepo.WorktreeStatus) (DirtySnapshot, error) {
@@ -175,14 +192,11 @@ func captureDirty(ctx context.Context, root string) (DirtySnapshot, error) {
 		tracked[p] = true
 		indexModes[p] = f[0]
 	}
-	flags, err := dirtyGit(ctx, root, nil, "ls-files", "-v", "-z")
-	if err != nil {
+	// Unmerged entries were already rejected from the staged listing above.
+	if flagged, err := IndexHidesWorktree(ctx, root, false); err != nil {
 		return s, err
-	}
-	for _, f := range strings.Split(string(flags), "\x00") {
-		if len(f) > 1 && (f[0] == 'S' || f[0] >= 'a' && f[0] <= 'z') {
-			return s, errors.New("sparse or assume-unchanged index entries cannot be previewed")
-		}
+	} else if flagged {
+		return s, errors.New("sparse or assume-unchanged index entries cannot be previewed")
 	}
 	for p := range hidden {
 		found := false

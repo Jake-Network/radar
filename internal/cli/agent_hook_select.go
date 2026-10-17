@@ -10,6 +10,7 @@ import (
 	"github.com/Jake-Network/radar/internal/contracts"
 	gitrepo "github.com/Jake-Network/radar/internal/git"
 	"github.com/Jake-Network/radar/internal/indexer"
+	"github.com/Jake-Network/radar/internal/integration"
 	"github.com/Jake-Network/radar/internal/languages"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/uniqueness"
@@ -17,8 +18,15 @@ import (
 
 // Selection is an acceleration policy, never a proof of independence. Peers
 // without a resolved relation are omitted with an explicit NOT VERIFIED scope.
-func selectHookPeers(ctx context.Context, root, base string, own map[string]bool, peers []hookPeer, cache *indexer.ParseCache) ([]hookPeer, map[string]int, error) {
+// A peer at base whose saved snapshot equals base adds nothing to the current
+// preview, so it can be counted as unchanged rather than omitted. Git diff alone
+// is not sufficient: a different HEAD changes the pair's merge-base, index flags
+// can hide saved content, and core.fileMode=false hides exec bits that the
+// pair snapshot records. Peers with no Git diff at base are therefore returned
+// as pending; confirmUnchangedHookPeers establishes unchanged later.
+func selectHookPeers(ctx context.Context, root, base string, own map[string]bool, peers []hookPeer, cache *indexer.ParseCache) ([]hookPeer, []hookPeer, map[string]int, error) {
 	selected := []hookPeer{}
+	pending := []hookPeer{}
 	omitted := map[string]int{}
 	var graph model.Snapshot
 	graphReady := false
@@ -29,8 +37,8 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 	paths := hookPeerPaths(ctx, base, peers)
 	for i, peer := range peers {
 		if err := ctx.Err(); err != nil {
-			omitted["selection_incomplete"] += len(peers) - len(selected) - hookOmissionCount(omitted)
-			return selected, omitted, err
+			omitted["selection_incomplete"] += len(peers) - len(selected) - len(pending) - hookOmissionCount(omitted)
+			return selected, pending, omitted, err
 		}
 		if paths[i].err != nil {
 			omitted["inspection_error"]++
@@ -50,7 +58,11 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 			continue
 		}
 		if len(changed) == 0 {
-			omitted["no_changed_paths"]++
+			if peer.worktree.Commit != base {
+				omitted["head_not_base"]++
+				continue
+			}
+			pending = append(pending, peer)
 			continue
 		}
 		peerDeclarations := loadHookDeclarations(ctx, peer.worktree.Path, "WORKTREE")
@@ -70,8 +82,8 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 				var err error
 				graph, err = hookSelectionGraph(ctx, root, cache)
 				if err != nil {
-					omitted["inspection_error"] += len(peers) - len(selected) - hookOmissionCount(omitted)
-					return selected, omitted, err
+					omitted["inspection_error"] += len(peers) - len(selected) - len(pending) - hookOmissionCount(omitted)
+					return selected, pending, omitted, err
 				}
 				graphReady = true
 			}
@@ -89,8 +101,78 @@ func selectHookPeers(ctx context.Context, root, base string, own map[string]bool
 			omitted["no_overlapping_paths"]++
 		}
 	}
-	return selected, omitted, nil
+	return selected, pending, omitted, nil
 }
+
+// confirmUnchangedHookPeers runs after pair analysis, so full saved snapshots of
+// idle peers cannot spend the budget of related pairs. Peers left unconfirmed
+// at the deadline are inspection_incomplete, never unchanged.
+func confirmUnchangedHookPeers(ctx context.Context, base string, peers []hookPeer) (int, map[string]int) {
+	reasons := make([]string, len(peers))
+	for i := range reasons {
+		reasons[i] = "inspection_incomplete"
+	}
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for range min(4, len(peers)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for i := range jobs {
+				reasons[i] = hookConfirmUnchanged(ctx, base, peers[i].worktree)
+			}
+		}()
+	}
+feed:
+	for i := range peers {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break feed
+		}
+	}
+	close(jobs)
+	workers.Wait()
+	unchanged, omitted := 0, map[string]int{}
+	for _, reason := range reasons {
+		if reason == "" {
+			unchanged++
+		} else {
+			omitted[reason]++
+		}
+	}
+	return unchanged, omitted
+}
+
+// hookConfirmUnchanged returns "" when the peer's saved snapshot equals base,
+// otherwise the omission reason. Tests replace it to model expensive snapshots.
+var hookConfirmUnchanged = hookUnchangedReason
+
+func hookUnchangedReason(ctx context.Context, base string, w gitrepo.WorktreeStatus) string {
+	hidden, err := integration.IndexHidesWorktree(ctx, w.Path, true)
+	if err != nil && ctx.Err() != nil {
+		return "inspection_incomplete"
+	}
+	if err != nil {
+		return "inspection_error"
+	}
+	if hidden {
+		return "hidden_index_entries"
+	}
+	snap, err := integration.ObserveDirty(ctx, w)
+	switch {
+	case err != nil && ctx.Err() != nil:
+		return "inspection_incomplete"
+	case err != nil:
+		return "inspection_error"
+	case snap.Head != base:
+		return "head_not_base"
+	case len(snap.Staged)+len(snap.Unstaged)+len(snap.Untracked) > 0:
+		return "saved_snapshot_differs"
+	}
+	return ""
+}
+
 func hookSelectionGraph(ctx context.Context, root string, cache *indexer.ParseCache) (model.Snapshot, error) {
 	provider, err := indexer.NewWorktree(root)
 	if err != nil {

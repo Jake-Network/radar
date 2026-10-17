@@ -121,12 +121,22 @@ func TestAgentHookTwelveWorktreesColdAndWarmSelection(t *testing.T) {
 		if r.Radar.Checked+r.Radar.Reused == 0 {
 			// Cold peer work may exhaust the bounded budget after self has
 			// completed. The next invocation must resume using that self cache.
-			if i != 0 || r.Decision != "" || r.Radar.Omitted != 11 {
+			// Unconfirmed peers at base, including main, stay omitted.
+			if i != 0 || r.Decision != "" || r.Radar.Unchanged != 0 || r.Radar.Omitted != 11 {
 				t.Fatalf("partial peer work failed to make bounded progress: %+v", r)
 			}
 			continue
 		}
-		if r.Decision != "block" || r.Radar.Omitted != 10 {
+		if r.Radar.Unchanged == 0 {
+			// The pair completed but the deadline cut unchanged confirmation:
+			// the base-identical peer stays NOT VERIFIED and the next call retries.
+			if i != 0 || r.Decision != "block" || r.Radar.OmissionReasons["inspection_incomplete"] != 1 || !strings.Contains(r.Message, "NOT VERIFIED") {
+				t.Fatalf("unconfirmed peer after completed pair was misreported: %+v", r)
+			}
+			continue
+		}
+		// The main worktree equals base: unchanged, not an omitted peer.
+		if r.Decision != "block" || r.Radar.Unchanged != 1 || r.Radar.Omitted != 9 {
 			t.Fatalf("completed pair lost conflict or unresolved scope: %+v", r)
 		}
 		if completed && r.Radar.Reused != 1 {
@@ -157,18 +167,24 @@ func TestAgentHookSelectsPeersNewSavedImportAndRenamedSource(t *testing.T) {
 		if attempt == 0 && result.Radar.Self != "complete" || attempt > 0 && result.Radar.Self != "reused" {
 			t.Fatalf("saved self preview was lost or not cached: %+v", result)
 		}
-		if !strings.Contains(result.Message, "NOT VERIFIED") {
-			t.Fatal("unresolved peer scope was presented as verified")
-		}
 		if result.Radar.Checked+result.Radar.Reused == 0 {
 			// The default budget may end during a cold semantic pair. Preserve
 			// completed self work, then require the next call to complete the pair.
-			if attempt != 0 || result.Decision != "" || result.Radar.Omitted != 2 || !strings.Contains(result.Message, "peer inspection incomplete:") {
+			if attempt != 0 || result.Decision != "" || result.Radar.Unchanged != 0 || result.Radar.Omitted != 2 || !strings.Contains(result.Message, "NOT VERIFIED: peer inspection incomplete:") {
 				t.Fatalf("import/rename pair failed to resume bounded work: %+v", result)
 			}
 			continue
 		}
-		if result.Decision != "block" || !strings.Contains(result.Reason, "symbol_dangling_reference") || result.Radar.Omitted != 1 {
+		if result.Radar.Unchanged == 0 {
+			// The pair completed but the deadline cut unchanged confirmation:
+			// the base-identical peer stays NOT VERIFIED and the next call retries.
+			if attempt != 0 || result.Decision != "block" || result.Radar.OmissionReasons["inspection_incomplete"] != 1 || !strings.Contains(result.Message, "NOT VERIFIED") {
+				t.Fatalf("unconfirmed peer after completed pair was misreported: %+v", result)
+			}
+			continue
+		}
+		// The selected peer was checked and the other equals base: nothing is unverified.
+		if result.Decision != "block" || !strings.Contains(result.Reason, "symbol_dangling_reference") || result.Radar.Unchanged != 1 || result.Radar.Omitted != 0 || strings.Contains(result.Message, "NOT VERIFIED") {
 			t.Fatalf("completed new import/rename pair lost semantic drift: %+v", result)
 		}
 		if completed && result.Radar.Reused != 1 || !completed && result.Radar.Checked != 1 {

@@ -93,14 +93,21 @@ The current selected preview runs before peer inspection and is cached separatel
 Peer selection prioritizes shared paths, imports in both directions, declared
 contracts, migration histories, unique rules and supported route relationships.
 Unresolved or omitted peers remain NOT VERIFIED. Detached peers are excluded by
-default. Completed pair comparisons are cached independently; partial calls can
-resume remaining pairs and rotate expensive work rather than restarting at the
-same peer. Incomplete standalone or dirty baselines cannot establish new drift.
+default. A peer at base whose saved snapshot has no changes adds nothing to the
+combination and is counted as unchanged, not NOT VERIFIED. The check uses the
+same saved snapshot as pair analysis, not Git diff alone: a different HEAD,
+sparse, assume-unchanged or unmerged index entries, exec-bit changes hidden by
+`core.fileMode=false`, or an unsupported snapshot keep the peer NOT VERIFIED.
+This confirmation runs after related pairs, with the remaining peer budget;
+peers it cannot confirm before the deadline also remain NOT VERIFIED.
+Completed pair comparisons are cached independently; partial calls can resume
+remaining pairs and rotate expensive work rather than restarting at the same
+peer. Incomplete standalone or dirty baselines cannot establish new drift.
 The default 20-second budget reserves its final two seconds for revalidation and
 response. A peer deadline preserves completed self findings.
 
 For measurements add `--json` to the native command. The optional `radar` object
-reports `stages_ms`, `self`, and peer total/candidate/checked/reused/omitted counts.
+reports `stages_ms`, `self`, and peer total/candidate/checked/reused/omitted/unchanged counts.
 The native response without this flag retains `decision`, `reason` and
 `systemMessage`, and protocol responses exit zero. A completed self preview is
 not verification of unexamined peers.
