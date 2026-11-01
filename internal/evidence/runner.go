@@ -272,7 +272,7 @@ func environment(privateHome string, passthrough []string) []string {
 		"TMPDIR=" + privateHome, "TMP=" + privateHome, "TEMP=" + privateHome, "LANG=C",
 		"GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "GOPATH=" + filepath.Join(privateHome, "go"),
 		"PIP_NO_INDEX=1", "PYTHONDONTWRITEBYTECODE=1", "CARGO_NET_OFFLINE=true", "npm_config_offline=true",
-		"GIT_TERMINAL_PROMPT=0",
+		"GIT_TERMINAL_PROMPT=0", "GOTELEMETRY=off",
 	}
 	shared := map[string]string{
 		"GOMODCACHE":       existing(os.Getenv("GOMODCACHE"), join(gopath, "pkg", "mod"), join(home, "go", "pkg", "mod")),

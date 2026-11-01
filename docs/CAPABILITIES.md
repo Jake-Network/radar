@@ -15,7 +15,8 @@ reported as `unknown` or `incomplete`, never as a pass.
 | Java | declarations, imports | single-type, on-demand (`.*`) and static imports, by each file's declared `package` and file name |
 | C / C++ | declarations, `#include` | in order: the including file's directory (quoted includes); `-I`, `-iquote` and `-isystem` of a committed `compile_commands.json`; ancestors up to the nearest build file (quoted); `include/`, and for quoted includes `src/`, of each enclosing CMake, Meson or Make project |
 
-Parsing is Tree-sitter, built into the binary. There is no compiler type checking.
+Parsing is Tree-sitter, built into the binary. Static analysis runs no compiler;
+opt-in [type checking](#type-checking) is separate.
 Supported literal symbol relationships are inferred; opt-in file observation is
 separate from static analysis. Import edges (`DEPENDS_ON`) are labeled
 `inferred`: they follow each language's path conventions without a compiler.
@@ -153,6 +154,60 @@ declared with `junit`: one file, or a directory of `TEST-*.xml` files.
 Inventory, selection and result interpretation are described in
 [verification](VERIFICATION.md#test-selection).
 
+## Type checking
+
+`radar gate --run --typecheck` type-checks the combined tree before tests run.
+It is part of the execution opt-in and is never available from MCP.
+
+| Language | Command | Target |
+| --- | --- | --- |
+| Go | `go vet -buildtag ./...` | each `go.mod` module that owns a changed `.go`, `go.mod` or `go.sum` file, C or assembly input, or file beside Go source; modules that use a changed or deleted module through `go.work` or a relative `replace` |
+| Python | `python3 -m mypy …`; `ruff check --select F821,F811,F822,F823 … FILES` | the nearest directory above a changed `.py` or `.pyi` file whose `mypy.ini`, `.mypy.ini`, `setup.cfg` or `pyproject.toml` configures mypy, or whose `ruff.toml`, `.ruff.toml` or `pyproject.toml` configures ruff |
+
+The command runs in its own private copy of the candidate, so it cannot change
+what tests observe. A command that changes files there is discarded. Module
+downloads are disabled, so a missing third-party module, C header or C compiler
+is an environment problem. A missing package of a repository module is a source
+failure, and so are import cycles and two package names in one directory.
+`-buildtag` also reports malformed build constraints.
+
+Python tools are the ones on PATH: mypy runs as a module of `python3`, the
+interpreter tests use, so activate the project's environment first. As for
+tests, an import path that reaches outside the private copy (for example an
+editable install of your checkout) stops the run. mypy checks what its
+configuration names (`files`, `packages`, `modules`); otherwise it checks the
+whole project (`.`), so unchanged modules that import changed or deleted code
+are checked too. mypy reports which
+files it checks; changed files it leaves out (`exclude`) are listed as not
+type-checked. mypy's own settings decide how deeply it checks, for example
+whether it checks the bodies of unannotated functions. ruff is given the
+changed files and only looks for undefined and redefined names in them. A
+third-party module or stub package mypy cannot find is an environment problem;
+a missing module of the project itself is a source failure. Neither tool writes
+a cache. Changed Python files without mypy or ruff configuration are listed in
+the report and are not type-checked.
+
+A failure is compared with the same command on the base. Errors are matched by
+file and message, not line, and an error in a file a branch only moved still
+matches its base error. On the base, ruff is given the changed files that
+exist there, plus the files a branch deleted or moved. `go vet` stops at the first error of a package and skips packages
+that import it, and mypy stops at a syntax error, so when such a base run
+already fails, a new-looking error may have been hidden there: the result is
+not verified instead of failed. If the base cannot be type-checked, or the project
+does not exist there, the errors are kept and the gate fails, with a note that
+some may already exist on the base.
+
+After each run, `go list` in the same environment reports which files the
+toolchain compiled. Changed Go files it did not compile are listed as not
+type-checked and keep the check from passing: files excluded by their name,
+build constraints, release or custom tags, cgo files without a C compiler, and
+directories `./...` skips. Files under `vendor` or outside every module are not
+type-checked either. Unchanged files the toolchain does not compile are not
+checked, so an error that appears only for another GOOS, GOARCH or tag is not
+found. When no changed file belongs to a supported
+project, no type-check requirement is added and the report says so. A pass is a
+type checker's result, not observed behavior.
+
 ## Parallel work and landing
 
 `land` reuses supported static checks for pair conflicts and ancestry-aware
@@ -192,7 +247,7 @@ property is there and nothing more.
 
 ## Not supported
 
-- built-in compiler/type-checker execution
+- type checkers other than `go vet`, mypy and ruff (TypeScript, Rust, Java and C++ type checking)
 - incremental updating of the entire dependency graph
 - published Windows binaries (native qualification jobs are configured, not demonstrated by local Linux checks)
 - release signing or notarization

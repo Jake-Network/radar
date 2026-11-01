@@ -33,7 +33,7 @@ func TestMCPIntegrationToolsCannotAuthorizeExecutionOrReview(t *testing.T) {
 		if _, err := tool.args(valid); err != nil {
 			t.Fatal("valid analysis tool arguments rejected", tool.name, err)
 		}
-		for _, arg := range []string{"run", "verify", "allow_execution", "allow-execution", "observe_coverage", "observe-coverage", "reviewer", "approve", "driver", "apply"} {
+		for _, arg := range []string{"run", "verify", "allow_execution", "allow-execution", "observe_coverage", "observe-coverage", "typecheck", "reviewer", "approve", "driver", "apply"} {
 			attempted := map[string]any{}
 			for k, v := range valid {
 				attempted[k] = v

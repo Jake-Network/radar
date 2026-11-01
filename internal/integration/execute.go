@@ -137,7 +137,7 @@ func runVerification(ctx context.Context, temp string, r *Report, o Options) err
 			}
 		}
 		if o.budget != nil && !o.budget.take(1) {
-			skipped(selection, "command_budget_exhausted", "generators, declared setup and selected tests share the command budget")
+			skipped(selection, "command_budget_exhausted", "type checking, generators, declared setup and selected tests share the command budget")
 			continue
 		}
 		// Explicit commands keep their observed execution-error semantics.
@@ -585,7 +585,7 @@ func windowsRunnerUnavailable(filename string) string {
 func executionRemediation(ev ExecutionEvidence) string {
 	d := ev.Observation.Diagnosis
 	switch {
-	case ev.Status == model.StatusFailed && d != nil && d.Kind == "build_failed":
+	case ev.Status == model.StatusFailed && d != nil && (d.Kind == "build_failed" || d.Kind == "typecheck_failed"):
 		return "The branches do not compile together. Open the reported location in a checkout of the combined branches, then either update the branch that still uses the old code or restore what another branch renamed or removed. Commit and rerun the same gate."
 	case ev.Status == model.StatusFailed:
 		return "Reproduce the supplied command on the combined changes, reconcile producer/consumer assumptions, and repair the failing invariant."

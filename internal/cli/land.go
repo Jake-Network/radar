@@ -29,7 +29,7 @@ func landCommand() command {
 }
 
 func (a *app) land(o options) int {
-	if o.verify || o.trailer || o.observeCoverage || o.suite != "" || o.again || o.replay != "" {
+	if o.verify || o.trailer || o.observeCoverage || o.typecheck || o.suite != "" || o.again || o.replay != "" {
 		return a.fail(errors.New("landing is static; run a separate gate for test execution"))
 	}
 	if err := a.repository(); err != nil {

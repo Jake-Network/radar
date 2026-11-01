@@ -1,8 +1,10 @@
 package gate
 
 import (
-	"github.com/Jake-Network/radar/internal/model"
+	"strings"
 	"testing"
+
+	"github.com/Jake-Network/radar/internal/model"
 )
 
 func TestRequiredEvidenceAndUnrelatedCoverage(t *testing.T) {
@@ -46,5 +48,12 @@ func TestNoBreakingRequiresEstablishedObligations(t *testing.T) {
 	failing := []model.Finding{{Contract: "x", Severity: model.SeverityError, Explanation: "removed"}}
 	if c := NoBreaking(failing, []string{"other"}); c.Status != model.StatusFailed {
 		t.Fatal("confirmed failure masked by unverified coverage", c)
+	}
+}
+
+func TestTypecheckCoverageExcludesFilesTheToolchainSkips(t *testing.T) {
+	cov := CoverageFor([]Check{{ID: "combined_typecheck", Status: model.StatusPassed, Explanation: "no new type errors"}}, nil)
+	if len(cov) != 1 || !strings.Contains(strings.Join(cov[0].Excluded, "\n"), "unchanged files the running toolchain does not compile") {
+		t.Fatalf("coverage=%+v", cov)
 	}
 }

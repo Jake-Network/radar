@@ -85,6 +85,7 @@ func gateCommand() command {
 			fs.StringVar(&o.replay, "replay", "", "rebuild the exact commits of workspace `RUN` (run ID or last)")
 			fs.BoolVar(&o.observeCoverage, "observe-coverage", false, "with execution opt-in, observe covered files for later test selection")
 			fs.BoolVar(&o.verify, "run", false, "execute the selected tests on the combined tree with your host permissions (not an OS sandbox)")
+			fs.BoolVar(&o.typecheck, "typecheck", false, "with --run, also type-check the projects owning changed files on the combined tree (Go: go vet; Python with mypy or ruff configuration: mypy, ruff)")
 			fs.StringVar(&o.suite, "suite", "", "test selection `MODE` with --run: targeted, balanced (default) or full")
 			fs.IntVar(&o.maxCommands, "max-commands", testselection.DefaultMaxCommands, "maximum grouped test commands (`N`) --run executes")
 			fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "total --run time budget (`DURATION`), maximum 30m")
@@ -96,7 +97,7 @@ func gateCommand() command {
 
 func (a *app) gate(o options) int {
 	if o.overlap {
-		if o.verify || o.trailer || o.landing || o.conflictBrief || o.plan != "" || o.policy != "" || o.suite != "" || o.observeCoverage {
+		if o.verify || o.trailer || o.landing || o.conflictBrief || o.plan != "" || o.policy != "" || o.suite != "" || o.observeCoverage || o.typecheck {
 			return a.fail(errors.New("--overlap is a static query and cannot be combined with execution, plan, policy, trailer or landing options"))
 		}
 		inv, err := a.workspaceInvocation(o)
@@ -119,6 +120,9 @@ func (a *app) gate(o options) int {
 	}
 	if o.observeCoverage && !o.verify {
 		return a.fail(errors.New("--observe-coverage requires --run"))
+	}
+	if o.typecheck && !o.verify {
+		return a.fail(errors.New("--typecheck runs repository tools; add --run"))
 	}
 	if o.suite != "" && !o.verify {
 		return a.fail(errors.New("--suite selects what --run executes; add --run or use --suite only with it"))
@@ -163,6 +167,7 @@ func (a *app) gate(o options) int {
 	options := integration.Options{Base: baseSHA, Branches: refs, Policy: policy, Plan: plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout, ObserveCoverage: o.observeCoverage}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
+		options.Typecheck = o.typecheck
 		options.AttributionRuns = o.attributionRuns
 		options.Suite = o.suite
 		if options.Suite == "" {
@@ -204,11 +209,11 @@ func (a *app) gate(o options) int {
 		g.Next = "repair on the branches above, commit, then rerun: " + strings.TrimSpace("radar gate "+rerun)
 	case r.Gate.Verdict == gate.Blocked && staticGap(r) != "":
 		// Running tests cannot settle a static check Radar could not read.
-		g.Next = staticGap(r) + " could not be checked; resolve what its explanation names, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+		g.Next = staticGap(r) + " could not be checked; resolve what its explanation names, then rerun: " + strings.TrimSpace(gateCommandFor(o)+rerun)
 	case r.Gate.Verdict == gate.Blocked && o.verify:
 		g.Next = blockedNext(r, gateGaps(r), rerunWith(o, baseRef, refs), o)
 	case configurationUnstable(configuration.Inputs):
-		g.Next = "restore stable configuration, then rerun: " + strings.TrimSpace("radar gate "+rerun)
+		g.Next = "restore stable configuration, then rerun: " + strings.TrimSpace(gateCommandFor(o)+rerun)
 	case r.Gate.Verdict == gate.Error && missingRunner(r.Executions) != "":
 		g.Next = "install " + missingRunner(r.Executions) + " where you run radar, then rerun: " + strings.TrimSpace("radar gate --run "+rerun)
 	case r.Gate.Verdict == gate.Error:
@@ -475,6 +480,15 @@ func contains(sorted []string, p string) bool {
 }
 
 // gateArgs reproduces the selection; auto-detected branches stay implicit.
+// gateCommandFor keeps --run in a suggested rerun whenever it was given, so
+// execution-only flags in the rerun arguments stay valid.
+func gateCommandFor(o options) string {
+	if o.verify {
+		return "radar gate --run "
+	}
+	return "radar gate "
+}
+
 func gateArgs(o options, baseRef string, refs []string) string {
 	args := []string{}
 	if o.base != "" {
@@ -497,6 +511,9 @@ func gateArgs(o options, baseRef string, refs []string) string {
 	}
 	if o.observeCoverage {
 		args = append(args, "--observe-coverage")
+	}
+	if o.verify && o.typecheck {
+		args = append(args, "--typecheck")
 	}
 	if o.verify && o.attributionRuns != 0 {
 		args = append(args, fmt.Sprintf("--attribution-runs %d", o.attributionRuns))
@@ -655,6 +672,7 @@ func renderGate(w io.Writer, g gateReport, ran bool) {
 		renderSuggestedTests(w, *r.VerificationProposal, r.Changed, p)
 	}
 	renderRunnerPreparationErrors(w, r.RunnerPreparations, "  ", p)
+	renderTypecheck(w, r, p)
 	if ran && r.Selection != nil {
 		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Tests ("+r.Selection.Mode+"):"), len(r.Executions), plural(len(r.Selection.Commands), "selected command", "selected commands"))
 		for _, ev := range r.Executions {
@@ -970,6 +988,92 @@ func gateMark(s model.Status) string {
 	return "?"
 }
 
+// renderTypecheck lists --typecheck commands, their new located errors and
+// the targets that did not run. Messages are not kept, only locations.
+func renderTypecheck(w io.Writer, r integration.Report, p palette) {
+	total := len(r.TypecheckExecutions) + len(r.TypecheckOmitted)
+	switch {
+	case !r.TypecheckRequested && total == 0:
+		return
+	case total == 0 && len(r.TypecheckGaps) == 0:
+		fmt.Fprintf(w, "\n%s %s\n", p.bold("Typecheck:"), "nothing checked — no supported project (Go module, or Python project with mypy or ruff configuration) owns a changed file")
+		renderUnconfigured(w, r, p)
+		return
+	case total == 0:
+		fmt.Fprintf(w, "\n%s %s\n", p.bold("Typecheck:"), "incomplete — changed source files could not be type-checked")
+	default:
+		fmt.Fprintf(w, "\n%s ran %d of %s\n", p.bold("Typecheck:"), len(r.TypecheckExecutions), plural(total, "target", "targets"))
+	}
+	for _, ev := range r.TypecheckExecutions {
+		fmt.Fprintf(w, "  %s %s  %s\n", p.mark(gateMark(ev.Status)), p.cyan(displayCommand(ev.Command)), p.dim(typecheckDetail(ev)))
+		for i, d := range ev.NewDiagnostics {
+			if i == 3 {
+				fmt.Fprintf(w, "      … %d more new error(s) in --json\n", len(ev.NewDiagnostics)-3)
+				break
+			}
+			line := d.Location()
+			if d.Symbol != "" {
+				line += "  uses " + d.Symbol + ", which the combined source does not define"
+			}
+			fmt.Fprintf(w, "      %s %s\n", p.mark("✗"), line)
+		}
+	}
+	for _, om := range r.TypecheckOmitted {
+		fmt.Fprintf(w, "  %s %s  %s\n", p.mark("?"), p.cyan(displayCommand(om.Command)), p.dim("(not run: "+om.Explanation+")"))
+	}
+	for _, g := range r.TypecheckGaps[:min(len(r.TypecheckGaps), 3)] {
+		fmt.Fprintf(w, "  %s %s  %s\n", p.mark("·"), g.Path, p.dim("(not type-checked: "+g.Reason+")"))
+	}
+	if len(r.TypecheckGaps) > 3 {
+		fmt.Fprintf(w, "  %s %d more changed file(s) not type-checked; see --json\n", p.mark("·"), len(r.TypecheckGaps)-3)
+	}
+	renderUnconfigured(w, r, p)
+}
+
+// renderUnconfigured lists changed Python files no mypy or ruff
+// configuration covers.
+func renderUnconfigured(w io.Writer, r integration.Report, p palette) {
+	for _, f := range r.TypecheckUnconfigured[:min(len(r.TypecheckUnconfigured), 3)] {
+		fmt.Fprintf(w, "  %s %s  %s\n", p.mark("·"), f, p.dim("(not type-checked: no mypy or ruff configuration)"))
+	}
+	if len(r.TypecheckUnconfigured) > 3 {
+		fmt.Fprintf(w, "  %s %d more Python file(s) without mypy or ruff configuration; see --json limitations\n", p.mark("·"), len(r.TypecheckUnconfigured)-3)
+	}
+}
+
+// typecheckUncompared reports a failed type check whose errors were not
+// compared with base, such as a project that does not exist on base: its
+// errors are not shown to be new.
+func typecheckUncompared(r integration.Report) bool {
+	for _, ev := range r.TypecheckExecutions {
+		if ev.Status == model.StatusFailed && (ev.BaseComparison == nil || !ev.BaseComparison.Compared) {
+			return true
+		}
+	}
+	return false
+}
+
+func typecheckDetail(ev integration.TypecheckExecution) string {
+	detail := "in " + ev.CWD
+	switch {
+	case ev.Status == model.StatusPassed:
+		detail += "; no type errors"
+	case ev.Status == model.StatusFailed && ev.BaseComparison != nil && ev.BaseComparison.Compared:
+		detail += "; " + plural(ev.BaseComparison.New, "new type error", "new type errors") + " not on base"
+	case ev.Status == model.StatusFailed:
+		detail += "; " + plural(ev.Observation.DiagnosticCount, "type error", "type errors") + "; base comparison unavailable, so some may already exist on base"
+	case ev.BaseComparison != nil && ev.BaseComparison.Compared:
+		detail += "; already fails on base; new errors cannot be ruled out"
+	case ev.SourceAfterExecution == "modified":
+		detail += "; the command changed files, so its result was discarded"
+	case ev.Observation.Diagnosis != nil:
+		detail += "; " + string(ev.Status) + ": " + ev.Observation.Diagnosis.Message
+	default:
+		detail += "; " + string(ev.Status)
+	}
+	return "(" + detail + ")"
+}
+
 func executionDetail(ev integration.ExecutionEvidence) string {
 	detail := fmt.Sprintf("in %s; %s", ev.CWD, plural(ev.Observation.TestsRun, "recognized test", "recognized tests"))
 	if ev.BaseComparison != nil {
@@ -1005,6 +1109,8 @@ func gateCheckName(id string) string {
 		return "Unique keys"
 	case "generated_drift":
 		return "Generated files"
+	case "combined_typecheck":
+		return "Typecheck"
 	}
 	return id
 }
@@ -1027,6 +1133,7 @@ func gateLabel(c gate.Check, r integration.Report) string {
 		"lockfile_consistency":  {"direct dependencies are recorded in supported lockfiles", "manifest and lockfile disagree"},
 		"unique_keys":           {"supported route and declared keys stay unique", "duplicate unique key"},
 		"generated_drift":       {"declared generated outputs match", "declared generated outputs drift"},
+		"combined_typecheck":    {"no new type errors in the checked modules", "new type errors on the combined tree"},
 	}
 	l, ok := labels[c.ID]
 	switch {
@@ -1046,6 +1153,9 @@ func gateLabel(c gate.Check, r integration.Report) string {
 				}
 			}
 			return fmt.Sprintf("%d of %s failed on the combined tree", failed, plural(len(r.Executions), "test command", "test commands"))
+		}
+		if c.ID == "combined_typecheck" && typecheckUncompared(r) {
+			return "type errors on the combined tree; base comparison unavailable, so some may already exist on base"
 		}
 		return l[1]
 	case c.ID == "test_selection" && r.Selection != nil && c.Status == model.StatusIncomplete:

@@ -25,7 +25,7 @@ func (a *app) workspaceOverlap(o options, inv *workspaceInvocation) int {
 	return a.workspacePairInspection(o, inv, true)
 }
 func (a *app) workspacePairInspection(o options, inv *workspaceInvocation, dirty bool) int {
-	if o.verify || o.observeCoverage || o.allow || o.policy != "" || o.plan != "" || o.trailer {
+	if o.verify || o.observeCoverage || o.typecheck || o.allow || o.policy != "" || o.plan != "" || o.trailer {
 		return a.fail(errors.New("workspace pair inspection is static and does not authorize repository execution"))
 	}
 	repos, err := composition.Collect(a.ctx, composition.Request{Scope: inv.scope, Named: inv.named, Bases: inv.bases, Replay: inv.replay})

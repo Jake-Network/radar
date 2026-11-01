@@ -49,6 +49,7 @@ analysis path.
 | `runproof`, `scip` | immutable historical reports, explicitly bound external occurrences |
 | `composition`, `workspace` | multi-repository scope, registry, team file, run records |
 | `testselection` | test inventory, selection modes, grouping, budgets |
+| `typecheck` | type-check target selection from committed files (`--typecheck`) |
 | `evidence` | runs commands and classifies results |
 | `gate` | evaluates required checks against a policy |
 | `planning`, `verification` | plans, task DAGs, rule checks |

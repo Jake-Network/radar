@@ -214,6 +214,8 @@ func CoverageFor(checks []Check, limitations []string) []Coverage {
 			v.Excluded = []string{"unexecuted regeneration does not establish generated-output correctness"}
 		case "migration_order":
 			v.Excluded = []string{"migration-tool runtime configuration not declared in .radar/migrations.json (alembic.ini version_locations, MIGRATION_MODULES, Flyway locations)", "Flyway versions repeated across directories the base already uses in parallel", "Alembic depends_on and Django run_before ordering across apps", "Java or other non-SQL migrations", "conflicting schema operations between migrations"}
+		case "combined_typecheck":
+			v.Excluded = []string{"runtime behavior: a type-check pass is a tool result about types, not observed tests", "changed files outside a supported type-check target", "unchanged files the running toolchain does not compile (other GOOS or GOARCH, build tags, cgo)", "errors a tool hides behind an earlier error: go vet stops at the first error of a package and skips packages importing it; mypy stops at a syntax error", "modules that neither own a changed file nor use one through go.work or a relative replace", "Python modules mypy does not check (outside its configured files, or excluded); ruff checks only changed files, for undefined and redefined names", "what mypy's own settings leave unchecked, such as bodies of unannotated functions", "Python files without mypy or ruff configuration"}
 		case "integration_tests", "integration_execution":
 			if c.Status == model.StatusUnknown {
 				v.Unavailable = []string{"observed test evidence: no successful recognized test execution supplied"}

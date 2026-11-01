@@ -19,6 +19,7 @@ demo-all: build
 	bash examples/integration/demo.sh "$$(pwd)/bin/radar"
 	bash examples/quickstart/demo.sh "$$(pwd)/bin/radar"
 	bash examples/migrations/demo.sh "$$(pwd)/bin/radar"
+	bash examples/typecheck/demo.sh "$$(pwd)/bin/radar"
 	bash examples/static-rules/demo.sh "$$(pwd)/bin/radar"
 	bash examples/watch/demo.sh "$$(pwd)/bin/radar"
 	bash examples/landing/demo.sh "$$(pwd)/bin/radar"

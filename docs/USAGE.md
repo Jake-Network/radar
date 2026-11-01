@@ -503,6 +503,13 @@ and over-budget artifacts are rejected. Virtualenv console/editable paths are
 relocated to the new private copy. Real package-manager/network/platform behavior
 still needs project-specific execution evidence.
 
+`radar gate --run --typecheck` also type-checks the projects that own changed
+files, in a separate private copy, and requires `combined_typecheck`. Results
+are in `typecheck_executions`; targets that did not run are in
+`typecheck_omitted`, and changed files with no target in `typecheck_gaps`.
+Type checking shares the command budget and timeout with tests. See
+[type checking](CAPABILITIES.md#type-checking).
+
 `radar gate --run --observe-coverage` observes Python file reads, including data
 files and child Python processes. Other frameworks declare a fresh report in the
 profile, for example `"coverage":{"format":"go","report":"coverage.out"}`

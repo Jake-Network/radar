@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+* `radar gate --run --typecheck` type-checks the combined tree with `go vet` for
+  each Go module that owns a changed file and the modules that use it through
+  `go.work` or a relative `replace`, in a separate private copy. Errors the base
+  also has, or may hide because it already fails, do not fail the gate. Changed
+  files `go vet` would not compile on this machine keep the check from passing.
+  Locations, identifier-shaped symbols and message hashes are kept; raw output
+  is not.
+* `--typecheck` also runs mypy and ruff (undefined and redefined names) for
+  Python projects with mypy or ruff configuration, using the `python3` and
+  `ruff` on PATH. mypy checks its configured files, or else the whole project;
+  changed files it excludes keep the check from passing. A missing third-party module or stub package is
+  an environment problem; a missing module of the project is a source failure.
 * Candidate source integrity checks stream tracked blobs and files, allowing
   candidates larger than 64 MiB without weakening content, mode, symlink or
   input checks. Runner preparation reports inspection errors separately from

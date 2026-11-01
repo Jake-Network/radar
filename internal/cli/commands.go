@@ -21,7 +21,7 @@ type options struct {
 	depth, limit                                                                                                           int
 	timeout                                                                                                                time.Duration
 	maxCommands, attributionRuns                                                                                           int
-	observeCoverage                                                                                                        bool
+	observeCoverage, typecheck                                                                                             bool
 	args                                                                                                                   []string
 	// Workspace gate and workspace command options.
 	bases, with, only         []string
