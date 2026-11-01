@@ -218,10 +218,19 @@ while queue:
     # their values and precedence over global/per-module configuration.
     flags = []
     known = True
+    module_ignored = False
     try:
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
             if token.type == tokenize.COMMENT and token.start[1] == 0 and token.string.startswith("# mypy: "):
                 flags.append((token.start[0], token.string[len("# mypy: "):]))
+        # Python retains real type-ignore comments separately from strings and
+        # ordinary comments. Like mypy, an ignore before the first statement
+        # (including its decorators) silences the whole module, not one line.
+        parsed_source = ast.parse(source, filename, type_comments=True)
+        if parsed_source.body:
+            first = parsed_source.body[0]
+            first_line = min([first.lineno] + [d.lineno for d in getattr(first, "decorator_list", [])])
+            module_ignored = any(ignore.lineno < first_line for ignore in parsed_source.type_ignores)
     except (tokenize.TokenError, IndentationError, SyntaxError):
         # Still run mypy so it can observe a source syntax failure. An
         # undecodable source must not become coverage if it exits zero.
@@ -232,7 +241,7 @@ while queue:
         known = known and not inline_errors
     # A configured ignore_errors also silences the build's error sink;
     # parsing an inline False is not proof the tool re-enabled diagnostics.
-    if known and not configured_ignore and not importer_options.ignore_errors:
+    if known and not configured_ignore and not importer_options.ignore_errors and not module_ignored:
         checked[filename] = module
     if not missing:
         continue

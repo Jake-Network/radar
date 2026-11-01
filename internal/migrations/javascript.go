@@ -72,11 +72,31 @@ func (h *history) javascriptIssues(ctx context.Context, l location, files []File
 			tree.Close()
 			continue
 		}
-		stack := []*sitter.Node{root}
+		// TypeORM's directory loader enumerates module exports, not every
+		// class in a file. Only direct literal class exports are supported;
+		// aliases, re-exports and computed export values need resolution.
+		var classes []*sitter.Node
+		if typeORMCommonJSExports(root, content) {
+			h.unknown = append(h.unknown, f.Path+": CommonJS migration exports are not resolved")
+		}
+		for i := uint(0); i < root.NamedChildCount(); i++ {
+			n := root.NamedChild(i)
+			if n.Kind() != "export_statement" {
+				continue
+			}
+			declaration := n.ChildByFieldName("declaration")
+			if declaration != nil && declaration.Kind() == "class_declaration" {
+				classes = append(classes, declaration)
+			} else if typeORMPrimitiveExport(n, content) {
+				// The loader ignores primitive values; only functions,
+				// arrays and objects can contribute migration classes.
+				continue
+			} else if declaration == nil || declaration.Kind() != "interface_declaration" && declaration.Kind() != "type_alias_declaration" {
+				h.unknown = append(h.unknown, f.Path+": migration export is not a direct literal class declaration")
+			}
+		}
 		found := false
-		for len(stack) > 0 {
-			node := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
+		for _, node := range classes {
 			if node.Kind() == "class_declaration" {
 				body := node.ChildByFieldName("body")
 				className := node.ChildByFieldName("name")
@@ -127,9 +147,6 @@ func (h *history) javascriptIssues(ctx context.Context, l location, files []File
 				timestamps[migrationClassTimestamp.FindString(identity)] = append(timestamps[migrationClassTimestamp.FindString(identity)], f)
 				continue
 			}
-			for i := uint(0); i < node.NamedChildCount(); i++ {
-				stack = append(stack, node.NamedChild(i))
-			}
 		}
 		if !found {
 			h.unknown = append(h.unknown, f.Path+": no literal migration class with up and down methods")
@@ -148,6 +165,74 @@ func (h *history) javascriptIssues(ctx context.Context, l location, files []File
 		}
 	}
 	return nil
+}
+
+// Immutable primitive exports cannot contain classes. Mutable bindings and
+// object/array values need export resolution even when initialized literally.
+func typeORMPrimitiveExport(n *sitter.Node, content []byte) bool {
+	if value := n.ChildByFieldName("value"); value != nil {
+		return typeORMPrimitive(value, content, 0)
+	}
+	declaration := n.ChildByFieldName("declaration")
+	if declaration == nil || declaration.Kind() != "lexical_declaration" {
+		return false
+	}
+	kind := declaration.ChildByFieldName("kind")
+	if kind == nil || kind.Utf8Text(content) != "const" {
+		return false
+	}
+	found := false
+	for i := uint(0); i < declaration.NamedChildCount(); i++ {
+		binding := declaration.NamedChild(i)
+		if binding.Kind() == "comment" {
+			continue
+		}
+		name, value := binding.ChildByFieldName("name"), binding.ChildByFieldName("value")
+		if binding.Kind() != "variable_declarator" || name == nil || name.Kind() != "identifier" || !typeORMPrimitive(value, content, 0) {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+func typeORMPrimitive(n *sitter.Node, content []byte, depth int) bool {
+	if n == nil || depth > 8 {
+		return false
+	}
+	switch n.Kind() {
+	case "string", "number", "true", "false", "null":
+		return true
+	case "parenthesized_expression":
+		return n.NamedChildCount() == 1 && typeORMPrimitive(n.NamedChild(0), content, depth+1)
+	case "unary_expression":
+		argument, operator := n.ChildByFieldName("argument"), n.ChildByFieldName("operator")
+		return argument != nil && argument.Kind() == "number" && operator != nil && (operator.Utf8Text(content) == "-" || operator.Utf8Text(content) == "+")
+	}
+	return false
+}
+
+// A CommonJS export reference can replace or mutate the exported values even
+// alongside direct ESM class exports. Do not infer the resulting loaded set.
+func typeORMCommonJSExports(root *sitter.Node, content []byte) bool {
+	stack := []*sitter.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if n.Kind() == "identifier" && n.Utf8Text(content) == "exports" {
+			return true
+		}
+		if n.Kind() == "member_expression" || n.Kind() == "subscript_expression" {
+			object, property := n.ChildByFieldName("object"), n.ChildByFieldName("property")
+			if object != nil && object.Kind() == "identifier" && object.Utf8Text(content) == "module" && (n.Kind() == "subscript_expression" || property != nil && property.Utf8Text(content) == "exports") {
+				return true
+			}
+		}
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			stack = append(stack, n.NamedChild(i))
+		}
+	}
+	return false
 }
 
 var numericName = regexp.MustCompile(`^[0-9]+$`)

@@ -41,3 +41,13 @@ func TestRuffCheckedFilesObservesItsOwnExclusions(t *testing.T) {
 		t.Fatalf("files=%v err=%v", files, err)
 	}
 }
+
+func TestRuffCheckedFilesRejectsNonCheckingModes(t *testing.T) {
+	for _, mode := range []string{"--show-files", "--show-settings", "--help", "-h", "--version", "-V"} {
+		t.Run(mode, func(t *testing.T) {
+			if _, err := RuffCheckedFiles(context.Background(), t.TempDir(), ".", []string{"ruff", "check", mode, "."}, time.Second); err == nil {
+				t.Fatal("non-checking output counted as checked source")
+			}
+		})
+	}
+}

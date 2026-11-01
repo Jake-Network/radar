@@ -23,7 +23,9 @@ func selectCompiled(files map[string]indexer.Entry, entries []indexer.Entry, rea
 			t = &Target{ID: model.StableID("typecheck", key), Tool: tool, Root: root, CWD: root, Command: argv}
 			selected[key] = t
 		}
-		t.Changed = append(t.Changed, file)
+		if !contains(t.Changed, file) {
+			t.Changed = append(t.Changed, file)
+		}
 	}
 	ancestor := func(file, name string, outer bool) string {
 		found := ""
@@ -43,15 +45,21 @@ func selectCompiled(files map[string]indexer.Entry, entries []indexer.Entry, rea
 	}
 	var ccChanged []string
 	for _, f := range changed {
-		switch path.Ext(f) {
-		case ".rs":
+		kind := compiledInputKind(f)
+		if compiledConfiguration(f) {
+			if _, present := files[f]; !present {
+				plan.Gaps = append(plan.Gaps, Gap{f, "deleted build configuration cannot establish coverage of its previous build units"})
+			}
+		}
+		switch kind {
+		case "cargo":
 			root := ancestor(f, "Cargo.toml", true)
 			if root == "" {
 				plan.Gaps = append(plan.Gaps, Gap{f, "no committed Cargo manifest owns this Rust source"})
 				continue
 			}
 			add("cargo", root, f, []string{"cargo", "check", "--workspace", "--all-targets", "--locked", "--offline", "--message-format=json"})
-		case ".java", ".kt":
+		case "java":
 			root := ancestor(f, "pom.xml", true)
 			if root != "" {
 				add("java", root, f, []string{"mvn", "-o", "-B", "test-compile"})
@@ -79,10 +87,8 @@ func selectCompiled(files map[string]indexer.Entry, entries []indexer.Entry, rea
 				continue
 			}
 			add("java", root, f, []string{"gradle", "--offline", "--no-daemon", "--console=plain", "testClasses"})
-		default:
-			if CPPSource(f) {
-				ccChanged = append(ccChanged, f)
-			}
+		case "cpp":
+			ccChanged = append(ccChanged, f)
 		}
 	}
 	if len(ccChanged) > 0 {
@@ -100,6 +106,31 @@ func selectCompiled(files map[string]indexer.Entry, entries []indexer.Entry, rea
 	}
 }
 
+func compiledInputKind(file string) string {
+	switch path.Base(file) {
+	case "Cargo.toml", "Cargo.lock":
+		return "cargo"
+	case "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties":
+		return "java"
+	case "compile_commands.json":
+		return "cpp"
+	}
+	switch path.Ext(file) {
+	case ".rs":
+		return "cargo"
+	case ".java", ".kt":
+		return "java"
+	}
+	if CPPSource(file) {
+		return "cpp"
+	}
+	return ""
+}
+
+func compiledConfiguration(file string) bool {
+	return compiledInputKind(file) != "" && !CPPSource(file) && path.Ext(file) != ".rs" && path.Ext(file) != ".java" && path.Ext(file) != ".kt"
+}
+
 func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func(string) ([]byte, bool), changed []string, plan *Plan, add func(string, string, string, []string)) {
 	covered := map[string]bool{}
 	unincluded := map[string]bool{}
@@ -113,6 +144,14 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 	for _, e := range entries {
 		if path.Base(e.Path) != "compile_commands.json" {
 			continue
+		}
+		databaseChanged := contains(changed, e.Path)
+		configurationGap := false
+		gap := func(reason string) {
+			if databaseChanged && !configurationGap {
+				plan.Gaps = append(plan.Gaps, Gap{e.Path, reason})
+				configurationGap = true
+			}
 		}
 		b, ok := read(e.Path)
 		if !ok {
@@ -128,18 +167,26 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 			continue
 		}
 		for _, c := range commands {
+			// A changed database must account for every command it declares,
+			// including entries that cannot be safely relocated.
+			if databaseChanged {
+				covered[e.Path] = true
+			}
 			dir := path.Clean(c.Directory)
 			if dir == "" {
 				dir = "."
 			}
 			if _, err := pathutil.RepoRelative(dir); err != nil {
+				gap("a compilation database entry has an unsupported working directory")
 				continue
 			}
 			source := path.Join(dir, c.File)
 			if _, err := pathutil.RepoRelative(source); err != nil {
+				gap("a compilation database entry has an unsupported source path")
 				continue
 			}
 			if _, ok := files[source]; !ok {
+				gap("a compilation database entry names an unavailable source")
 				continue
 			}
 			args := c.Arguments
@@ -148,6 +195,7 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 			}
 			argv, ok := syntaxOnly(args)
 			if !ok {
+				gap("a compilation database entry has unsupported compiler arguments")
 				continue
 			}
 			present := false
@@ -157,7 +205,13 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 				}
 			}
 			if !present {
+				gap("a compilation database entry does not compile its declared source")
 				continue
+			}
+			if databaseChanged {
+				// The compiler must confirm the unchanged translation unit was
+				// actually checked under the changed flags.
+				add("cpp", dir, source, argv)
 			}
 			for _, f := range changed {
 				header := CPPHeader(f)
@@ -185,7 +239,7 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 					goOwned = true
 				}
 			}
-			if goOwned {
+			if goOwned && CPPSource(f) {
 				continue
 			}
 			reason := "no safely relocatable gcc/clang arguments entry covers this source; shell commands and external build paths are unsupported"

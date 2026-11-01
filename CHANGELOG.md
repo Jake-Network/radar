@@ -10,6 +10,11 @@
 
 ## Unreleased
 
+* Keep listing-only Ruff commands and whole-module mypy ignores out of verified
+  type-check coverage. Compiler configuration changes now select their owning
+  build units or leave explicit gaps. Existing Alembic configuration is honored
+  for custom version paths, and TypeORM helpers that are not exported no longer
+  count as loaded migrations.
 * `radar gate --run --typecheck` type-checks the combined tree with `go vet` for
   each Go module that owns a changed file and the modules that use it through
   `go.work` or a relative `replace`, in a separate private copy. Errors the base

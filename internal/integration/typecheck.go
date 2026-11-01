@@ -62,10 +62,11 @@ type HiddenImport = evidence.MypyMissingImport
 // TypecheckBaseComparison records the same command on the base. Compared is
 // false when base could not be checked; the candidate failure then stands.
 // Unresolved counts candidate errors that cannot be told apart from errors
-// the tool hid on base (go vet reports one type error per package).
+// the tool hid on base (go vet reports one type error per package), or
+// whose base compiler configuration cannot be uniquely established.
 type TypecheckBaseComparison struct {
-	// Command is the base command when it differs: a Python command is
-	// given only the files that exist on base.
+	// Command is the base command when it differs: Python receives only
+	// files present on base, and built-in C/C++ uses base's compiler flags.
 	Command     []string                       `json:"command,omitempty"`
 	Preparation *evidence.RunnerPreparation    `json:"preparation,omitempty"`
 	Observation *evidence.TypecheckObservation `json:"observation,omitempty"`
@@ -534,6 +535,18 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 	if len(command) == 0 {
 		command = t.Command
 	}
+	if t.Tool == "cpp" && !t.Custom && compilationDatabaseChanged(r.Changed) {
+		var ok bool
+		command, ok = baseCPPCommand(ctx, b.candidate.Dir, b.candidate.Commit, t, r.Changed)
+		if !ok {
+			cmp.Unresolved = len(ev.Observation.All())
+			cmp.Explanation = "The base compilation database does not identify one matching translation-unit command; whether the candidate errors are new is unverified."
+			return cmp
+		}
+		if strings.Join(command, "\x00") != strings.Join(ev.Command, "\x00") {
+			cmp.Command = command
+		}
+	}
 	if len(t.Files) > 0 {
 		files := baseFiles(b.candidate.Dir, t)
 		if len(files) == 0 && t.Tool == typecheck.ToolRuff {
@@ -592,19 +605,19 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 	switch baseRun.Status {
 	case model.StatusPassed:
 		cmp.Compared, cmp.New = true, len(ev.Observation.All())
-		cmp.Explanation = "The same command passes on base; every candidate error is new."
+		cmp.Explanation = "The corresponding command passes on base; every candidate error is new."
 	case model.StatusFailed:
 		newDiags, existing, unresolved := compareTypecheck(baseRun.Observation.Partial, ev.Observation.All(), baseRun.Observation.All(), b.gone)
 		cmp.Compared, cmp.New, cmp.Existing, cmp.Unresolved = true, len(newDiags), existing, unresolved
-		cmp.Explanation = fmt.Sprintf("The same command already fails on base: %d candidate error(s) are new, %d also occur on base", len(newDiags), existing)
+		cmp.Explanation = fmt.Sprintf("The corresponding command already fails on base: %d candidate error(s) are new, %d also occur on base", len(newDiags), existing)
 		if unresolved > 0 {
 			cmp.Explanation += fmt.Sprintf(", and %d cannot be told apart from errors the tool hides on base", unresolved)
 		}
 		cmp.Explanation += "."
 	default:
-		cmp.Explanation += fmt.Sprintf(" The same command returned %s on base.", baseRun.Status)
+		cmp.Explanation += fmt.Sprintf(" The corresponding command returned %s on base.", baseRun.Status)
 	}
-	if cmp.Compared && cmp.Command != nil {
+	if cmp.Compared && cmp.Command != nil && len(t.Files) > 0 {
 		cmp.Explanation += " On base it was given only the files that exist there."
 	}
 	return cmp
@@ -659,6 +672,9 @@ func settleTypecheck(ev TypecheckExecution, gone func(string) bool) (model.Statu
 	cmp := ev.BaseComparison
 	all := ev.Observation.All()
 	if cmp == nil || !cmp.Compared {
+		if cmp != nil && cmp.Unresolved > 0 {
+			return model.StatusIncomplete, nil
+		}
 		// Unavailable base evidence cannot clear a failure, and cannot show
 		// which errors are new either.
 		return model.StatusFailed, nil

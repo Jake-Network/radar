@@ -68,8 +68,13 @@ func RuffCheckedFiles(ctx context.Context, root, cwd string, argv []string, time
 	probe = append(probe, "--show-files")
 	for i := 2; i < len(u); i++ {
 		arg := u[i]
-		if arg == "--show-files" {
-			continue
+		if arg == "--" {
+			probe = append(probe, u[i:]...)
+			break
+		}
+		switch arg {
+		case "--show-files", "--show-settings", "--help", "-h", "--version", "-V":
+			return nil, errors.New("non-checking ruff output modes have no supported source inventory")
 		}
 		if arg == "--output-format" {
 			i++

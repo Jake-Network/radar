@@ -8,10 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -86,7 +84,11 @@ type Reader func(oid string) ([]byte, error)
 // merge, so a stale branch is not blamed for history the base moved past.
 func Analyze(ctx context.Context, root, base string, inputs []string, combined string, changed []string) (Result, error) {
 	if !plausible(changed) {
-		if info, e := os.Lstat(filepath.Join(root, ".radar", "migrations.json")); e != nil || !info.Mode().IsRegular() {
+		configured, err := committedMigrationConfiguration(ctx, root, base, combined)
+		if err != nil {
+			return Result{}, err
+		}
+		if !configured {
 			return Result{}, nil
 		}
 	}
@@ -100,6 +102,28 @@ func Analyze(ctx context.Context, root, base string, inputs []string, combined s
 	}
 	defer blobs.Close()
 	return Evaluate(ctx, trees, changed, func(oid string) ([]byte, error) { return blobs.Read(oid, maxFileBytes) })
+}
+
+// A previously committed configuration can name arbitrary migration paths.
+// Inspect both revisions so deleting configuration cannot erase base duties;
+// the caller's worktree is not evidence about either committed tree.
+func committedMigrationConfiguration(ctx context.Context, root string, revisions ...string) (bool, error) {
+	for _, revision := range revisions {
+		entries, err := gitrepo.Entries(ctx, root, revision)
+		if err != nil {
+			return false, err
+		}
+		for _, entry := range entries {
+			if entry.Type != "blob" || entry.Mode != "100644" && entry.Mode != "100755" {
+				continue
+			}
+			name := path.Base(entry.Path)
+			if entry.Path == ".radar/migrations.json" || name == "alembic.ini" || name == "atlas.sum" || name == "_journal.json" {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // LoadTrees lists the base, each private single-branch merge, and combined tree.

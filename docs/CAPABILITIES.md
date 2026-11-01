@@ -123,6 +123,8 @@ SQLx also recognizes `migrations/<version>_*.sql` by convention. Explicit
 `goose` locations support numbered SQL files; Go registration remains unknown.
 Alembic literal `depends_on` references to revisions or unique branch labels
 are validated for missing dependencies and cycles, separately from branch heads.
+Declared TypeORM locations compare directly exported migration classes. Private
+helpers are excluded; aliases, re-exports and computed exports remain unknown.
 
 A problem the base already has is a warning, including when a branch only
 renames or removes part of it. Any other problem fails; the report says
@@ -141,8 +143,9 @@ replaced migrations still exist, an ambiguous Django app label, or a file over
 A Flyway version that a changed directory shares with another directory under
 the same `db/migration/` is `unknown`, because configured locations decide
 whether both load; directories the base already uses in parallel, such as one
-per database vendor, are compared separately. Locations set in `alembic.ini`,
-`MIGRATION_MODULES` or Flyway configuration are not read. Dependencies outside the recognized Alembic history,
+per database vendor, are compared separately. Literal `alembic.ini` script and
+version locations are read even when only revision files change.
+`MIGRATION_MODULES` and Flyway configuration are not read. Dependencies outside the recognized Alembic history,
 Django `run_before` across apps, Java and other non-SQL migrations, and
 conflicting schema operations in separate migrations are not compared.
 `radar check` compares one head and does not run this check.
@@ -183,8 +186,9 @@ editable install of your checkout) stops the run. mypy checks what its
 configuration names (`files`, `packages`, `modules`); otherwise it checks the
 whole project (`.`), so unchanged modules that import changed or deleted code
 are checked too. mypy reports which
-files it checks; changed files it leaves out (`exclude`) are listed as not
-type-checked. mypy's own settings decide how deeply it checks, for example
+files it checks; changed files it leaves out (`exclude`, `ignore_errors` or a
+module-wide `# type: ignore`) are listed as not type-checked. mypy's own settings
+decide how deeply it checks, for example
 whether it checks the bodies of unannotated functions. ruff is given the
 changed files and only looks for undefined and redefined names in them. A
 third-party module or stub package mypy cannot find is an environment problem;
@@ -307,7 +311,11 @@ workspaces, literal Maven/Gradle JVM layouts, and committed gcc/clang compilatio
 databases. Unsupported layouts remain explicit gaps. TypeScript project references
 and composite builds are unsupported; C++ response files and unrelocatable build
 paths are unsupported. Actual compiler input inventory is required for a passing
-check. A changed header selects the translation units whose committed literal
+check. Changed Cargo manifests/lockfiles, Maven and Gradle build configuration,
+and compilation databases select their build units; unsupported or deleted
+configuration leaves explicit gaps. Listing-only declared Ruff commands cannot
+establish type-check coverage. A changed header selects the translation units
+whose committed literal
 `#include` chains can reach a file of that name. A computed include or a quoted
 include of an uncommitted file selects every unit; an angle-bracket include of a
 generated header is not followed. A missing C/C++ header is an environment
