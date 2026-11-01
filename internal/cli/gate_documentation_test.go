@@ -78,6 +78,11 @@ func TestDocumentationNextStepOnlyWhenItIsTheWholeBlock(t *testing.T) {
 	if got := blockedNext(r, gateGaps(r), again, options{}); got != "documentation changes have no test evidence; the static check is what Radar verifies: radar gate" {
 		t.Fatal(got)
 	}
+	// Execution-only flags are rejected without --run, so the static rerun drops them.
+	withExecutionFlags := rerunWith(options{verify: true, typecheck: true, observeCoverage: true, timeout: 10 * time.Minute, maxCommands: 16}, "main", nil)
+	if got := blockedNext(r, gateGaps(r), withExecutionFlags, options{}); got != "documentation changes have no test evidence; the static check is what Radar verifies: radar gate" {
+		t.Fatal(got)
+	}
 	r.Gate.Required = append(r.Gate.Required, gate.Check{ID: "dependency_compatibility", Status: model.StatusUnknown})
 	if got := blockedNext(r, gateGaps(r), again, options{}); strings.Contains(got, "static check") {
 		t.Fatalf("another unmet requirement remains: %s", got)

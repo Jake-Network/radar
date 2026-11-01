@@ -358,6 +358,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 	options := integration.Options{Policy: configuration.Policy, Plan: configuration.Plan, SuggestTests: true, MaxCommands: o.maxCommands, Timeout: o.timeout, ObserveCoverage: o.observeCoverage}
 	if o.verify {
 		options.Verify, options.AllowExecution = true, true
+		options.Typecheck = o.typecheck
 		options.Suite = o.suite
 		if options.Suite == "" {
 			options.Suite = testselection.ModeBalanced
@@ -409,7 +410,7 @@ func (a *app) workspaceGate(o options, inv *workspaceInvocation) int {
 	g.ScopeSummary = scopeSummary(inv.scope, g.ReplayOf, g.Links)
 	unstable := configurationUnstable(configuration.Inputs)
 	errored := slices.ContainsFunc(g.Repos, func(r workspaceRepo) bool { return r.Verdict == gate.Error })
-	g.Next = workspaceNext(g.Verdict, o.verify, unstable, errored)
+	g.Next = workspaceNext(g.Verdict, o.verify, o.verify && o.typecheck, unstable, errored)
 	if inv.replay == nil {
 		rec := composition.NewRecord(inv.scope, inv.selection, results, g.Digest, string(g.Verdict), inv.team)
 		if inv.team != nil {
@@ -458,13 +459,17 @@ func workspaceEntry(r composition.Result) workspaceRepo {
 	return e
 }
 
-// workspaceNext always ends with radar gate --again, with --run when the
-// combined trees should be (re)tested. errored reports a repository that
-// could not be checked, which a failure elsewhere does not hide.
-func workspaceNext(v gate.Verdict, ran, unstable, errored bool) string {
+// workspaceNext always ends with radar gate --again, with --run (and
+// --typecheck) when the combined trees should be (re)tested. errored reports
+// a repository that could not be checked, which a failure elsewhere does not
+// hide.
+func workspaceNext(v gate.Verdict, ran, typecheck, unstable, errored bool) string {
 	again := "radar gate --again"
 	if ran {
 		again += " --run"
+	}
+	if ran && typecheck {
+		again += " --typecheck"
 	}
 	switch {
 	case v == gate.Fail && errored:

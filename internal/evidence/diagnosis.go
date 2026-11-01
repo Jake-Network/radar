@@ -21,7 +21,9 @@ type Diagnosis struct {
 	// Python imports are external or could not be verified, or the
 	// interpreter can load modules from outside the candidate; Name is the
 	// package, module or distribution, sys.path or sys.meta_path, or python
-	// when the interpreter or probe could not be established).
+	// when the interpreter or probe could not be established), or
+	// typecheck_failed (a type checker located errors in repository source;
+	// Name is the undefined symbol or the file).
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Message string `json:"message"`

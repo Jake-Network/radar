@@ -164,11 +164,11 @@ func analyzeTreeRules(ctx context.Context, temp string, r *Report) error {
 		if err != nil {
 			return err
 		}
+		r.Findings = append(r.Findings, result.Findings...)
+		r.Diagnostics = append(r.Diagnostics, result.Diagnostics...)
 		if !result.Applicable {
 			continue
 		}
-		r.Findings = append(r.Findings, result.Findings...)
-		r.Diagnostics = append(r.Diagnostics, result.Diagnostics...)
 		r.Checks = append(r.Checks, Check{ID: detector.id, Status: result.Status, Evidence: result.Evidence, Explanation: result.Explanation})
 	}
 	return nil

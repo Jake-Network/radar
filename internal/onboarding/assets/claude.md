@@ -217,7 +217,10 @@ observations are warnings; --run regenerates in a separate private copy.
 Contract bindings may declare `generate` argv, also execution-only. Generated
 observations carry their exact checkpoint and output digest, never raw output.
 Protobuf and GraphQL checks support a bounded literal subset; unsupported grammar
-cannot establish compatibility. `--observe-coverage` requires execution opt-in;
+cannot establish compatibility. `--typecheck` requires execution opt-in; it type-checks
+the combined tree (Go: `go vet`; configured Python projects: mypy and ruff),
+and only errors absent from base fail it. A
+type-check pass is not test evidence. `--observe-coverage` requires execution opt-in;
 fresh observed file relationships supplement static selection, and stale or
 unrelated baseline records do not count as coverage.
 
@@ -243,3 +246,10 @@ attach a failed/blocked run, or imply tests ran for a static-only result.
 Only use `--run` when repository execution has already been authorized within
 the current scope; otherwise obtain that authorization first. Preserve existing
 authorization and constraints rather than asking again for the same execution.
+
+
+For a lightweight worktree view, use `radar watch --board`. Detailed static pair
+analysis requires `--pair A,B`; repository execution requires `--run`, and watch
+type checking requires explicit `--typecheck`. Historical board records and
+inferred overlaps are not current verification evidence. Type checking remains
+explicitly opt-in until native and real-repository qualification is complete.

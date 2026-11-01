@@ -53,6 +53,7 @@ var workspaceLabels = map[string][2]string{
 	"lockfile_consistency":  {"direct dependencies recorded in lockfiles", "manifest and lockfile disagree"},
 	"unique_keys":           {"supported unique keys consistent", "duplicate unique key"},
 	"generated_drift":       {"declared generated outputs match", "generated outputs drift"},
+	"combined_typecheck":    {"no new type errors in checked modules", "new type errors"},
 }
 
 // repoLine is the ✓/✗/! summary of one repository.

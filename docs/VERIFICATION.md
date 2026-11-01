@@ -28,7 +28,9 @@ Default `gate` requires `textual_merge` and `no_breaking_contracts`, plus
 ([capabilities](CAPABILITIES.md#migration-order)). Relevant supported symbol,
 direct lockfile and unique-key checks are also required when applicable. `--run` adds
 `integration_execution` and, when a suite is selected, `test_selection`; declared
-regeneration also requires `generated_drift`.
+regeneration also requires `generated_drift`, and `--typecheck` requires
+`combined_typecheck` when a changed file belongs to a supported project
+([type checking](CAPABILITIES.md#type-checking)).
 Uncovered changes, incomplete inventory and omitted required commands cannot
 be compensated for by a passing test. Inspect the gaps or try `--suite full`.
 Without execution or a policy requiring it, missing test evidence alone does
@@ -65,6 +67,7 @@ radar check --base main --policy .radar/analysis-policy.json
 | `configuration_stability` | Selected plan and policy files unchanged during the run. |
 | `integration_execution` | Every required command ran and passed on the candidate. |
 | `test_selection` | No uncovered changed file or omitted required selection. |
+| `combined_typecheck` | Every selected type-check command ran, no error new to the combination was found, and every changed source file of a selected project was type-checked. |
 | `plan_verification` | Whole plan verified on the candidate. |
 | `criterion:ID` | Named plan criterion verified on the candidate. |
 | `test:SELECTION_ID` | Named selected test command passed. |
@@ -376,3 +379,18 @@ combinations passed, `base` means the original failure also exists on base, and
 share its timeout; watch uses a separate diagnostic budget after Fast Gate.
 Each subset runs once; flakiness is possible. Attribution never changes the gate,
 selection or candidate evidence and is a repair lead, not causality proof.
+
+
+Type-check input inventory is independent of a successful process exit. Files
+excluded by compiler configuration, unsupported layouts and unverified custom
+command inputs remain gaps. Suppressed imports of deleted local Python modules
+produce inferred findings and incomplete coverage, not observed type errors.
+Changed cgo and assembly files are gaps because `go vet` does not check them,
+unless a committed compilation database selects them for C/C++ checking.
+In type checking only, a missing C/C++ header is a source error when it resolves,
+through the includer's directory or the command's relative include directories,
+to a file the combined change deleted. Base runs use the same rule, so a header
+base also lacks is not new. `--run` execution still reports missing headers as
+`module_missing`.
+Type-check preparation is bound separately to the candidate and base tree.
+Desktop notifications and historical board records never satisfy gate checks.

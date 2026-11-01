@@ -5,6 +5,7 @@ import (
 	"github.com/Jake-Network/radar/internal/migrations"
 	"github.com/Jake-Network/radar/internal/model"
 	"github.com/Jake-Network/radar/internal/symbols"
+	"github.com/Jake-Network/radar/internal/typecheck"
 )
 
 func applyGate(r *Report, o Options) {
@@ -33,7 +34,7 @@ func applyGate(r *Report, o Options) {
 	}
 	if o.Verify {
 		for _, c := range r.Checks {
-			if c.ID == "generated_drift" {
+			if c.ID == "generated_drift" || c.ID == typecheck.CheckID {
 				p.Require = append(p.Require, c.ID)
 			}
 		}

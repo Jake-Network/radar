@@ -15,8 +15,10 @@ type idlKind string
 const idlFormat = "x-radar-idl-format"
 
 type idlReader struct {
-	tokens []string
-	pos    int
+	tokens        []string
+	pos           int
+	fieldObserver func([]string, string, int)
+	scope         []string
 }
 
 func lexIDL(data []byte, graphql bool) ([]string, error) {
@@ -282,7 +284,9 @@ func (r *idlReader) protoMessage(depth int) (map[string]any, error) {
 			var v map[string]any
 			var e error
 			if k == "message" {
+				r.scope = append(r.scope, name)
 				v, e = r.protoMessage(depth + 1)
+				r.scope = r.scope[:len(r.scope)-1]
 			} else {
 				v, e = r.protoEnum()
 			}
@@ -359,14 +363,18 @@ func (r *idlReader) protoMessage(depth int) (map[string]any, error) {
 		if e := r.want("="); e != nil {
 			return nil, e
 		}
+		numberPos := r.pos
 		num := r.take()
 		number, e := decimalProtoInteger(num, 32)
 		n := int(number)
-		if e != nil || n <= 0 || n > 536870911 || n >= 19000 && n <= 19999 || nums[strconv.Itoa(n)] {
+		if e != nil || n <= 0 || n > 536870911 || n >= 19000 && n <= 19999 || nums[strconv.Itoa(n)] && r.fieldObserver == nil {
 			return nil, fmt.Errorf("invalid or duplicate protobuf field number %s", num)
 		}
 		num = strconv.Itoa(n)
 		nums[num] = true
+		if r.fieldObserver != nil {
+			r.fieldObserver(r.scope, num, numberPos)
+		}
 		if e = r.want(";"); e != nil {
 			return nil, fmt.Errorf("unsupported protobuf field options: %w", e)
 		}

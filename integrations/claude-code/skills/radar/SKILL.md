@@ -61,3 +61,10 @@ Use `radar preflight`, `radar tasks`, and `radar verify` as needed. Record actua
 reviewer declarations only after review; never invent approval or delete
 acceptance criteria to hide missing evidence. Import graphs and syntax are
 inferred/structural evidence, not compiler or runtime proof.
+
+
+For a lightweight worktree view, use `radar watch --board`. Detailed static pair
+analysis requires `--pair A,B`; repository execution requires `--run`, and watch
+type checking requires explicit `--typecheck`. Historical board records and
+inferred overlaps are not current verification evidence. Type checking remains
+explicitly opt-in until native and real-repository qualification is complete.

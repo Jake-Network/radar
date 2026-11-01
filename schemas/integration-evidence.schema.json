@@ -145,7 +145,8 @@
                     "command_missing",
                     "module_missing",
                     "build_failed",
-                    "python_import_unverified"
+                    "python_import_unverified",
+                    "typecheck_failed"
                   ]
                 },
                 "name": {

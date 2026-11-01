@@ -145,6 +145,137 @@
         ]
       }
     },
+    "typecheck_executions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "target_id",
+          "tool",
+          "root",
+          "cwd",
+          "command",
+          "candidate_commit",
+          "candidate_tree",
+          "base",
+          "inputs",
+          "status",
+          "observation",
+          "source_after_execution"
+        ],
+        "properties": {
+          "environment_names": {"type": "array", "uniqueItems": true, "maxItems": 1, "items": {"const": "CARGO_TARGET_DIR"}},
+          "compiler_cache_scope": {"type": "string", "pattern": "^[a-f0-9]{40,64}$", "description": "Exact source tree used to scope compiler artifacts; cache reuse is not a tool or test pass."},
+          "execution_command": {"type": "array", "items": {"type": "string"}},
+          "status": {
+            "$ref": "#/$defs/status"
+          },
+          "source_after_execution": {
+            "enum": [
+              "unchanged",
+              "modified",
+              "unknown"
+            ]
+          },
+          "observation": {
+            "type": "object",
+            "required": [
+              "tool",
+              "status",
+              "exit_code",
+              "output_digest",
+              "diagnostic_count"
+            ],
+            "properties": {
+              "diagnosis": {
+                "type": "object",
+                "required": ["kind", "name", "message"],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "runner_missing",
+                      "command_missing",
+                      "module_missing",
+                      "build_failed",
+                      "python_import_unverified",
+                      "typecheck_failed"
+                    ]
+                  },
+                  "name": {"type": "string", "maxLength": 100}
+                }
+              },
+              "partial": {"type": "boolean"},
+              "diagnostics": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "$ref": "#/$defs/typecheck_diagnostic"
+                }
+              }
+            }
+          },
+          "new_diagnostics": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/$defs/typecheck_diagnostic"
+            }
+          },
+          "hidden_missing_imports": {
+            "description": "Inferred references to deleted local modules; these are not tool diagnostics.",
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": ["path", "line", "module"],
+              "properties": {
+                "path": {"type": "string"},
+                "line": {"type": "integer", "minimum": 1},
+                "module": {"type": "string", "maxLength": 100, "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "base_comparison": {
+            "type": "object",
+            "required": [
+              "compared",
+              "new",
+              "existing",
+              "unresolved",
+              "explanation"
+            ],
+            "properties": {
+              "command": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "typecheck_omitted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "target_id",
+          "command",
+          "cwd",
+          "reason",
+          "explanation"
+        ]
+      }
+    },
+    "typecheck_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ]
+      }
+    },
     "runner_preparations": {
       "type": "array",
       "items": {
@@ -223,6 +354,17 @@
     }
   },
   "$defs": {
+    "typecheck_diagnostic": {
+      "type": "object",
+      "required": ["path", "line", "fingerprint"],
+      "properties": {
+        "path": {"type": "string"},
+        "line": {"type": "integer", "minimum": 0},
+        "symbol": {"type": "string", "maxLength": 100},
+        "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{24}$"}
+      },
+      "additionalProperties": false
+    },
     "landing_apply": {
       "type": "object",
       "required": ["published", "objects_imported"],

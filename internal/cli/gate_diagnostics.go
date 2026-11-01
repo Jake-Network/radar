@@ -196,7 +196,9 @@ func blockedNext(r integration.Report, gaps []gateGap, again func(func(*options)
 			if !docsOnlyBlock(r) {
 				break
 			}
-			return "documentation changes have no test evidence; the static check is what Radar verifies: " + strings.Replace(same, "radar gate --run", "radar gate", 1)
+			// Flags that need execution opt-in are rejected without --run.
+			static := again(func(o *options) { o.typecheck, o.observeCoverage, o.attributionRuns = false, false, 0 })
+			return "documentation changes have no test evidence; the static check is what Radar verifies: " + strings.Replace(static, "radar gate --run", "radar gate", 1)
 		case gapRunner:
 			if names := missingPrograms(r, gaps[0]); names != "" {
 				return "install " + names + " where you run radar, then rerun: " + same

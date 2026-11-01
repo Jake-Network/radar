@@ -15,7 +15,8 @@ reported as `unknown` or `incomplete`, never as a pass.
 | Java | declarations, imports | single-type, on-demand (`.*`) and static imports, by each file's declared `package` and file name |
 | C / C++ | declarations, `#include` | in order: the including file's directory (quoted includes); `-I`, `-iquote` and `-isystem` of a committed `compile_commands.json`; ancestors up to the nearest build file (quoted); `include/`, and for quoted includes `src/`, of each enclosing CMake, Meson or Make project |
 
-Parsing is Tree-sitter, built into the binary. There is no compiler type checking.
+Parsing is Tree-sitter, built into the binary. Static analysis runs no compiler;
+opt-in [type checking](#type-checking) is separate.
 Supported literal symbol relationships are inferred; opt-in file observation is
 separate from static analysis. Import edges (`DEPENDS_ON`) are labeled
 `inferred`: they follow each language's path conventions without a compiler.
@@ -116,7 +117,14 @@ is run.
 | Alembic | `*/versions/*.py` next to `env.py` | more than one head on one Alembic branch, or a reused branch label (`revision`, `down_revision`, `branch_labels`) |
 | Django | `*/migrations/*.py` with a `Migration` class | more than one leaf per app (`dependencies`) |
 | Flyway | `V<version>__*.sql` in one directory under `db/migration/` | one version used twice |
-| Versioned SQL (golang-migrate, sqlx) | `<version>_*.up.sql` / `.down.sql` in one directory | one version used twice |
+| Versioned SQL (golang-migrate) | `<version>_*.up.sql` / `.down.sql` in one directory | one version used twice |
+
+SQLx also recognizes `migrations/<version>_*.sql` by convention. Explicit
+`goose` locations support numbered SQL files; Go registration remains unknown.
+Alembic literal `depends_on` references to revisions or unique branch labels
+are validated for missing dependencies and cycles, separately from branch heads.
+Declared TypeORM locations compare directly exported migration classes. Private
+helpers are excluded; aliases, re-exports and computed exports remain unknown.
 
 A problem the base already has is a warning, including when a branch only
 renames or removes part of it. Any other problem fails; the report says
@@ -135,8 +143,9 @@ replaced migrations still exist, an ambiguous Django app label, or a file over
 A Flyway version that a changed directory shares with another directory under
 the same `db/migration/` is `unknown`, because configured locations decide
 whether both load; directories the base already uses in parallel, such as one
-per database vendor, are compared separately. Locations set in `alembic.ini`,
-`MIGRATION_MODULES` or Flyway configuration are not read. Alembic `depends_on`,
+per database vendor, are compared separately. Literal `alembic.ini` script and
+version locations are read even when only revision files change.
+`MIGRATION_MODULES` and Flyway configuration are not read. Dependencies outside the recognized Alembic history,
 Django `run_before` across apps, Java and other non-SQL migrations, and
 conflicting schema operations in separate migrations are not compared.
 `radar check` compares one head and does not run this check.
@@ -152,6 +161,61 @@ selected commands, and any JUnit XML report
 declared with `junit`: one file, or a directory of `TEST-*.xml` files.
 Inventory, selection and result interpretation are described in
 [verification](VERIFICATION.md#test-selection).
+
+## Type checking
+
+`radar gate --run --typecheck` type-checks the combined tree before tests run.
+It is part of the execution opt-in and is never available from MCP.
+
+| Language | Command | Target |
+| --- | --- | --- |
+| Go | `go vet -buildtag ./...` | each `go.mod` module that owns a changed `.go`, `go.mod` or `go.sum` file, C or assembly input, or file beside Go source; modules that use a changed or deleted module through `go.work` or a relative `replace` |
+| Python | `python3 -m mypy …`; `ruff check --select F821,F811,F822,F823 … FILES` | the nearest directory above a changed `.py` or `.pyi` file whose `mypy.ini`, `.mypy.ini`, `setup.cfg` or `pyproject.toml` configures mypy, or whose `ruff.toml`, `.ruff.toml` or `pyproject.toml` configures ruff |
+
+The command runs in its own private copy of the candidate, so it cannot change
+what tests observe. A command that changes files there is discarded. Module
+downloads are disabled, so a missing third-party module, C header or C compiler
+is an environment problem. A missing package of a repository module is a source
+failure, and so are import cycles and two package names in one directory.
+`-buildtag` also reports malformed build constraints.
+
+Python tools are the ones on PATH: mypy runs as a module of `python3`, the
+interpreter tests use, so activate the project's environment first. As for
+tests, an import path that reaches outside the private copy (for example an
+editable install of your checkout) stops the run. mypy checks what its
+configuration names (`files`, `packages`, `modules`); otherwise it checks the
+whole project (`.`), so unchanged modules that import changed or deleted code
+are checked too. mypy reports which
+files it checks; changed files it leaves out (`exclude`, `ignore_errors` or a
+module-wide `# type: ignore`) are listed as not type-checked. mypy's own settings
+decide how deeply it checks, for example
+whether it checks the bodies of unannotated functions. ruff is given the
+changed files and only looks for undefined and redefined names in them. A
+third-party module or stub package mypy cannot find is an environment problem;
+a missing module of the project itself is a source failure. Neither tool writes
+a cache. Changed Python files without mypy or ruff configuration are listed in
+the report and are not type-checked.
+
+A failure is compared with the same command on the base. Errors are matched by
+file and message, not line, and an error in a file a branch only moved still
+matches its base error. On the base, ruff is given the changed files that
+exist there, plus the files a branch deleted or moved. `go vet` stops at the first error of a package and skips packages
+that import it, and mypy stops at a syntax error, so when such a base run
+already fails, a new-looking error may have been hidden there: the result is
+not verified instead of failed. If the base cannot be type-checked, or the project
+does not exist there, the errors are kept and the gate fails, with a note that
+some may already exist on the base.
+
+After each run, `go list` in the same environment reports which files the
+toolchain compiled. Changed Go files it did not compile are listed as not
+type-checked and keep the check from passing: files excluded by their name,
+build constraints, release or custom tags, cgo files without a C compiler, and
+directories `./...` skips. Files under `vendor` or outside every module are not
+type-checked either. Unchanged files the toolchain does not compile are not
+checked, so an error that appears only for another GOOS, GOARCH or tag is not
+found. When no changed file belongs to a supported
+project, no type-check requirement is added and the report says so. A pass is a
+type checker's result, not observed behavior.
 
 ## Parallel work and landing
 
@@ -192,7 +256,7 @@ property is there and nothing more.
 
 ## Not supported
 
-- built-in compiler/type-checker execution
+- type checkers other than `go vet`, mypy and ruff (TypeScript, Rust, Java and C++ type checking)
 - incremental updating of the entire dependency graph
 - published Windows binaries (native qualification jobs are configured, not demonstrated by local Linux checks)
 - release signing or notarization
@@ -233,3 +297,30 @@ Queue must define deduplication of repeated attempts and avoid assigning a combi
 failure to every individual PR before implementing its attempt budget. A policy
 file never grants execution permission. GitHub's event contract is documented in
 [the official merge-group reference](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group).
+
+
+Configured Python projects that import changed projects are selected transitively.
+The mypy probe reports the actual repository search bases; arbitrary path suffixes
+are not treated as local modules. Typed installed copies or stubs that can supply
+deleted project modules stop verification as an environment provenance problem.
+When mypy suppresses a deleted local import, Radar reports a syntax-based inferred
+finding and incomplete checking. Comments and string literals are not imports.
+
+Additional type-check adapters support local TypeScript compilers, offline Cargo
+workspaces, literal Maven/Gradle JVM layouts, and committed gcc/clang compilation
+databases. Unsupported layouts remain explicit gaps. TypeScript project references
+and composite builds are unsupported; C++ response files and unrelocatable build
+paths are unsupported. Actual compiler input inventory is required for a passing
+check. Changed Cargo manifests/lockfiles, Maven and Gradle build configuration,
+and compilation databases select their build units; unsupported or deleted
+configuration leaves explicit gaps. Listing-only declared Ruff commands cannot
+establish type-check coverage. A changed header selects the translation units
+whose committed literal
+`#include` chains can reach a file of that name. A computed include or a quoted
+include of an uncommitted file selects every unit; an angle-bracket include of a
+generated header is not followed. A missing C/C++ header is an environment
+problem unless it resolves, where the compiler searches, to a repository file
+the combined change deleted. Under
+`--locked`, a repository `Cargo.lock` that no longer matches the manifests is a
+source failure. Cargo/JVM native toolchain qualification and user macOS
+measurements must be reported separately from parser and synthetic fixture tests.

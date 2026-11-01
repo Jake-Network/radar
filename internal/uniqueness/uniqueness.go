@@ -394,24 +394,39 @@ func Evaluate(ctx context.Context, trees []migrations.Tree, changed []string, re
 	if e != nil {
 		return routes, e
 	}
-	if !rules.Applicable {
-		return routes, nil
+	builtins, e := evaluateBuiltins(ctx, trees, changed, read)
+	if e != nil {
+		return Result{}, e
 	}
-	if !routes.Applicable {
-		return rules, nil
-	}
-	rules.Findings = append(rules.Findings, routes.Findings...)
-	rules.Diagnostics = append(rules.Diagnostics, routes.Diagnostics...)
-	if rules.Status == model.StatusFailed || routes.Status == model.StatusFailed {
-		rules.Status = model.StatusFailed
-		rules.Evidence = model.VerifiedStatic
-	} else if rules.Status == model.StatusUnknown || routes.Status == model.StatusUnknown {
-		rules.Status = model.StatusUnknown
-		rules.Evidence = model.Unknown
-	}
-	rules.Explanation = "Compared declared unique keys and statically resolved route identities."
-	return rules, nil
+	return combineUniqueness(rules, routes, builtins), nil
 }
+func combineUniqueness(parts ...Result) Result {
+	out := Result{}
+	for _, r := range parts {
+		out.Findings = append(out.Findings, r.Findings...)
+		out.Diagnostics = append(out.Diagnostics, r.Diagnostics...)
+		if !r.Applicable {
+			continue
+		}
+		if !out.Applicable {
+			out.Applicable = true
+			out.Status = r.Status
+			out.Evidence = r.Evidence
+			out.Explanation = r.Explanation
+			continue
+		}
+		if out.Status == model.StatusFailed || r.Status == model.StatusFailed {
+			out.Status = model.StatusFailed
+			out.Evidence = model.VerifiedStatic
+		} else if out.Status == model.StatusUnknown || r.Status == model.StatusUnknown {
+			out.Status = model.StatusUnknown
+			out.Evidence = model.Unknown
+		}
+		out.Explanation = "Compared declared unique keys, resolved route identities and supported protobuf field tags."
+	}
+	return out
+}
+
 func evaluateRoutes(ctx context.Context, trees []migrations.Tree, changed []string, read migrations.Reader) (Result, error) {
 	last := len(trees) - 1
 	relevantExtensions := map[string]bool{}

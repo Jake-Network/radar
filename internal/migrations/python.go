@@ -182,9 +182,10 @@ func (s *pySource) strList(n *sitter.Node) ([]string, bool) {
 
 // alembicRevision is one Alembic revision file's identity.
 type alembicRevision struct {
-	id      string
-	parents []string
-	line    int
+	id           string
+	parents      []string
+	dependencies []string
+	line         int
 	// reason explains why the file cannot be used; empty when it can.
 	reason string
 	// skip marks a module without a revision, such as a helper.
@@ -200,7 +201,7 @@ func parseAlembic(ctx context.Context, content []byte) (alembicRevision, error) 
 		return alembicRevision{reason: reason}, err
 	}
 	defer src.close()
-	a := src.assignments(src.root, src.root, false, "revision", "down_revision", "branch_labels")
+	a := src.assignments(src.root, src.root, false, "revision", "down_revision", "branch_labels", "depends_on")
 	rev, hasRev := a["revision"]
 	down, hasDown := a["down_revision"]
 	if !hasRev && !hasDown {
@@ -238,6 +239,21 @@ func parseAlembic(ctx context.Context, content []byte) (alembicRevision, error) 
 			r.labels = many
 		default:
 			return alembicRevision{reason: "branch_labels is not a string, tuple of strings or None"}, nil
+		}
+	}
+	if dep, present := a["depends_on"]; present {
+		switch {
+		case dep == nil:
+			return alembicRevision{reason: "depends_on is reassigned or changed outside its literal"}, nil
+		case dep.Kind() == "none":
+		default:
+			if one, ok := src.str(dep); ok {
+				r.dependencies = []string{one}
+			} else if many, ok := src.strList(dep); ok {
+				r.dependencies = many
+			} else {
+				return alembicRevision{reason: "depends_on is not a string, list of strings or None"}, nil
+			}
 		}
 	}
 	return r, nil

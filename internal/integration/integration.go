@@ -23,6 +23,7 @@ import (
 	"github.com/Jake-Network/radar/internal/runners"
 	"github.com/Jake-Network/radar/internal/symbols"
 	"github.com/Jake-Network/radar/internal/testselection"
+	"github.com/Jake-Network/radar/internal/typecheck"
 )
 
 type Options struct {
@@ -38,9 +39,12 @@ type Options struct {
 	Branches               []string
 	Verify, AllowExecution bool
 	ObserveCoverage        bool
-	Command                []string
-	Timeout                time.Duration
-	PlanDigest             string
+	// Typecheck, with execution opt-in, type-checks the projects owning the
+	// changed files on the combined tree before tests run.
+	Typecheck  bool
+	Command    []string
+	Timeout    time.Duration
+	PlanDigest string
 	// MaxCommands bounds a selected suite after grouping (default 16).
 	MaxCommands int
 	// AttributionRuns, when positive, reruns each failed command on the base
@@ -125,18 +129,31 @@ type Report struct {
 	Selection           *testselection.Selection `json:"selection,omitempty"`
 	Selected            []string                 `json:"selected_tests,omitempty"`
 	GeneratedExecutions []generated.Execution    `json:"generated_executions,omitempty"`
-	Executions          []ExecutionEvidence      `json:"executions,omitempty"`
-	Gate                gate.Result              `json:"gate"`
-	Coverage            []gate.Coverage          `json:"coverage"`
-	Plan                *planning.Report         `json:"plan,omitempty"`
-	Status              model.Status             `json:"status"`
-	Base                string                   `json:"base"`
-	Inputs              []string                 `json:"inputs"`
-	CandidateCommit     string                   `json:"candidate_commit,omitempty"`
-	CandidateTree       string                   `json:"candidate_tree,omitempty"`
-	Conflicts           []string                 `json:"conflicts"`
-	Changed             []string                 `json:"changed"`
-	Affected            []string                 `json:"affected"`
+	// TypecheckExecutions, TypecheckOmitted and TypecheckGaps describe
+	// --typecheck: commands observed, selected commands that did not run, and
+	// changed source files no supported target covers.
+	TypecheckExecutions []TypecheckExecution `json:"typecheck_executions,omitempty"`
+	TypecheckOmitted    []TypecheckOmission  `json:"typecheck_omitted,omitempty"`
+	TypecheckGaps       []typecheck.Gap      `json:"typecheck_gaps,omitempty"`
+	// TypecheckUnconfigured lists changed Python files outside every mypy or
+	// ruff configuration, for the human renderer; the JSON carries them in
+	// limitations.
+	TypecheckUnconfigured []string `json:"-"`
+	// TypecheckRequested records --typecheck for people; JSON shows it
+	// through the fields above and the limitations.
+	TypecheckRequested bool                `json:"-"`
+	Executions         []ExecutionEvidence `json:"executions,omitempty"`
+	Gate               gate.Result         `json:"gate"`
+	Coverage           []gate.Coverage     `json:"coverage"`
+	Plan               *planning.Report    `json:"plan,omitempty"`
+	Status             model.Status        `json:"status"`
+	Base               string              `json:"base"`
+	Inputs             []string            `json:"inputs"`
+	CandidateCommit    string              `json:"candidate_commit,omitempty"`
+	CandidateTree      string              `json:"candidate_tree,omitempty"`
+	Conflicts          []string            `json:"conflicts"`
+	Changed            []string            `json:"changed"`
+	Affected           []string            `json:"affected"`
 	// AffectedBy maps each affected file to the changed files it reaches
 	// through inferred import dependencies.
 	AffectedBy  map[string][]string `json:"affected_by,omitempty"`
@@ -179,6 +196,9 @@ func validate(o Options) (Options, error) {
 	}
 	if o.ObserveCoverage && !o.Verify {
 		return o, errors.New("--observe-coverage requires explicit execution authorization")
+	}
+	if o.Typecheck && !o.Verify {
+		return o, errors.New("type checking runs repository tools and requires execution opt-in (--run)")
 	}
 	if o.AttributionRuns > 0 && !o.Verify {
 		return o, errors.New("attribution reruns failed commands and requires --verify")
@@ -308,6 +328,9 @@ func Analyze(ctx context.Context, c *Candidate, o Options) (Report, error) {
 	executionCtx := ctx
 	if o.Verify {
 		executionCtx = o.budget.context()
+		if e = runTypecheck(executionCtx, temp, &r, o); e != nil {
+			return r, e
+		}
 		if e = runVerification(executionCtx, temp, &r, o); e != nil {
 			return r, e
 		}

@@ -113,6 +113,106 @@
                   }
                 }
               }
+            },
+            "verification_state": {
+              "type": "string"
+            },
+            "migration_status": {
+              "const": "not_checked"
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "commit",
+                  "ahead",
+                  "behind",
+                  "changed"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": "string"
+                  },
+                  "ahead": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "behind": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "changed": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "overlaps": {
+              "type": "array",
+              "description": "Shared paths, not compatibility evidence."
+            },
+            "migration_candidates": {
+              "type": "array",
+              "description": "Inferred same-slot leads only; never a migration check verdict."
+            },
+            "details": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "branches",
+                  "status"
+                ],
+                "properties": {
+                  "branches": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "status": {
+                    "enum": [
+                      "not_checked",
+                      "textual_clean",
+                      "textual_conflict",
+                      "pass",
+                      "fail",
+                      "blocked",
+                      "error"
+                    ]
+                  },
+                  "conflicts": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "report": {
+                    "type": "object"
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "recent_runs": {
+              "type": "array",
+              "description": "Historical immutable reports; not current verification evidence."
+            },
+            "history_error": {
+              "type": "string"
             }
           }
         }
