@@ -117,7 +117,12 @@ is run.
 | Alembic | `*/versions/*.py` next to `env.py` | more than one head on one Alembic branch, or a reused branch label (`revision`, `down_revision`, `branch_labels`) |
 | Django | `*/migrations/*.py` with a `Migration` class | more than one leaf per app (`dependencies`) |
 | Flyway | `V<version>__*.sql` in one directory under `db/migration/` | one version used twice |
-| Versioned SQL (golang-migrate, sqlx) | `<version>_*.up.sql` / `.down.sql` in one directory | one version used twice |
+| Versioned SQL (golang-migrate) | `<version>_*.up.sql` / `.down.sql` in one directory | one version used twice |
+
+SQLx also recognizes `migrations/<version>_*.sql` by convention. Explicit
+`goose` locations support numbered SQL files; Go registration remains unknown.
+Alembic literal `depends_on` references to revisions or unique branch labels
+are validated for missing dependencies and cycles, separately from branch heads.
 
 A problem the base already has is a warning, including when a branch only
 renames or removes part of it. Any other problem fails; the report says
@@ -137,7 +142,7 @@ A Flyway version that a changed directory shares with another directory under
 the same `db/migration/` is `unknown`, because configured locations decide
 whether both load; directories the base already uses in parallel, such as one
 per database vendor, are compared separately. Locations set in `alembic.ini`,
-`MIGRATION_MODULES` or Flyway configuration are not read. Alembic `depends_on`,
+`MIGRATION_MODULES` or Flyway configuration are not read. Dependencies outside the recognized Alembic history,
 Django `run_before` across apps, Java and other non-SQL migrations, and
 conflicting schema operations in separate migrations are not compared.
 `radar check` compares one head and does not run this check.
@@ -288,3 +293,19 @@ Queue must define deduplication of repeated attempts and avoid assigning a combi
 failure to every individual PR before implementing its attempt budget. A policy
 file never grants execution permission. GitHub's event contract is documented in
 [the official merge-group reference](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group).
+
+
+Configured Python projects that import changed projects are selected transitively.
+The mypy probe reports the actual repository search bases; arbitrary path suffixes
+are not treated as local modules. Typed installed copies or stubs that can supply
+deleted project modules stop verification as an environment provenance problem.
+When mypy suppresses a deleted local import, Radar reports a syntax-based inferred
+finding and incomplete checking. Comments and string literals are not imports.
+
+Additional type-check adapters support local TypeScript compilers, offline Cargo
+workspaces, literal Maven/Gradle JVM layouts, and committed gcc/clang compilation
+databases. Unsupported layouts remain explicit gaps. TypeScript project references
+and composite builds are unsupported; C++ response files and unrelocatable build
+paths are unsupported. Actual compiler input inventory is required for a passing
+check. Cargo/JVM native toolchain qualification and user macOS measurements must
+be reported separately from parser and synthetic fixture tests.

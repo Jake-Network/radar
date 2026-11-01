@@ -22,7 +22,11 @@ import (
 )
 
 func watchCommand() command {
-	return command{name: "watch", usage: "radar watch [BRANCH ...] [--base REF] [--interval 1s] [--debounce 500ms] [--include-dirty] [--jsonl] [--run] [--policy PATH]", summary: "Continuously check worktree branches in private Git state.", flags: func(fs *flag.FlagSet, o *options) {
+	return command{name: "watch", usage: "radar watch [BRANCH ...] [--base REF] [--interval 1s] [--debounce 500ms] [--include-dirty] [--jsonl] [--run] [--typecheck] [--board [--pair A,B] [--notify]] [--policy PATH]", summary: "Continuously check worktree branches in private Git state.", flags: func(fs *flag.FlagSet, o *options) {
+		fs.BoolVar(&o.board, "board", false, "show lightweight worktree status before requested analysis")
+		fs.BoolVar(&o.notify, "notify", false, "notify on new board problems (requires --board)")
+		fs.Var(listFlag{values: &o.pairs}, "pair", "with --board, inspect named pair A,B (repeatable)")
+		fs.BoolVar(&o.typecheck, "typecheck", false, "with --run, type-check each candidate")
 		fs.StringVar(&o.base, "base", "", "integration REF (same defaults as gate)")
 		fs.DurationVar(&o.interval, "interval", time.Second, "poll interval, minimum 100ms")
 		fs.DurationVar(&o.debounce, "debounce", 500*time.Millisecond, "wait for changes to settle")
@@ -182,6 +186,18 @@ func (a *app) watch(o options) int {
 	if e := a.repository(); e != nil {
 		return a.fail(e)
 	}
+	if o.observeCoverage && !o.verify {
+		return a.fail(errors.New("--observe-coverage requires --run"))
+	}
+	if o.typecheck && !o.verify {
+		return a.fail(errors.New("--typecheck requires --run"))
+	}
+	if !o.board && (o.notify || len(o.pairs) > 0) {
+		return a.fail(errors.New("--notify and --pair require --board"))
+	}
+	if o.board && o.attributionRuns > 0 {
+		return a.fail(errors.New("--attribution-runs is not supported with --board; use watch --run without --board for diagnostic subset observations"))
+	}
 	if o.attributionRuns < 0 || o.attributionRuns > 64 || o.attributionRuns > 0 && !o.verify {
 		return a.fail(errors.New("attribution-runs must be 0..64 and requires --run"))
 	}
@@ -201,6 +217,9 @@ func (a *app) watch(o options) int {
 		if _, e := testselection.NormalizeMode(o.suite); e != nil {
 			return a.fail(e)
 		}
+	}
+	if o.board {
+		return a.watchBoard(o)
 	}
 	// Initial invocation errors are errors; later failures are live events.
 	if _, e := a.observeWatch(a.ctx, o); e != nil {
@@ -247,7 +266,7 @@ func (a *app) watch(o options) int {
 			c.Close()
 			return watch.Result{}, e
 		}
-		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage, ParseCache: parseCache}
+		opts := integration.Options{Base: in.Base, Branches: in.SHAs, SuggestTests: true, Policy: in.config.Policy, Verify: o.verify, Typecheck: o.typecheck, AllowExecution: o.verify, Suite: o.suite, Timeout: o.timeout, MaxCommands: o.maxCommands, ObserveCoverage: o.observeCoverage, ParseCache: parseCache}
 		r, e := integration.Analyze(ctx, c, opts)
 		if e != nil {
 			c.Close()

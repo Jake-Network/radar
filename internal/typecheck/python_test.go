@@ -2,7 +2,9 @@ package typecheck
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -143,14 +145,126 @@ func TestMypyDeclaresTargets(t *testing.T) {
 	}
 }
 
-func TestPythonModulesCoverPackageBases(t *testing.T) {
-	got := pythonModules([]string{"services/api/app/helpers.py", "services/api/app/__init__.py", "top.py", "node_modules/x/y.py"})
-	for _, want := range []string{"app.helpers", "api.app", "services.api.app.helpers"} {
+func TestModulesUnderOnlyNamesModulesBelowSearchBases(t *testing.T) {
+	paths := []string{"services/api/app/helpers.py", "services/api/app/__init__.py", "pkg/integrations/redis/client.py", "top.py", "node_modules/x/y.py"}
+	got := ModulesUnder([]string{".", "services/api"}, paths)
+	for _, want := range []string{"app", "app.helpers", "services.api.app.helpers", "pkg.integrations.redis.client", "top"} {
 		if !contains(got, want) {
 			t.Fatalf("%s missing from %v", want, got)
 		}
 	}
-	if contains(got, "top") || contains(got, "app") || contains(got, "x.y") {
-		t.Fatalf("single names and dependencies are not modules: %v", got)
+	// A tail of a repository path is not a module below a base.
+	for _, wrong := range []string{"redis.client", "redis", "api.app", "x.y", "y"} {
+		if contains(got, wrong) {
+			t.Fatalf("%s is not importable from a base: %v", wrong, got)
+		}
+	}
+}
+
+func TestMypyPathsReadConfiguredSearchDirectories(t *testing.T) {
+	for _, c := range []struct {
+		dir, file, content string
+		want               []string
+	}{
+		{".", "mypy.ini", "[mypy]\nmypy_path = lib, shared:more\n", []string{"lib", "shared", "more"}},
+		{"api", "api/pyproject.toml", "[tool.mypy]\nmypy_path = \"../core\"\n", []string{"core"}},
+		{"api", "api/pyproject.toml", "[tool.mypy]\nmypy_path = [\n  \"$MYPY_CONFIG_FILE_DIR/stubs\",\n  \"../../outside\",\n]\n", []string{"api/stubs"}},
+		{".", "setup.cfg", "[mypy]\nmypy_path = /abs/elsewhere\n[mypy-x.*]\nmypy_path = no\n", nil},
+		{".", "pyproject.toml", "[tool.mypy]\nstrict = true\n\n[[tool.mypy.overrides]]\nmypy_path = \"no\"\n", nil},
+	} {
+		read := func(name string) ([]byte, bool) {
+			if name == c.file {
+				return []byte(c.content), true
+			}
+			return nil, false
+		}
+		got := mypyPaths(c.dir, read)
+		if strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Fatalf("%s: got %v want %v", c.content, got, c.want)
+		}
+	}
+}
+
+func TestPythonImports(t *testing.T) {
+	src := "import os, app.models as m\nfrom app.helpers import slug, title as t  # note\nfrom . import helpers\nfrom ..core.calc import (\n    total,\n    grand,\n)\nx = 1; import radar_x\n# import commented\nfromage = 3\n"
+	got := PythonImports([]byte(src))
+	want := []PythonImport{
+		{Line: 1, Module: "os"}, {Line: 1, Module: "app.models"},
+		{Line: 2, Module: "app.helpers", Names: []string{"slug", "title"}},
+		{Line: 3, Level: 1, Names: []string{"helpers"}},
+		{Line: 4, Level: 2, Module: "core.calc", Names: []string{"total", "grand"}},
+		{Line: 8, Module: "radar_x"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("got %+v\nwant %+v", got, want)
+	}
+	if m := got[3].Modules("app"); fmt.Sprint(m) != "[app app.helpers]" {
+		t.Fatalf("relative modules=%v", m)
+	}
+	if m := got[4].Modules("svc.api"); fmt.Sprint(m) != "[svc.core.calc svc.core.calc.total svc.core.calc.grand]" {
+		t.Fatalf("parent-relative modules=%v", m)
+	}
+	if m := got[4].Modules("api"); m != nil {
+		t.Fatalf("an import above the top package resolved: %v", m)
+	}
+}
+
+func TestSelectMypyDependents(t *testing.T) {
+	files := map[string]string{
+		"pyproject.toml":       "[tool.mypy]\nmypy_path = \"lib\"\n",
+		"app/main.py":          "from pkg.util import f\n",
+		"lib/pyproject.toml":   "[tool.mypy]\n",
+		"lib/pkg/util.py":      "def f() -> int: ...\n",
+		"core/pyproject.toml":  "[tool.mypy]\n",
+		"core/corelib/calc.py": "x = 1\n",
+		"api/pyproject.toml":   "[tool.mypy]\nmypy_path = \"../core\"\n",
+		"api/handler.py":       "import os\n",
+		"other/pyproject.toml": "[tool.mypy]\n",
+		"other/use.py":         "from lib.pkg import util\n",
+	}
+	plan, err := Select(context.Background(), tree(files), []string{"lib/pkg/util.py", "core/corelib/calc.py"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byRoot := map[string]Target{}
+	for _, tg := range plan.Targets {
+		if tg.Tool == ToolMypy {
+			byRoot[tg.Root] = tg
+		}
+	}
+	if tg, ok := byRoot["."]; !ok || fmt.Sprint(tg.Via) != "[lib]" || len(tg.Changed) != 0 || fmt.Sprint(tg.Files) != "[.]" {
+		t.Fatalf("root reaches lib through mypy_path and imports pkg: %+v", byRoot)
+	}
+	if _, ok := byRoot["api"]; ok {
+		t.Fatalf("api reaches core but imports none of it: %+v", byRoot["api"])
+	}
+	if _, ok := byRoot["other"]; ok {
+		t.Fatalf("other cannot reach lib (no search path to it): %+v", byRoot["other"])
+	}
+	if _, ok := byRoot["lib"]; !ok {
+		t.Fatalf("lib itself: %+v", byRoot)
+	}
+}
+
+func TestSelectMypyDependentsReachesTransitiveReexports(t *testing.T) {
+	files := tree{
+		"core/mypy.ini": "[mypy]\n", "core/corelib/model.py": "x = 1\n",
+		"api/mypy.ini": "[mypy]\nmypy_path = ../core\n", "api/apilib/model.py": "from corelib.model import x\n",
+		"cli/mypy.ini": "[mypy]\nmypy_path = ../api\n", "cli/use.py": "from apilib.model import x\n",
+	}
+	p, err := Select(context.Background(), files, []string{"core/corelib/model.py"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(roots(p), ","); got != "api,cli,core" {
+		t.Fatalf("transitive dependents=%s", got)
+	}
+}
+
+func TestPythonImportsSkipsStringsAndReadsContinuedStatements(t *testing.T) {
+	src := []byte("doc = '''\nfrom gone import x\n'''\nfrom app.\\\n helpers import (slug,\n title)\nif True: import app.models\n")
+	imports := PythonImports(src)
+	if len(imports) != 2 || imports[0].Module != "app.helpers" || imports[0].Line != 4 || imports[1].Module != "app.models" {
+		t.Fatalf("imports=%+v", imports)
 	}
 }

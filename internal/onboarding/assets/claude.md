@@ -246,3 +246,10 @@ attach a failed/blocked run, or imply tests ran for a static-only result.
 Only use `--run` when repository execution has already been authorized within
 the current scope; otherwise obtain that authorization first. Preserve existing
 authorization and constraints rather than asking again for the same execution.
+
+
+For a lightweight worktree view, use `radar watch --board`. Detailed static pair
+analysis requires `--pair A,B`; repository execution requires `--run`, and watch
+type checking requires explicit `--typecheck`. Historical board records and
+inferred overlaps are not current verification evidence. Type checking remains
+explicitly opt-in until native and real-repository qualification is complete.

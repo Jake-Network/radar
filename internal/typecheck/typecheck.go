@@ -45,9 +45,21 @@ type Target struct {
 	// what its configuration names, with no paths given.
 	BaseOnly []string `json:"base_only,omitempty"`
 	Declared bool     `json:"declared,omitempty"`
-	// Modules are the dotted names of two or more parts the repository's
-	// Python files can be imported as: a missing one is the source's.
+	// Modules are the dotted names the repository's Python files have below
+	// mypy's search bases: a missing one is the source's. They come from
+	// mypy itself, after selection (ModulesUnder).
 	Modules []string `json:"modules,omitempty"`
+	// Paths are the repository's Python files, including deleted ones, and
+	// Deleted the Python files the combined tree no longer has; a mypy
+	// target maps them to module names below the bases mypy reports.
+	Paths   []string `json:"-"`
+	Deleted []string `json:"-"`
+	// LogicalCommand is the unwrapped argv before a runner prefix is applied.
+	// Custom declarations use Files only to trigger execution, never as proof
+	// that the checker processed the changed files.
+	LogicalCommand []string `json:"-"`
+	Custom         bool     `json:"-"`
+	Artifacts      []string `json:"-"`
 }
 
 // Gap is a changed source file no target type-checks. A gap keeps type
@@ -228,6 +240,8 @@ func Select(ctx context.Context, p indexer.Provider, changed []string) (Plan, er
 		plan.Targets = append(plan.Targets, *t)
 	}
 	selectPython(byPath, entries, read, changed, &plan)
+	selectTypeScript(byPath, entries, read, changed, &plan)
+	selectCompiled(byPath, entries, read, changed, &plan)
 	sort.Slice(plan.Targets, func(i, j int) bool {
 		a, b := plan.Targets[i], plan.Targets[j]
 		return a.Root < b.Root || a.Root == b.Root && a.Tool < b.Tool

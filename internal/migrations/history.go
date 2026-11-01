@@ -20,7 +20,7 @@ type parsedFile struct {
 }
 
 // analyzeLocation reads one location's files at one revision.
-func analyzeLocation(ctx context.Context, l location, files []File, read Reader, cache map[string]parsedFile) (*history, error) {
+func analyzeLocation(ctx context.Context, l location, files []File, read Reader, cache map[string]parsedFile, config []configuredLocation) (*history, error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	h := &history{members: map[string]bool{}, confirmed: l.tool != toolDjango}
 	load := func(f File) (parsedFile, error) {
@@ -51,11 +51,12 @@ func analyzeLocation(ctx context.Context, l location, files []File, read Reader,
 	switch l.tool {
 	case toolAlembic:
 		g := newGraph()
+		deps := map[string][]string{}
 		for _, f := range files {
 			if path.Base(f.Path) == "__init__.py" {
 				continue
 			}
-			if path.Dir(f.Path) != l.dir {
+			if path.Dir(f.Path) != l.dir && !configuredAlembicFile(f.Path, l, config) {
 				// Nested directories load only with recursive_version_locations,
 				// which lives in configuration Radar does not read.
 				h.unknown = append(h.unknown, f.Path+": nested version directory")
@@ -74,11 +75,15 @@ func analyzeLocation(ctx context.Context, l location, files []File, read Reader,
 				if why := g.add(p.alembic.id, p.alembic.parents, f.Path, p.alembic.line); why != "" {
 					h.unknown = append(h.unknown, why)
 				}
+				deps[p.alembic.id] = p.alembic.dependencies
 				for _, label := range p.alembic.labels {
 					g.labeled[p.alembic.id] = true
 					g.labels[label] = append(g.labels[label], p.alembic.id)
 				}
 			}
+		}
+		if why := validateAlembicDependencies(g, deps); why != "" {
+			h.unknown = append(h.unknown, why)
 		}
 		if len(h.unknown) == 0 {
 			h.finish(g, "")
@@ -118,6 +123,21 @@ func analyzeLocation(ctx context.Context, l location, files []File, read Reader,
 				h.finish(g, app)
 			}
 		}
+	case toolTypeORM, toolKnex:
+		if err := h.javascriptIssues(ctx, l, files, read); err != nil {
+			return nil, err
+		}
+	case toolAtlas:
+		h.atlasIssues(l, files, read)
+	case toolDrizzle:
+		h.drizzleIssues(l, files, read)
+	case toolGoose:
+		for _, f := range files {
+			if strings.HasSuffix(f.Path, ".go") {
+				h.unknown = append(h.unknown, f.Path+": Goose Go migration registration is not resolved")
+			}
+		}
+		h.versionIssues(l, files)
 	case toolLiquibase:
 		h.liquibaseIssues(l, files, read)
 	default:
@@ -319,11 +339,6 @@ func djangoGraph(l location, migrations map[string]djangoMigration, paths map[st
 				return "", nil, fmt.Sprintf("%s: squashed migration still has replaced migration %s present", paths[name], pair[1])
 			}
 		}
-		for _, pair := range m.runBefore {
-			if pair[0] == app {
-				return "", nil, fmt.Sprintf("%s: run_before names a migration in the same app", paths[name])
-			}
-		}
 		parents := []string{}
 		for _, pair := range m.dependencies {
 			if pair[0] != app {
@@ -335,6 +350,16 @@ func djangoGraph(l location, migrations map[string]djangoMigration, paths map[st
 			parents = append(parents, pair[1])
 		}
 		g.add(name, parents, paths[name], m.line)
+	}
+	for _, name := range names {
+		for _, pair := range migrations[name].runBefore {
+			if pair[0] == app {
+				if _, ok := g.paths[pair[1]]; !ok {
+					return "", nil, fmt.Sprintf("%s: run_before target %s is missing", paths[name], pair[1])
+				}
+				g.parents[pair[1]] = append(g.parents[pair[1]], name)
+			}
+		}
 	}
 	return app, g, ""
 }
@@ -364,13 +389,15 @@ func (h *history) versionIssues(l location, files []File) {
 			}
 			version = normalizeVersion(m[1])
 			id = path.Dir(f.Path)
-		} else if l.tool == toolSQLX {
+		} else if l.tool == toolSQLX || l.tool == toolGoose {
 			m := sqlxName.FindStringSubmatch(name)
 			if m == nil {
 				continue
 			}
 			version = normalizeVersion(m[1])
-			id = strings.TrimSuffix(strings.TrimSuffix(f.Path, ".up.sql"), ".down.sql")
+			if l.tool == toolSQLX {
+				id = strings.TrimSuffix(strings.TrimSuffix(f.Path, ".up.sql"), ".down.sql")
+			}
 		} else {
 			m := sqlName.FindStringSubmatch(name)
 			if m == nil {
@@ -465,4 +492,26 @@ func sortedKeys(set map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Dependency edges constrain upgrade order but do not merge revision branches.
+func validateAlembicDependencies(g *graph, dependencies map[string][]string) string {
+	order := newGraph()
+	for id, p := range g.paths {
+		_ = order.add(id, append([]string(nil), g.parents[id]...), p, g.lines[id])
+	}
+	for _, id := range sortedKeys(keysOf(dependencies)) {
+		for _, dep := range dependencies[id] {
+			if _, exists := g.paths[dep]; !exists {
+				if labels := g.labels[dep]; len(labels) == 1 {
+					dep = labels[0]
+				} else {
+					return fmt.Sprintf("%s: depends_on %q cannot be resolved in this history", g.paths[id], dep)
+				}
+			}
+			order.parents[id] = append(order.parents[id], dep)
+		}
+	}
+	_, why := order.forks()
+	return why
 }

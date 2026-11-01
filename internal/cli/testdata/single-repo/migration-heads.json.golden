@@ -230,7 +230,7 @@ exit 1
       "excluded_scope": [
         "migration-tool runtime configuration not declared in .radar/migrations.json (alembic.ini version_locations, MIGRATION_MODULES, Flyway locations)",
         "Flyway versions repeated across directories the base already uses in parallel",
-        "Alembic depends_on and Django run_before ordering across apps",
+        "Alembic dependencies outside the recognized history and Django run_before ordering across apps",
         "Java or other non-SQL migrations",
         "conflicting schema operations between migrations"
       ],

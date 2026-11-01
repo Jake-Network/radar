@@ -75,12 +75,17 @@ type TypecheckObservation struct {
 	// everything (go vet stops at a package's first type error and skips
 	// its importers; mypy stops at a syntax error), so errors it would have
 	// reported may be missing.
-	Partial bool `json:"partial,omitempty"`
-	all     []TypecheckDiagnostic
+	Partial        bool `json:"partial,omitempty"`
+	all            []TypecheckDiagnostic
+	cargoArtifacts []string
 }
 
 // All returns every located diagnostic observed in this process, or the
 // persisted prefix for an observation decoded from JSON.
+func (o TypecheckObservation) CargoArtifacts() []string {
+	return append([]string(nil), o.cargoArtifacts...)
+}
+
 func (o TypecheckObservation) All() []TypecheckDiagnostic {
 	if o.all != nil {
 		return o.all
@@ -104,6 +109,10 @@ type TypecheckScope struct {
 	// PythonModules are dotted names of two or more parts the repository's
 	// files can be imported as from some base directory (mypy_path).
 	PythonModules []string
+	// TypeScriptConfig is the repository-relative config passed to tsc. It
+	// keeps import classification bound to that project rather than another
+	// tsconfig nearer a diagnostic's source file.
+	TypeScriptConfig string
 }
 
 // typecheckLabels names each tool in diagnoses.
@@ -112,6 +121,12 @@ var typecheckLabels = map[string]string{"go": "go vet", "mypy": "mypy", "ruff": 
 // ObserveTypecheck runs an explicitly authorized type-check command in cwd of
 // a private candidate and reads its output with tool's format.
 func ObserveTypecheck(ctx context.Context, root, cwd, tool string, scope TypecheckScope, argv []string, timeout time.Duration) (TypecheckObservation, error) {
+	return ObserveTypecheckWithOptions(ctx, root, cwd, tool, scope, argv, timeout, TypecheckOptions{})
+}
+
+// ObserveTypecheckWithOptions accepts only explicitly allowlisted Radar-owned
+// compiler settings; no arbitrary environment is forwarded.
+func ObserveTypecheckWithOptions(ctx context.Context, root, cwd, tool string, scope TypecheckScope, argv []string, timeout time.Duration, options TypecheckOptions) (TypecheckObservation, error) {
 	r := TypecheckObservation{Tool: tool, Status: model.StatusError, ExitCode: -1}
 	if err := checkExecutable(argv); err != nil {
 		return r, err
@@ -141,6 +156,11 @@ func ObserveTypecheck(ctx context.Context, root, cwd, tool string, scope Typeche
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	env := environment(home, nil)
+	extra, optionErr := options.Environment(tool)
+	if optionErr != nil {
+		return r, optionErr
+	}
+	env = append(env, extra...)
 	if tool == "mypy" {
 		// mypy resolves imports through the interpreter's sys.path, like a
 		// test: an editable install of the original checkout would let it
@@ -158,6 +178,9 @@ func ObserveTypecheck(ctx context.Context, root, cwd, tool string, scope Typeche
 	}
 	r.ExitCode = state.ExitCode()
 	data := out.b.Bytes()
+	if tool == "tsc" {
+		scope.TypeScriptConfig = typeScriptProject(root, cwd, argv)
+	}
 	parsed := parseTypecheck(tool, data, root, dir, cwd, scope)
 	switch {
 	case runCtx.Err() != nil:
@@ -184,6 +207,7 @@ func ObserveTypecheck(ctx context.Context, root, cwd, tool string, scope Typeche
 	default:
 		r.Status, r.Diagnosis = model.StatusError, diagnose(argv, r.ExitCode, data)
 	}
+	r.cargoArtifacts = append([]string(nil), parsed.cargoArtifacts...)
 	r.DiagnosticCount = len(parsed.diagnostics)
 	// mypy exits 2 when an error blocked further checking.
 	r.Partial = len(parsed.diagnostics) > 0 && (tool == "go" || parsed.partial || tool == "mypy" && r.ExitCode == 2)
@@ -195,9 +219,10 @@ func ObserveTypecheck(ctx context.Context, root, cwd, tool string, scope Typeche
 }
 
 type typecheckParse struct {
-	diagnostics []TypecheckDiagnostic
-	environment *Diagnosis
-	noInputs    bool
+	cargoArtifacts []string
+	diagnostics    []TypecheckDiagnostic
+	environment    *Diagnosis
+	noInputs       bool
 	// partial: the tool skipped what follows an error it reported.
 	partial bool
 	// crashed: the tool failed internally; located lines are not findings.
@@ -215,6 +240,7 @@ func parseTypecheck(tool string, data []byte, root, dir, cwd string, scope Typec
 	}
 	n := newTypecheckNormalizer(tool, root, dir, cwd)
 	n.local, n.python, n.modules = scope.GoModules, scope.PythonPackages, scope.PythonModules
+	n.tsconfig = scope.TypeScriptConfig
 	return parser(ansi.ReplaceAllString(string(data), ""), n)
 }
 
@@ -226,6 +252,7 @@ type typecheckNormalizer struct {
 	local                []GoModule
 	python               []string
 	modules              []string
+	tsconfig             string
 }
 
 // localPythonModule reports a dotted module name whose top-level package is

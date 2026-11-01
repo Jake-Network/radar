@@ -130,6 +130,22 @@ func pythonTool(t *testing.T, module string) {
 	}
 }
 
+func TestMypyShadowOnlyTypedProjectCopies(t *testing.T) {
+	site := t.TempDir()
+	pythonTestPut(t, site, "project/py.typed", "")
+	pythonTestPut(t, site, "thirdparty/__init__.py", "")
+	pythonTestPut(t, site, "stubs-stubs/__init__.pyi", "")
+	if got := MypyShadow([]string{site}, []string{"unrelated", "thirdparty"}); got != "" {
+		t.Fatalf("unrelated untyped package=%s", got)
+	}
+	if got := MypyShadow([]string{site}, []string{"project"}); got != "project" {
+		t.Fatalf("typed shadow=%s", got)
+	}
+	if got := MypyShadow([]string{site}, []string{"stubs"}); got != "stubs" {
+		t.Fatalf("stub shadow=%s", got)
+	}
+}
+
 func TestObserveRealMypyAndRuff(t *testing.T) {
 	pythonTool(t, "mypy")
 	if _, err := exec.LookPath("ruff"); err != nil {

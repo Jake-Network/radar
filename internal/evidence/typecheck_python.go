@@ -1,6 +1,7 @@
 package evidence
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -127,40 +128,246 @@ func parseRuff(text string, n *typecheckNormalizer) typecheckParse {
 	return p
 }
 
-// mypySourcesProbe asks mypy which files it would check for the given
-// arguments, using its own option and configuration handling. It imports
-// only mypy, never project code, and prints one JSON list.
-const mypySourcesProbe = `import json, sys
+// mypyProbeScript asks mypy, through its own option, configuration and
+// search-path handling, what a command would check and where it would look
+// for imports. It imports only mypy, never project code, reads one JSON
+// object ({"root", "deleted"}) on stdin and prints one JSON object.
+//
+// hidden lists the modules of deleted files that mypy would not report as
+// missing: no search base still provides them, and either the module's
+// options ignore missing imports or import-not-found is disabled for the
+// run or for a checked module.
+const mypyProbeScript = `import ast, io, json, os, sys, tokenize
+from mypy.build import default_data_dir
+from mypy.config_parser import parse_mypy_comments
 from mypy.main import process_options
-sources, _ = process_options(sys.argv[1:])
-print(json.dumps([s.path for s in sources if s.path]))
+from mypy.modulefinder import compute_search_paths, FindModuleCache
+
+data = json.loads(sys.stdin.read())
+root = os.path.realpath(data["root"])
+
+def within(path, base):
+    try:
+        return os.path.commonpath([base, path]) == base
+    except ValueError:
+        return False
+
+sources, options = process_options(sys.argv[1:])
+paths = compute_search_paths(sources, options, default_data_dir())
+finder = FindModuleCache(paths, None, options)
+search = []
+for entry in list(paths.python_path) + list(paths.mypy_path):
+    entry = os.path.realpath(os.path.abspath(entry))
+    if entry not in search:
+        search.append(entry)
+bases = [entry for entry in search if within(entry, root)]
+outside = [entry for entry in search if not within(entry, root)]
+silenced = {"import", "import-not-found"}
+
+def disabled(opts):
+    return bool(silenced & (set(opts.disable_error_code) - set(opts.enable_error_code)))
+
+def provided(parts):
+    rel = os.path.join(*parts)
+    return any(os.path.isdir(os.path.join(base, rel)) or
+               os.path.isfile(os.path.join(base, rel) + ".py") or
+               os.path.isfile(os.path.join(base, rel) + ".pyi") for base in bases)
+
+missing = set()
+for deleted in data["deleted"]:
+    deleted = os.path.join(os.path.realpath(os.path.dirname(os.path.abspath(deleted))), os.path.basename(deleted))
+    for base in bases:
+        if not within(deleted, base) or deleted == base:
+            continue
+        stem = os.path.relpath(deleted, base)
+        stem = stem[:-4] if stem.endswith(".pyi") else stem[:-3] if stem.endswith(".py") else ""
+        parts = stem.split(os.sep) if stem else []
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts and all(part.isidentifier() for part in parts) and not provided(parts):
+            missing.add(".".join(parts))
+
+# Resolve -m/--module sources with mypy's own module finder too. Follow only
+# repository-local imports; package and typeshed code is never read here.
+queue = [(s.path or finder.find_module(s.module), s.module or "") for s in sources]
+checked = {}
+visited = set()
+hidden = set()
+imports = set()
+total = 0
+while queue:
+    filename, module = queue.pop()
+    if not isinstance(filename, str):
+        continue
+    filename = os.path.realpath(filename)
+    if not within(filename, root) or filename in visited:
+        continue
+    visited.add(filename)
+    if len(visited) > 5000:
+        raise RuntimeError("source inventory exceeds limit")
+    size = os.path.getsize(filename)
+    total += size
+    if size > 1048576 or total > 67108864:
+        raise RuntimeError("import scan exceeds limit")
+    with tokenize.open(filename) as stream:
+        source = stream.read()
+    importer_options = options.clone_for_module(module)
+    configured_ignore = importer_options.ignore_errors
+    # Inline options are real, unindented comment tokens, not lookalike
+    # text inside a docstring or trailing a statement. Let mypy interpret
+    # their values and precedence over global/per-module configuration.
+    flags = []
+    known = True
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT and token.start[1] == 0 and token.string.startswith("# mypy: "):
+                flags.append((token.start[0], token.string[len("# mypy: "):]))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        # Still run mypy so it can observe a source syntax failure. An
+        # undecodable source must not become coverage if it exits zero.
+        known = False
+    if flags:
+        changes, inline_errors = parse_mypy_comments(flags, importer_options)
+        importer_options = importer_options.apply_changes(changes)
+        known = known and not inline_errors
+    # A configured ignore_errors also silences the build's error sink;
+    # parsing an inline False is not proof the tool re-enabled diagnostics.
+    if known and not configured_ignore and not importer_options.ignore_errors:
+        checked[filename] = module
+    if not missing:
+        continue
+    try:
+        tree = ast.parse(source, filename)
+    except SyntaxError:
+        # The real checker reports supported syntax errors. An incomplete
+        # import inventory must never authorize a pass.
+        raise RuntimeError("import scan syntax is unavailable") from None
+    package = module if os.path.basename(filename) in ("__init__.py", "__init__.pyi") else module.rpartition(".")[0]
+    for node in ast.walk(tree):
+        names = []
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".") if package else []
+                if node.level > len(parts):
+                    continue
+                base = ".".join(parts[:len(parts)-node.level+1]) + ("." + base if base else "")
+            if base:
+                names = [base] + [base + "." + alias.name for alias in node.names if alias.name != "*"]
+        for name in names:
+            for gone in missing:
+                if name == gone or name.startswith(gone + "."):
+                    imports.add((filename, node.lineno, gone))
+                    if disabled(importer_options) or options.clone_for_module(gone).ignore_missing_imports:
+                        hidden.add(gone)
+            found = finder.find_module(name)
+            if isinstance(found, str) and within(os.path.realpath(found), root):
+                target_options = options.clone_for_module(name)
+                if target_options.follow_imports != "skip":
+                    queue.append((found, name))
+for gone in missing:
+    if disabled(options) or options.clone_for_module(gone).ignore_missing_imports:
+        hidden.add(gone)
+print(json.dumps({
+    "sources": sorted(checked.items()),
+    "bases": bases,
+    "outside": outside,
+    "packages": [os.path.abspath(entry) for entry in paths.package_path],
+    "hidden": sorted(hidden),
+    "hidden_imports": sorted(imports),
+}))
 `
 
-// MypySources returns the repository paths of the files mypy would check
-// when run with args in cwd, with the interpreter, environment and
-// configuration the type-check command uses. Like GoCompiledFiles it runs
-// only after execution opt-in; an error leaves every changed file unchecked.
-func MypySources(ctx context.Context, root, cwd string, args []string, timeout time.Duration) (map[string]bool, error) {
+// MypyProbe is what mypy reports about one command before it runs, with
+// the interpreter, environment and configuration the command uses.
+// Sources maps each checked repository path to its module name. Bases are
+// the repository directories mypy resolves project imports from (the
+// working directory, package bases and mypy_path). Outside lists search
+// directories outside the candidate: mypy would read code the combined
+// tree does not have. PackageDirs are the installed-package directories
+// mypy reads. Hidden lists deleted project modules whose missing import
+// mypy is configured not to report.
+type MypyProbe struct {
+	Sources       map[string]string
+	Bases         []string
+	Outside       []string
+	PackageDirs   []string
+	Hidden        []string
+	HiddenImports []MypyMissingImport
+}
+
+// MypyMissingImport is a syntactic reference to a deleted local module.
+// It is inferred input coverage, separate from tool diagnostics.
+type MypyMissingImport struct {
+	Path   string `json:"path"`
+	Line   int    `json:"line"`
+	Module string `json:"module"`
+}
+
+// RunMypyProbe asks mypy what the command with args in cwd checks and where
+// it resolves imports. deleted are repository paths of Python files the
+// combined tree no longer has. Like GoCompiledFiles it runs only after
+// execution opt-in; an error leaves every changed file unchecked.
+func RunMypyProbe(ctx context.Context, root, cwd string, args, deleted []string, timeout time.Duration) (MypyProbe, error) {
+	return RunMypyProbeCommand(ctx, root, cwd, append([]string{"python3", "-m", "mypy"}, args...), deleted, timeout)
+}
+
+// RunMypyProbeCommand preserves the interpreter and supported runner prefix of
+// the actual mypy command, so inventory and execution use the same environment.
+func RunMypyProbeCommand(ctx context.Context, root, cwd string, argv, deleted []string, timeout time.Duration) (MypyProbe, error) {
+	var probe MypyProbe
 	if timeout <= 0 || timeout > 30*time.Minute {
-		return nil, errors.New("invalid mypy source probe timeout")
+		return probe, errors.New("invalid mypy probe timeout")
 	}
 	dir := root
 	if cwd != "" && cwd != "." {
 		var err error
 		if dir, err = pathutil.ResolveInside(root, cwd); err != nil {
-			return nil, err
+			return probe, err
 		}
 	}
-	home, err := os.MkdirTemp("", "radar-mypy-sources-home-")
+	input := struct {
+		Root    string   `json:"root"`
+		Deleted []string `json:"deleted"`
+	}{Root: root, Deleted: []string{}}
+	for _, d := range deleted {
+		clean, err := pathutil.RepoRelative(d)
+		if err != nil {
+			continue
+		}
+		input.Deleted = append(input.Deleted, filepath.Join(root, filepath.FromSlash(clean)))
+	}
+	payload, err := json.Marshal(input)
 	if err != nil {
-		return nil, err
+		return probe, err
+	}
+	home, err := os.MkdirTemp("", "radar-mypy-probe-home-")
+	if err != nil {
+		return probe, err
 	}
 	defer os.RemoveAll(home)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, "python3", append([]string{"-c", mypySourcesProbe}, args...)...)
+	unwrapped := runnerArgv(argv)
+	moduleFlag := -1
+	for i := 1; i+1 < len(unwrapped); i++ {
+		if unwrapped[i] == "-m" && unwrapped[i+1] == "mypy" {
+			moduleFlag = i
+			break
+		}
+	}
+	if moduleFlag < 0 || len(unwrapped) == 0 || !pythonExecutableName.MatchString(strings.ToLower(filepath.Base(unwrapped[0]))) {
+		return probe, errors.New("mypy probe requires a supported Python interpreter command")
+	}
+	probeArgv := append([]string(nil), argv[:len(argv)-len(unwrapped)+moduleFlag]...)
+	probeArgv = append(probeArgv, "-c", mypyProbeScript)
+	probeArgv = append(probeArgv, unwrapped[moduleFlag+2:]...)
+	cmd := exec.CommandContext(runCtx, probeArgv[0], probeArgv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = environment(home, nil)
+	cmd.Stdin = bytes.NewReader(payload)
 	configureProcess(cmd)
 	cmd.WaitDelay = time.Second
 	var out limitedBuffer
@@ -170,27 +377,97 @@ func MypySources(ctx context.Context, root, cwd string, args []string, timeout t
 	runErr := cmd.Run()
 	switch {
 	case runCtx.Err() != nil:
-		return nil, errors.New("mypy source probe timed out")
+		return probe, errors.New("mypy probe timed out")
 	case out.exceeded:
-		return nil, errors.New("mypy source probe output exceeds limit")
+		return probe, errors.New("mypy probe output exceeds limit")
 	case runErr != nil:
-		return nil, fmt.Errorf("mypy source probe: %w", runErr)
+		return probe, fmt.Errorf("mypy probe: %w", runErr)
 	}
-	var paths []string
+	var result struct {
+		Sources       [][2]string          `json:"sources"`
+		Bases         []string             `json:"bases"`
+		Outside       []string             `json:"outside"`
+		Packages      []string             `json:"packages"`
+		Hidden        []string             `json:"hidden"`
+		HiddenImports [][3]json.RawMessage `json:"hidden_imports"`
+	}
 	lines := strings.Split(strings.TrimSpace(out.b.String()), "\n")
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &paths); err != nil {
-		return nil, fmt.Errorf("mypy source probe output: %w", err)
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &result); err != nil {
+		return probe, fmt.Errorf("mypy probe output: %w", err)
 	}
-	files := map[string]bool{}
-	for _, p := range paths {
-		if rel, ok := sourcePath(dir, p); ok {
-			if cwd != "" && cwd != "." {
-				rel = filepath.ToSlash(filepath.Join(cwd, rel))
+	probe.Sources = map[string]string{}
+	for _, s := range result.Sources {
+		rel, ok := sourcePath(root, s[0])
+		if !ok {
+			continue
+		}
+		if clean, err := pathutil.RepoRelative(rel); err == nil {
+			module := s[1]
+			if !pythonDottedName.MatchString(module) {
+				module = ""
 			}
-			if clean, err := pathutil.RepoRelative(rel); err == nil {
-				files[clean] = true
+			probe.Sources[clean] = module
+		}
+	}
+	for _, b := range result.Bases {
+		if rel, ok := relativeDir(root, b); ok {
+			probe.Bases = append(probe.Bases, filepath.ToSlash(rel))
+		} else {
+			// A base that cannot be placed in the repository is read as
+			// code from outside the candidate.
+			probe.Outside = append(probe.Outside, b)
+		}
+	}
+	probe.Outside = append(probe.Outside, result.Outside...)
+	probe.PackageDirs = result.Packages
+	for _, m := range result.Hidden {
+		if pythonDottedName.MatchString(m) && len(m) <= 100 {
+			probe.Hidden = append(probe.Hidden, m)
+		}
+	}
+	for _, entry := range result.HiddenImports {
+		var filename, module string
+		var line int
+		if json.Unmarshal(entry[0], &filename) != nil || json.Unmarshal(entry[1], &line) != nil || json.Unmarshal(entry[2], &module) != nil {
+			return probe, errors.New("invalid mypy import inventory")
+		}
+		rel, err := filepath.Rel(root, filename)
+		if err != nil {
+			return probe, errors.New("invalid mypy import path")
+		}
+		clean, err := pathutil.RepoRelative(filepath.ToSlash(rel))
+		if err != nil || !pythonDottedName.MatchString(module) || len(module) > 100 || line < 1 {
+			return probe, errors.New("invalid mypy import inventory")
+		}
+		probe.HiddenImports = append(probe.HiddenImports, MypyMissingImport{Path: clean, Line: line, Module: module})
+	}
+	return probe, nil
+}
+
+// MypyShadow returns the first of names that an installed-package directory
+// also provides as a typed package (with a py.typed marker) or a stub
+// package. mypy looks for a submodule the candidate lacks in every copy of
+// its package, so a stale installed copy of a project package would supply
+// modules a branch deleted.
+func MypyShadow(packageDirs, names []string) string {
+	for _, name := range names {
+		if !pythonModuleName.MatchString(name) {
+			continue
+		}
+		for _, dir := range packageDirs {
+			if !filepath.IsAbs(dir) {
+				continue
+			}
+			if info, err := os.Stat(filepath.Join(dir, name+"-stubs")); err == nil && info.IsDir() {
+				return name
+			}
+			if info, err := os.Stat(filepath.Join(dir, name+".pyi")); err == nil && info.Mode().IsRegular() {
+				return name
+			}
+			if info, err := os.Stat(filepath.Join(dir, name, "py.typed")); err == nil && info.Mode().IsRegular() {
+				return name
 			}
 		}
 	}
-	return files, nil
+	return ""
 }

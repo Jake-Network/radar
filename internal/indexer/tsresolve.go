@@ -129,17 +129,7 @@ func (r *resolver) bareScript(importer, spec string) []string {
 
 // governingTSConfig finds the nearest tsconfig.json (or jsconfig.json).
 func (r *resolver) governingTSConfig(importer string) (string, bool) {
-	for dir := path.Dir(importer); ; dir = path.Dir(dir) {
-		for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
-			p := path.Join(dir, name)
-			if _, ok := r.tsconfigs[p]; ok {
-				return p, true
-			}
-		}
-		if dir == "." || dir == "/" || dir == "" {
-			return "", false
-		}
-	}
+	return NearestTypeScriptConfig(importer, func(p string) bool { _, ok := r.tsconfigs[p]; return ok })
 }
 
 // effective follows relative extends: the nearest config defining baseUrl or

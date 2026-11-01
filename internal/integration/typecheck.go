@@ -23,27 +23,39 @@ import (
 // Status is the integration result after the base comparison: failed only
 // when the combined source has an error base does not have.
 type TypecheckExecution struct {
-	ID                   string                         `json:"id"`
-	TargetID             string                         `json:"target_id"`
-	Tool                 string                         `json:"tool"`
-	Root                 string                         `json:"root"`
-	CWD                  string                         `json:"cwd"`
-	Command              []string                       `json:"command"`
-	CandidateCommit      string                         `json:"candidate_commit"`
-	CandidateTree        string                         `json:"candidate_tree"`
-	Base                 string                         `json:"base"`
-	Inputs               []string                       `json:"inputs"`
-	Status               model.Status                   `json:"status"`
-	Observation          evidence.TypecheckObservation  `json:"observation"`
-	BaseComparison       *TypecheckBaseComparison       `json:"base_comparison,omitempty"`
-	NewDiagnostics       []evidence.TypecheckDiagnostic `json:"new_diagnostics,omitempty"`
-	SourceAfterExecution string                         `json:"source_after_execution"`
-	ExecutionError       string                         `json:"execution_error,omitempty"`
-	StartedAt            string                         `json:"started_at"`
-	DurationMS           int64                          `json:"duration_ms"`
+	ID       string   `json:"id"`
+	TargetID string   `json:"target_id"`
+	Tool     string   `json:"tool"`
+	Root     string   `json:"root"`
+	CWD      string   `json:"cwd"`
+	Command  []string `json:"command"`
+	// ExecutionCommand records fixed compiler instrumentation when it adds
+	EnvironmentNames   []string `json:"environment_names,omitempty"`
+	CompilerCacheScope string   `json:"compiler_cache_scope,omitempty"`
+	// arguments to Command; base comparison recreates its own instrumentation.
+	ExecutionCommand []string                       `json:"execution_command,omitempty"`
+	CandidateCommit  string                         `json:"candidate_commit"`
+	CandidateTree    string                         `json:"candidate_tree"`
+	Base             string                         `json:"base"`
+	Inputs           []string                       `json:"inputs"`
+	Status           model.Status                   `json:"status"`
+	Observation      evidence.TypecheckObservation  `json:"observation"`
+	BaseComparison   *TypecheckBaseComparison       `json:"base_comparison,omitempty"`
+	NewDiagnostics   []evidence.TypecheckDiagnostic `json:"new_diagnostics,omitempty"`
+	// HiddenImports are imports of modules a branch deleted that mypy is
+	// configured to ignore when missing, found by reading the checked files.
+	// They are inferred, not tool output, and keep the run from passing.
+	HiddenImports        []HiddenImport `json:"hidden_missing_imports,omitempty"`
+	SourceAfterExecution string         `json:"source_after_execution"`
+	ExecutionError       string         `json:"execution_error,omitempty"`
+	StartedAt            string         `json:"started_at"`
+	DurationMS           int64          `json:"duration_ms"`
 	compiled             map[string]bool
 	compiledErr          error
 }
+
+// HiddenImport is a checked file's import of a deleted project module.
+type HiddenImport = evidence.MypyMissingImport
 
 // TypecheckBaseComparison records the same command on the base. Compared is
 // false when base could not be checked; the candidate failure then stands.
@@ -53,6 +65,7 @@ type TypecheckBaseComparison struct {
 	// Command is the base command when it differs: a Python command is
 	// given only the files that exist on base.
 	Command     []string                       `json:"command,omitempty"`
+	Preparation *evidence.RunnerPreparation    `json:"preparation,omitempty"`
 	Observation *evidence.TypecheckObservation `json:"observation,omitempty"`
 	Compared    bool                           `json:"compared"`
 	New         int                            `json:"new"`
@@ -85,7 +98,11 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 	}
 	provider := indexer.NewCommit(temp, r.CandidateCommit)
 	plan, err := typecheck.Select(ctx, provider, r.Changed)
+	profiles, profileErr := typecheckProfiles(ctx, provider, &plan, r.Changed)
 	provider.Close()
+	if profileErr != nil {
+		return fmt.Errorf("type-check profiles: %w", profileErr)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			r.Checks = append(r.Checks, Check{ID: typecheck.CheckID, Status: model.StatusTimeout, Evidence: model.Unknown, Explanation: "The verification budget expired while choosing type-check targets; nothing was type-checked."})
@@ -145,12 +162,14 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 		return err
 	}
 	cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
+	preparation := newTypecheckPreparation(profiles)
 	tainted := false
 	type run struct {
 		index  int
 		target typecheck.Target
 	}
 	var ran []run
+	cppChanged, cppCompiled := map[string]bool{}, map[string]bool{}
 	for i, t := range plan.Targets {
 		switch {
 		case ctx.Err() != nil:
@@ -160,10 +179,23 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 			omit(t, "candidate_source_changed", "an earlier type-check command changed the private copy, so later results would not describe the committed candidate")
 			continue
 		}
-		var sources map[string]bool
-		var sourcesErr error
+		var why, explanation string
+		t, why, explanation = preparation.prepare(ctx, c.Dir, cp, t, r, o)
+		if why != "" {
+			omit(t, why, explanation)
+			if why == "runner_setup_unavailable" {
+				tainted = true
+			}
+			continue
+		}
+		var probe evidence.MypyProbe
 		if t.Tool == typecheck.ToolMypy {
-			sources, sourcesErr = mypySources(ctx, c.Dir, t, o.Timeout)
+			var err error
+			t, probe, err = mypyTarget(ctx, c.Dir, t, o.Timeout)
+			if err != nil {
+				omit(t, "environment_unavailable", err.Error())
+				continue
+			}
 		}
 		if o.budget != nil && !o.budget.take(1) {
 			omit(t, "command_budget_exhausted", "type checking, generators, declared setup and selected tests share the command budget")
@@ -179,13 +211,40 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 			tainted = true
 		}
 		if t.Tool == typecheck.ToolMypy && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
-			recordUnchecked(r, c.Dir, t, sources, sourcesErr)
+			recordUnchecked(r, c.Dir, t, probe.Sources, nil)
+			ev.HiddenImports = append([]HiddenImport(nil), probe.HiddenImports[:min(len(probe.HiddenImports), maxTypecheckLocations)]...)
+			if len(probe.HiddenImports) > 0 && ev.Status == model.StatusPassed {
+				ev.Status = model.StatusIncomplete
+			}
+			if len(probe.Hidden) > 0 {
+				r.Limitations = append(r.Limitations, fmt.Sprintf("mypy in %s ignores missing imports of %s; deleted-module references are checked statically and are inferred, not tool diagnostics.", t.CWD, strings.Join(probe.Hidden[:min(len(probe.Hidden), 5)], ", ")))
+			}
 		}
-		recordUncompiled(r, c.Dir, t, ev)
+		if t.Tool == "cpp" {
+			for _, f := range t.Changed {
+				cppChanged[f] = true
+			}
+			if ev.SourceAfterExecution == "unchanged" {
+				for f := range ev.compiled {
+					cppCompiled[f] = true
+				}
+			}
+		} else {
+			recordUncompiled(r, c.Dir, t, ev)
+		}
+		recordDeclaredTypecheckCoverage(r, c.Dir, t, &ev)
 		r.TypecheckExecutions = append(r.TypecheckExecutions, ev)
 		ran = append(ran, run{len(r.TypecheckExecutions) - 1, t})
 	}
-	base := typecheckBase{local: local, gone: func(p string) bool {
+	if len(cppChanged) > 0 {
+		var changed []string
+		for f := range cppChanged {
+			changed = append(changed, f)
+		}
+		sort.Strings(changed)
+		recordUncompiled(r, c.Dir, typecheck.Target{Tool: "cpp", Changed: changed}, TypecheckExecution{compiled: cppCompiled})
+	}
+	base := typecheckBase{local: local, preparation: newTypecheckPreparation(profiles), gone: func(p string) bool {
 		_, err := os.Lstat(filepath.Join(c.Dir, filepath.FromSlash(p)))
 		return errors.Is(err, os.ErrNotExist)
 	}}
@@ -220,13 +279,51 @@ func observeTypecheck(ctx context.Context, dir string, cp evidence.CandidateChec
 		timeout = time.Until(deadline)
 	}
 	scope := evidence.TypecheckScope{GoModules: local, PythonPackages: t.Packages, PythonModules: t.Modules}
-	obs, err := evidence.ObserveTypecheck(ctx, dir, t.CWD, t.Tool, scope, t.Command, max(timeout, time.Millisecond))
+	argv := t.Command
+	jvmInventory := ""
+	if t.Tool == "java" && len(argv) > 0 && (filepath.Base(argv[0]) == "mvn" || filepath.Base(argv[0]) == "mvnw") {
+		if err := evidence.ClearMavenTypecheckInventory(ctx, dir); err != nil {
+			ev.Status, ev.Observation.Status = model.StatusIncomplete, model.StatusIncomplete
+			ev.ExecutionError = "fresh Maven compiler inputs could not be established"
+			ev.SourceAfterExecution, ev.ExecutionError = inspectTypecheckSource(ctx, dir, cp, ev.ExecutionError, t.Artifacts)
+			return ev
+		}
+	}
+	if t.Tool == "java" {
+		var artifacts []string
+		var err error
+		argv, jvmInventory, artifacts, err = evidence.PrepareJVMTypecheck(dir, t.CWD, t.Command)
+		t.Artifacts = append(append([]string(nil), t.Artifacts...), artifacts...)
+		if err != nil {
+			ev.Status, ev.Observation.Status = model.StatusError, model.StatusError
+			ev.ExecutionError = "the JVM compiler input observer could not be prepared"
+			ev.SourceAfterExecution, ev.ExecutionError = inspectTypecheckSource(ctx, dir, cp, ev.ExecutionError, t.Artifacts)
+			return ev
+		}
+		if strings.Join(argv, "\x00") != strings.Join(t.Command, "\x00") {
+			ev.ExecutionCommand = append([]string(nil), argv...)
+		}
+	}
+	runOptions := evidence.TypecheckOptions{}
+	if t.Tool == "cargo" {
+		target, prepareErr := evidence.PrepareCargoTarget(ctx, dir)
+		if prepareErr != nil {
+			ev.Status, ev.Observation.Status = model.StatusError, model.StatusError
+			ev.ExecutionError = "the source-bound Cargo compiler cache could not be prepared"
+			ev.SourceAfterExecution, ev.ExecutionError = inspectTypecheckSource(ctx, dir, cp, ev.ExecutionError, t.Artifacts)
+			return ev
+		}
+		runOptions.CargoTargetDir = target
+		ev.EnvironmentNames = []string{"CARGO_TARGET_DIR"}
+		ev.CompilerCacheScope = cp.Tree
+	}
+	obs, err := evidence.ObserveTypecheckWithOptions(ctx, dir, t.CWD, t.Tool, scope, argv, max(timeout, time.Millisecond), runOptions)
 	ev.Observation, ev.Status = obs, obs.Status
 	if err != nil {
 		ev.Status, ev.ExecutionError = model.StatusError, err.Error()
 		ev.Observation.Status = model.StatusError
 	}
-	if t.Tool == typecheck.ToolGo && len(t.Changed) > 0 && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
+	if t.Tool == typecheck.ToolGo && (len(t.Changed) > 0 || t.Custom) && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
 		// The toolchain that ran says which changed files it compiled;
 		// build constraints and cgo depend on its environment, not Radar's.
 		remaining := timeout - time.Since(started)
@@ -234,13 +331,34 @@ func observeTypecheck(ctx context.Context, dir string, cp evidence.CandidateChec
 			remaining = time.Until(deadline)
 		}
 		if remaining > 0 {
-			ev.compiled, ev.compiledErr = evidence.GoCompiledFiles(ctx, dir, t.CWD, remaining)
+			ev.compiled, ev.compiledErr = evidence.GoTypecheckFiles(ctx, dir, t.CWD, t.Command, remaining)
 		} else {
 			ev.compiledErr = errors.New("time budget exhausted")
 		}
 	}
+	if (t.Tool == "cargo" || t.Tool == "java") && (len(t.Changed) > 0 || t.Custom) && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
+		if t.Tool == "cargo" {
+			ev.compiled, ev.compiledErr = evidence.CargoArtifactFiles(dir, runOptions.CargoTargetDir, obs.CargoArtifacts())
+		} else if jvmInventory != "" {
+			ev.compiled, ev.compiledErr = evidence.JVMTypecheckFiles(dir, jvmInventory)
+		} else {
+			ev.compiled, ev.compiledErr = evidence.CompiledTypecheckFiles(dir, t.Tool)
+		}
+	}
+	if t.Tool == typecheck.ToolTSC && (len(t.Changed) > 0 || t.Custom) && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
+		ev.compiled, ev.compiledErr = evidence.TypeScriptSources(ctx, dir, t.CWD, t.Command, typecheckRemaining(ctx, timeout-time.Since(started)))
+	}
+	if t.Tool == "cpp" && (len(t.Changed) > 0 || t.Custom) && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
+		ev.compiled, ev.compiledErr = evidence.CPPCompiledFiles(ctx, dir, t.CWD, t.Command, typecheckRemaining(ctx, timeout-time.Since(started)))
+	}
+	if t.Tool == typecheck.ToolRuff && (ev.Status == model.StatusPassed || ev.Status == model.StatusFailed) {
+		ev.compiled, ev.compiledErr = evidence.RuffCheckedFiles(ctx, dir, t.CWD, t.Command, typecheckRemaining(ctx, timeout-time.Since(started)))
+	}
+	if ev.compiledErr != nil && ev.Status == model.StatusPassed {
+		ev.Status = model.StatusIncomplete
+	}
 	ev.DurationMS = time.Since(started).Milliseconds()
-	ev.SourceAfterExecution, ev.ExecutionError = inspectTypecheckSource(ctx, dir, cp, ev.ExecutionError)
+	ev.SourceAfterExecution, ev.ExecutionError = inspectTypecheckSource(ctx, dir, cp, ev.ExecutionError, t.Artifacts)
 	switch ev.SourceAfterExecution {
 	case "unchanged":
 	case "modified":
@@ -264,7 +382,7 @@ func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExe
 		seen[g.Path] = true
 	}
 	for _, f := range t.Changed {
-		if !strings.HasSuffix(f, ".go") || seen[f] {
+		if seen[f] {
 			continue
 		}
 		if info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil || !info.Mode().IsRegular() {
@@ -273,9 +391,17 @@ func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExe
 		reason := ""
 		switch {
 		case ev.compiledErr != nil:
-			reason = "go list could not confirm that go vet compiled it"
+			if t.Tool == typecheck.ToolGo {
+				reason = "go list could not confirm that go vet compiled it"
+			} else {
+				reason = "the compiler could not confirm which source files it checked"
+			}
 		case !ev.compiled[f]:
-			reason = "go vet ./... did not compile it here (build constraints or custom tags, cgo without a C compiler, or a directory the pattern skips)"
+			if t.Tool == typecheck.ToolGo {
+				reason = "go vet ./... did not compile it here (build constraints or custom tags, cgo without a C compiler, or a directory the pattern skips)"
+			} else {
+				reason = "the compiler did not report this changed source file as an input"
+			}
 		}
 		if reason != "" {
 			seen[f] = true
@@ -285,10 +411,14 @@ func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExe
 	sort.Slice(r.TypecheckGaps, func(i, j int) bool { return r.TypecheckGaps[i].Path < r.TypecheckGaps[j].Path })
 }
 
-func inspectTypecheckSource(ctx context.Context, dir string, cp evidence.CandidateCheckpoint, executionError string) (string, string) {
+func inspectTypecheckSource(ctx context.Context, dir string, cp evidence.CandidateCheckpoint, executionError string, artifacts ...[]string) (string, string) {
 	sourceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
-	after, err := evidence.InspectCandidateSource(sourceCtx, dir, cp, nil)
+	var excluded []string
+	for _, paths := range artifacts {
+		excluded = append(excluded, paths...)
+	}
+	after, err := evidence.InspectCandidateSource(sourceCtx, dir, cp, excluded)
 	switch {
 	case err != nil:
 		if executionError == "" {
@@ -308,6 +438,7 @@ type typecheckBase struct {
 	initialized bool
 	unavailable string
 	local       []evidence.GoModule
+	preparation *typecheckPreparation
 	gone        func(string) bool
 }
 
@@ -344,7 +475,10 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 		cmp.Explanation += " The type-checked directory does not exist on base."
 		return cmp
 	}
-	command := ev.Command
+	command := t.LogicalCommand
+	if len(command) == 0 {
+		command = t.Command
+	}
 	if len(t.Files) > 0 {
 		files := baseFiles(b.candidate.Dir, t)
 		if len(files) == 0 && t.Tool == typecheck.ToolRuff {
@@ -358,7 +492,7 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 			cmp.Explanation += " None of the checked paths exist on base."
 			return cmp
 		}
-		prefix := ev.Command[:len(ev.Command)-len(t.Files)]
+		prefix := command[:len(command)-len(t.Files)]
 		command = append(append([]string(nil), prefix...), files...)
 		if strings.Join(command, "\x00") != strings.Join(ev.Command, "\x00") {
 			cmp.Command = command
@@ -374,7 +508,25 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 		return cmp
 	}
 	cp := evidence.CandidateCheckpoint{Repository: identity, Base: b.candidate.Base, Revision: b.candidate.Commit, Tree: b.candidate.Tree, Inputs: b.candidate.Inputs}
-	target := typecheck.Target{ID: ev.TargetID, Tool: ev.Tool, Root: ev.Root, CWD: ev.CWD, Command: command, Packages: t.Packages, Modules: t.Modules}
+	target := t
+	target.Command, target.LogicalCommand = command, command
+	if b.preparation != nil {
+		var reason, why string
+		target, reason, why = b.preparation.prepare(ctx, b.candidate.Dir, cp, target, &r, o)
+		cmp.Preparation = b.preparation.last
+		if reason != "" {
+			cmp.Explanation += " " + why
+			return cmp
+		}
+	}
+	if target.Tool == typecheck.ToolMypy {
+		var err error
+		target, _, err = mypyTarget(ctx, b.candidate.Dir, target, o.Timeout)
+		if err != nil {
+			cmp.Explanation += " mypy could not verify its base search paths."
+			return cmp
+		}
+	}
 	baseRun := observeTypecheck(ctx, b.candidate.Dir, cp, target, b.local, Report{Base: b.candidate.Base, Inputs: b.candidate.Inputs, CandidateCommit: b.candidate.Commit, CandidateTree: b.candidate.Tree}, o.Timeout)
 	cmp.Observation = &baseRun.Observation
 	if baseRun.SourceAfterExecution != "unchanged" {
@@ -489,33 +641,55 @@ func baseFiles(baseDir string, t typecheck.Target) []string {
 	return out
 }
 
-// mypySources asks mypy, with the command's own options, configuration and
-// paths, which files it checks.
-func mypySources(ctx context.Context, dir string, t typecheck.Target, timeout time.Duration) (map[string]bool, error) {
+// mypyTarget resolves import scope and inventory with the actual launcher,
+// configuration and search bases, independently for candidate and base.
+func mypyTarget(ctx context.Context, dir string, t typecheck.Target, timeout time.Duration) (typecheck.Target, evidence.MypyProbe, error) {
+	var probe evidence.MypyProbe
 	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < timeout {
 		timeout = time.Until(deadline)
 	}
 	if timeout <= 0 {
-		return nil, errors.New("time budget exhausted")
+		return t, probe, errors.New("time budget exhausted before mypy inventory")
 	}
-	return evidence.MypySources(ctx, dir, t.CWD, t.Command[3:], timeout) // after "python3 -m mypy"
+	probe, err := evidence.RunMypyProbeCommand(ctx, dir, t.CWD, t.Command, t.Deleted, timeout)
+	if err != nil {
+		return t, probe, errors.New("mypy could not confirm its checked sources and search paths")
+	}
+	if len(probe.Outside) > 0 {
+		return t, probe, errors.New("mypy searches for project code outside the private candidate; configure repository-relative search paths")
+	}
+	t.Modules = typecheck.ModulesUnder(probe.Bases, t.Paths)
+	// Top-level ownership is also derived from the real search bases. A
+	// nested directory named like a dependency does not make it local.
+	t.Packages = nil
+	var names []string
+	for _, m := range t.Modules {
+		if !strings.Contains(m, ".") {
+			names = append(names, m)
+		}
+	}
+	if name := evidence.MypyShadow(probe.PackageDirs, names); name != "" {
+		return t, probe, fmt.Errorf("mypy can read an installed copy of project package %s outside the private candidate; remove that shadow copy before verifying the combined source", name)
+	}
+	return t, probe, nil
 }
 
 // recordUnchecked adds a gap for each changed file of a mypy target that
 // exists in the candidate but that mypy does not check.
-func recordUnchecked(r *Report, dir string, t typecheck.Target, sources map[string]bool, sourcesErr error) {
+func recordUnchecked(r *Report, dir string, t typecheck.Target, sources map[string]string, sourcesErr error) {
 	seen := map[string]bool{}
 	for _, g := range r.TypecheckGaps {
 		seen[g.Path] = true
 	}
 	for _, f := range t.Changed {
-		if seen[f] || sourcesErr == nil && sources[f] {
+		_, checked := sources[f]
+		if seen[f] || sourcesErr == nil && checked {
 			continue
 		}
 		if info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		reason := "mypy does not check it (its configuration leaves it out, or a .pyi stub beside it is checked instead)"
+		reason := "mypy does not check it (its configuration leaves it out or ignores its errors, or a .pyi stub beside it is checked instead)"
 		if sourcesErr != nil {
 			reason = "mypy could not report which files it checks"
 		}
@@ -567,6 +741,9 @@ func typecheckExplanation(ev TypecheckExecution) string {
 		}
 		return fmt.Sprintf("%s in %s reports %d type error(s); base comparison was unavailable, so some may already exist on base.", command, ev.CWD, ev.Observation.DiagnosticCount)
 	}
+	if len(ev.HiddenImports) > 0 {
+		return fmt.Sprintf("%s in %s did not establish that imports of deleted project modules are valid; inspect inferred missing imports.", command, ev.CWD)
+	}
 	if ev.BaseComparison != nil && ev.BaseComparison.Compared {
 		return fmt.Sprintf("%s in %s fails on the combined candidate, but every located error also occurs on base or may be hidden there; new errors cannot be ruled out.", command, ev.CWD)
 	}
@@ -591,6 +768,12 @@ func typecheckFinding(ev TypecheckExecution, r Report) model.Finding {
 		for _, d := range located {
 			f.Locations = append(f.Locations, model.Provenance{Path: d.Path, Line: d.Line, Revision: r.CandidateCommit, Method: "observed_typecheck_error", Evidence: model.VerifiedTool})
 		}
+	case ev.Status == model.StatusIncomplete && ev.SourceAfterExecution == "unchanged" && len(ev.HiddenImports) > 0:
+		f = model.NewFinding("typecheck_hidden_missing_import", "The combined source imports a deleted project module; mypy did not establish that this import resolves. These references are inferred from syntax, not tool failures.", model.Inferred)
+		for _, imp := range ev.HiddenImports {
+			f.Locations = append(f.Locations, model.Provenance{Path: imp.Path, Line: imp.Line, Revision: r.CandidateCommit, Method: "python_deleted_module_import", Evidence: model.Inferred})
+		}
+		f.Remediation = "Update imports after deleting or moving local modules, or restore the missing modules; then rerun the same gate. Do not rely on ignored import errors as type-check evidence."
 	case ev.Status == model.StatusIncomplete && base:
 		f = model.NewFinding("typecheck_base_failure", fmt.Sprintf("Type checking %q in %q already fails on base; every located combined error also occurs there or may be hidden there.", command, ev.CWD), model.Unknown)
 		f.Severity = model.SeverityWarning

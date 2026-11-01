@@ -221,6 +221,11 @@ func (a *app) gate(o options) int {
 	case !o.verify:
 		g.Next = strings.TrimSpace("radar gate --run " + rerun)
 	}
+	if !configurationUnstable(configuration.Inputs) {
+		if err := a.persistSingleGateReport(g); err != nil {
+			fmt.Fprintln(a.errout, "Warning: gate history unavailable:", err)
+		}
+	}
 	recordVerdict(a.ctx, r.Gate.Verdict)
 	if o.trailer {
 		return a.emitGateTrailer(g, o.verify)
@@ -996,7 +1001,7 @@ func renderTypecheck(w io.Writer, r integration.Report, p palette) {
 	case !r.TypecheckRequested && total == 0:
 		return
 	case total == 0 && len(r.TypecheckGaps) == 0:
-		fmt.Fprintf(w, "\n%s %s\n", p.bold("Typecheck:"), "nothing checked — no supported project (Go module, or Python project with mypy or ruff configuration) owns a changed file")
+		fmt.Fprintf(w, "\n%s %s\n", p.bold("Typecheck:"), "nothing checked — no supported configured project owns a changed file")
 		renderUnconfigured(w, r, p)
 		return
 	case total == 0:
@@ -1016,6 +1021,13 @@ func renderTypecheck(w io.Writer, r integration.Report, p palette) {
 				line += "  uses " + d.Symbol + ", which the combined source does not define"
 			}
 			fmt.Fprintf(w, "      %s %s\n", p.mark("✗"), line)
+		}
+		for i, imp := range ev.HiddenImports {
+			if i == 3 {
+				fmt.Fprintf(w, "      … %d more inferred import(s) in --json\n", len(ev.HiddenImports)-3)
+				break
+			}
+			fmt.Fprintf(w, "      %s %s:%d imports deleted module %s (inferred; not established by mypy)\n", p.mark("?"), imp.Path, imp.Line, imp.Module)
 		}
 	}
 	for _, om := range r.TypecheckOmitted {
@@ -1058,6 +1070,11 @@ func typecheckDetail(ev integration.TypecheckExecution) string {
 	switch {
 	case ev.Status == model.StatusPassed:
 		detail += "; no type errors"
+		if ev.Tool == "ruff" {
+			detail += "; name checks only, no module or signature checking"
+		}
+	case len(ev.HiddenImports) > 0 && ev.Status == model.StatusIncomplete:
+		detail += "; incomplete: inferred imports of deleted modules were not verified"
 	case ev.Status == model.StatusFailed && ev.BaseComparison != nil && ev.BaseComparison.Compared:
 		detail += "; " + plural(ev.BaseComparison.New, "new type error", "new type errors") + " not on base"
 	case ev.Status == model.StatusFailed:

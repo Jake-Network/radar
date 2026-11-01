@@ -414,7 +414,7 @@ Conventional migration locations are detected automatically. Explicit locations:
 ```
 
 Save as `.radar/migrations.json`. Tools include Alembic, Django, Flyway,
-golang-migrate/SQL, sqlx, diesel, Prisma and Liquibase XML. Base defects are warnings;
+golang-migrate/SQL, sqlx, diesel, Goose SQL, Prisma and Liquibase XML. Base defects are warnings;
 new problems are compared with each branch merged alone onto the current base.
 Prisma chronology is a warning, not a duplicate timestamp failure. Liquibase
 includes/computed identities and ambiguous cross-file identity remain unknown.
@@ -526,3 +526,39 @@ match the baseline and whose recorded baseline is an ancestor of the current
 base. Stale and unrelated records remain excluded. Coverage is saved only after
 all executions establish unchanged candidate source. A fresh relationship augments
 static impact; it never proves complete behavioral coverage.
+
+
+### Worktree board
+
+`radar watch --board --base main` shows a lightweight worktree snapshot before
+optional analysis. Ahead/behind counts and file overlap are not compatibility
+proof. Migration slots are inferred candidates until a detector checks them.
+Use `--pair agent-api,agent-web` (repeatable) to request detailed static pairs.
+Add `--run` to authorize repeated verification and `--typecheck` to request type
+checking explicitly. Type checking is not enabled by default in watch.
+
+The board cancels stale work when inputs move. `--jsonl` emits structured events;
+TTY output refreshes the board. `--notify` opts into supported local desktop
+notifications. Missing notification tools do not change verification verdicts.
+Historical gate reports remain historical even when their commit inputs match.
+Single-repository gate history includes failing and blocked runs; records are
+immutable and their hashes detect edits, not writer identity.
+
+
+### Declared type checks
+
+Runner profiles may declare `typecheck` entries with `tool`, an argv `command`,
+and optional profile-relative `files` glob selectors. The selectors trigger a
+check; they do not establish that the command checked those files. Supported
+formats are `go`, `mypy`, `ruff`, `tsc`, `cargo`, `java`, and `cpp`. An entry
+replaces automatic selection of that tool under the nearest matching profile.
+Other tools remain selected. A profile prefix applies once; test-only excludes
+do not apply. Prefix may be omitted for setup/check-only profiles.
+
+Declared setup prepares each private candidate and base separately and shares
+the verification command budget. Dependency artifacts stay bound to the exact
+source tree; a cache hit does not establish a check result. Missing tools,
+unknown command shapes, unsupported configuration and missing file inventory
+remain incomplete or unavailable, even when a command exits successfully.
+Type checking still requires `--run --typecheck`; default activation awaits
+native and real-repository qualification.

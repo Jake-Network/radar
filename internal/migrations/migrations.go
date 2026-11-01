@@ -42,6 +42,11 @@ const (
 	toolLiquibase = "liquibase"
 	toolSQLX      = "sqlx"
 	toolDiesel    = "diesel"
+	toolGoose     = "goose"
+	toolAtlas     = "atlas"
+	toolDrizzle   = "drizzle"
+	toolTypeORM   = "typeorm"
+	toolKnex      = "knex"
 )
 
 // Result is the migration_order outcome. A Result that is not Applicable has
@@ -172,13 +177,13 @@ var objectID = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 func plausible(changed []string) bool {
 	for _, p := range changed {
 		name, dir := path.Base(p), path.Dir(p)
-		if p == ".radar/migrations.json" || (name == "migration.sql" || name == "up.sql" || name == "down.sql") && timestampName.MatchString(path.Base(dir)) {
+		if p == ".radar/migrations.json" || name == "alembic.ini" || name == "atlas.sum" || name == "_journal.json" || strings.HasSuffix(name, "_snapshot.json") || (name == "migration.sql" || name == "up.sql" || name == "down.sql") && timestampName.MatchString(path.Base(dir)) {
 			return true
 		}
 		switch {
 		case strings.HasSuffix(name, ".py") && (path.Base(dir) == "migrations" || strings.Contains("/"+dir+"/", "/versions/")):
 			return true
-		case flywayName.MatchString(name) || sqlName.MatchString(name):
+		case flywayName.MatchString(name) || sqlName.MatchString(name) || sqlxName.MatchString(name) && path.Base(dir) == "migrations":
 			return true
 		}
 	}
@@ -206,6 +211,9 @@ func (l location) String() string {
 		return "Django migrations " + l.dir
 	case toolFlyway:
 		return "Flyway migrations " + l.dir
+	}
+	if name := map[string]string{toolPrisma: "Prisma", toolLiquibase: "Liquibase", toolSQLX: "SQLx", toolDiesel: "Diesel", toolGoose: "Goose", toolAtlas: "Atlas", toolDrizzle: "Drizzle", toolTypeORM: "TypeORM", toolKnex: "Knex"}[l.tool]; name != "" {
+		return name + " migrations " + l.dir
 	}
 	return "versioned SQL migrations " + l.dir
 }
@@ -275,9 +283,11 @@ type issue struct {
 }
 
 const (
-	kindFork    = "fork"
-	kindVersion = "version"
-	kindLabel   = "label"
+	kindFork      = "fork"
+	kindVersion   = "version"
+	kindLabel     = "label"
+	kindIntegrity = "integrity"
+	kindRisk      = "risk"
 )
 
 // history is one location's analyzed state in one tree.
@@ -329,7 +339,7 @@ func Evaluate(ctx context.Context, trees []Tree, changed []string, read Reader) 
 		for _, f := range t.Files {
 			if l, ok := classifyConfigured(f.Path, dirs, allConfig); ok && !targets[l] {
 				for _, p := range changed {
-					if l.contains(p) || p == ".radar/migrations.json" {
+					if l.contains(p) || p == ".radar/migrations.json" || path.Base(p) == "alembic.ini" {
 						targets[l] = true
 						break
 					}
@@ -358,13 +368,20 @@ func Evaluate(ctx context.Context, trees []Tree, changed []string, read Reader) 
 		if files > maxFiles {
 			return Result{Applicable: true, Status: model.StatusUnknown, Evidence: model.Unknown, Explanation: fmt.Sprintf("Migration order was not checked: %s has more than %d migration files.", t.Label, maxFiles), Findings: []model.Finding{}, Diagnostics: []model.Diagnostic{}}, nil
 		}
+		orderingWhy, orderingErr := validateDjangoOrdering(ctx, t, configs[i], read, targets)
+		if orderingErr != nil {
+			return Result{}, orderingErr
+		}
 		for l, fs := range groups {
 			if e := ctx.Err(); e != nil {
 				return Result{}, e
 			}
-			h, e := analyzeLocation(ctx, l, fs, read, parsed)
+			h, e := analyzeLocation(ctx, l, fs, read, parsed, configs[i])
 			if e != nil {
 				return Result{}, e
+			}
+			if l.tool == toolDjango && orderingWhy != "" {
+				h.unknown = append(h.unknown, orderingWhy)
 			}
 			histories[i][l] = h
 		}
@@ -480,6 +497,12 @@ func finding(trees []Tree, histories []map[location]*history, readable []bool, l
 	}
 	var code, text string
 	switch {
+	case is.Kind == kindRisk:
+		code = "migration_order_risk"
+		text = fmt.Sprintf("%s: %s.", l, is.Parent)
+	case is.Kind == kindIntegrity:
+		code = "migration_integrity"
+		text = fmt.Sprintf("%s: %s.", l, is.Parent)
 	case is.Kind == kindLabel:
 		code = "migration_duplicate_branch_label"
 		text = fmt.Sprintf("%s declares branch label %q more than once: %s. Alembic refuses a reused branch label.", l, is.Parent, strings.Join(members, ", "))
@@ -538,8 +561,16 @@ func finding(trees []Tree, histories []map[location]*history, readable []bool, l
 	f.Locations = locations
 	f.Severity = model.SeverityError
 	f.Remediation = fix(trees, histories, l, is)
+	if is.Kind == kindRisk {
+		f.Severity = model.SeverityWarning
+		f.Evidence = model.Inferred
+		f.Remediation = "Review the migration load order; timestamp equality alone does not establish a runtime conflict."
+	}
 	if l.tool == toolLiquibase {
 		f.Remediation = "Give each loaded changeSet a unique id and author pair."
+	}
+	if is.Kind == kindIntegrity {
+		f.Remediation = "Regenerate and review migration metadata against the combined source, then rerun the same gate."
 	}
 	if is.Kind == kindLabel {
 		f.Remediation = fmt.Sprintf("Give one of the revisions a different branch label than %q.", is.Parent)

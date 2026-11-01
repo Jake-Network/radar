@@ -379,3 +379,11 @@ combinations passed, `base` means the original failure also exists on base, and
 share its timeout; watch uses a separate diagnostic budget after Fast Gate.
 Each subset runs once; flakiness is possible. Attribution never changes the gate,
 selection or candidate evidence and is a repair lead, not causality proof.
+
+
+Type-check input inventory is independent of a successful process exit. Files
+excluded by compiler configuration, unsupported layouts and unverified custom
+command inputs remain gaps. Suppressed imports of deleted local Python modules
+produce inferred findings and incomplete coverage, not observed type errors.
+Type-check preparation is bound separately to the candidate and base tree.
+Desktop notifications and historical board records never satisfy gate checks.

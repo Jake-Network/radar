@@ -21,13 +21,24 @@ const Manifest = ".radar/runners.json"
 const MaxBytes = 1 << 20
 
 type Profile struct {
-	Root      string     `json:"root"`
-	Prefix    []string   `json:"prefix"`
-	Setup     [][]string `json:"setup,omitempty"`
-	Exclude   []string   `json:"exclude,omitempty"`
-	Lockfiles []string   `json:"lockfiles,omitempty"`
-	Artifacts []string   `json:"artifacts,omitempty"`
-	Coverage  *Coverage  `json:"coverage,omitempty"`
+	Root      string      `json:"root"`
+	Prefix    []string    `json:"prefix"`
+	Setup     [][]string  `json:"setup,omitempty"`
+	Exclude   []string    `json:"exclude,omitempty"`
+	Lockfiles []string    `json:"lockfiles,omitempty"`
+	Artifacts []string    `json:"artifacts,omitempty"`
+	Coverage  *Coverage   `json:"coverage,omitempty"`
+	Typecheck []Typecheck `json:"typecheck,omitempty"`
+}
+
+// Typecheck declares a command with a recognized diagnostic format. Files
+// selects when it runs; it is not proof that the command examined those files.
+// Commands run at the profile root with its prefix applied once, without the
+// test-only exclusions.
+type Typecheck struct {
+	Tool    string   `json:"tool"`
+	Command []string `json:"command"`
+	Files   []string `json:"files,omitempty"`
 }
 
 // Coverage declares a fresh tool-generated report; Radar never runs undeclared
@@ -83,11 +94,36 @@ func Validate(p Profile) error {
 	if err != nil || clean != p.Root {
 		return fmt.Errorf("runner root must be a clean repository-relative path")
 	}
-	if len(p.Prefix) == 0 {
-		return fmt.Errorf("runner prefix required")
+	if len(p.Prefix) > 0 {
+		if err := ValidateArgv(p.Prefix); err != nil {
+			return err
+		}
 	}
-	if err := ValidateArgv(p.Prefix); err != nil {
-		return err
+	if len(p.Typecheck) > 16 {
+		return fmt.Errorf("typecheck declaration budget exceeded")
+	}
+	seenTools := map[string]bool{}
+	for _, check := range p.Typecheck {
+		switch check.Tool {
+		case "go", "mypy", "ruff", "tsc", "cargo", "java", "cpp":
+		default:
+			return fmt.Errorf("unsupported typecheck tool %q", check.Tool)
+		}
+		if seenTools[check.Tool] {
+			return fmt.Errorf("duplicate typecheck tool %q", check.Tool)
+		}
+		seenTools[check.Tool] = true
+		if err := ValidateArgv(check.Command); err != nil {
+			return err
+		}
+		if len(check.Files) > 256 {
+			return fmt.Errorf("typecheck file selector budget exceeded")
+		}
+		for _, pattern := range check.Files {
+			if err := ValidateFilePattern(pattern); err != nil {
+				return err
+			}
+		}
 	}
 	if len(p.Setup) > 16 || len(p.Lockfiles) > 32 || len(p.Artifacts) > 8 || len(p.Exclude) > 256 {
 		return fmt.Errorf("runner declaration budget exceeded")
@@ -195,6 +231,9 @@ func (p Profile) Rewrite(argv []string) []string {
 	if len(argv) == 0 {
 		return nil
 	}
+	if len(p.Prefix) == 0 {
+		return append(append([]string(nil), argv...), p.Exclude...)
+	}
 	tail := append([]string{}, argv...)
 	first := path.Base(p.Prefix[0])
 	original := path.Base(argv[0])
@@ -212,6 +251,12 @@ func (p Profile) Rewrite(argv []string) []string {
 	}
 	out := append(append([]string{}, p.Prefix...), tail...)
 	return append(out, p.Exclude...)
+}
+
+// RewriteTypecheck uses the execution prefix without test selection options.
+func (p Profile) RewriteTypecheck(argv []string) []string {
+	p.Exclude = nil
+	return p.Rewrite(argv)
 }
 
 // CacheKey binds artifacts to the cache format, declaration, platform,

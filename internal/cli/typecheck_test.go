@@ -1,13 +1,24 @@
 package cli
 
 import (
+	"bytes"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Jake-Network/radar/internal/gate"
+	"github.com/Jake-Network/radar/internal/integration"
+	"github.com/Jake-Network/radar/internal/model"
 )
+
+func TestRenderTypecheckMarksHiddenImportsAsInferred(t *testing.T) {
+	var out bytes.Buffer
+	renderTypecheck(&out, integration.Report{TypecheckRequested: true, TypecheckExecutions: []integration.TypecheckExecution{{Tool: "mypy", CWD: ".", Status: model.StatusIncomplete, Command: []string{"python3", "-m", "mypy", "."}, HiddenImports: []integration.HiddenImport{{Path: "app/main.py", Line: 2, Module: "app.helpers"}}}}}, palette{})
+	if !strings.Contains(out.String(), "incomplete: inferred imports") || !strings.Contains(out.String(), "app/main.py:2 imports deleted module app.helpers (inferred") || strings.Contains(out.String(), "no type errors") {
+		t.Fatalf("output=%s", out.String())
+	}
+}
 
 // typecheckRepo has two branches that each type-check, while their
 // combination calls a function the other branch renamed.
@@ -125,7 +136,7 @@ func TestGateTypecheckWithNothingToCheckSaysSo(t *testing.T) {
 	gitTest(t, root, "commit", "-qm", "python only")
 	gitTest(t, root, "checkout", "-q", "baseline")
 	_, out, errs := run(t, root, "gate", "--base", "baseline", "--run", "--typecheck", "py")
-	if !strings.Contains(out, "Typecheck: nothing checked — no supported project (Go module, or Python project with mypy or ruff configuration) owns a changed file") || strings.Contains(out, "✓ Typecheck") {
+	if !strings.Contains(out, "Typecheck: nothing checked — no supported configured project owns a changed file") || strings.Contains(out, "✓ Typecheck") {
 		t.Fatalf("%s\n%s", out, errs)
 	}
 }

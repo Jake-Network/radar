@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radar migration locations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "locations"],
+  "properties": {
+    "version": {"const": 1},
+    "locations": {
+      "type": "array", "minItems": 1, "maxItems": 128,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "tool"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "tool": {"enum": ["alembic", "django", "flyway", "sql", "golang-migrate", "prisma", "liquibase", "sqlx", "diesel", "goose", "atlas", "drizzle", "typeorm", "knex"]},
+          "group": {"type": "string", "minLength": 1, "description": "Alembic history root, an ancestor repository directory shared by grouped version locations."},
+          "recursive": {"type": "boolean", "description": "Read nested Alembic version directories. Defaults to false."}
+        },
+        "allOf": [{"if": {"required": ["group"]}, "then": {"properties": {"tool": {"const": "alembic"}}}}, {"if": {"properties": {"recursive": {"const": true}}, "required": ["recursive"]}, "then": {"properties": {"tool": {"const": "alembic"}}}}]
+      }
+    }
+  }
+}

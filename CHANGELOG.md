@@ -1,5 +1,13 @@
 # Changelog
 
+
+- Add explicitly requested worktree boards, historical single-repository gate
+  records, and bounded runner setup proposals from Superset configuration.
+- Prepare declared runner environments separately for type-check candidates
+  and base comparisons; support tool-labelled declared checks with input gaps.
+- Harden Python search-path provenance, dependent project selection, missing
+  local module classification, and ignored deleted-module imports.
+
 ## Unreleased
 
 * `radar gate --run --typecheck` type-checks the combined tree with `go vet` for

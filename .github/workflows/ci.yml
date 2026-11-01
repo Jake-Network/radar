@@ -22,6 +22,10 @@ jobs:
           python-version: "3.12"
       - name: Python type checkers for type-check tests
         run: python3 -m pip install --disable-pip-version-check mypy==2.4.1 ruff==0.17.3
+      - name: TypeScript checker for type-check tests
+        run: |
+          npm install --prefix "$RUNNER_TEMP/radar-types" --no-save --ignore-scripts --package-lock=false typescript@5.9.3
+          echo "RADAR_TEST_TYPESCRIPT_DIR=$RUNNER_TEMP/radar-types/node_modules/typescript" >> "$GITHUB_ENV"
       - name: Formatting
         run: test -z "$(gofmt -l cmd internal)"
       - run: go vet ./...
@@ -35,7 +39,6 @@ jobs:
       - name: Typed report consumer
         run: |
           node --test integrations/report/test.mjs
-          npm install --prefix "$RUNNER_TEMP/radar-types" --no-save --ignore-scripts --package-lock=false typescript@5.9.3
           "$RUNNER_TEMP/radar-types/node_modules/.bin/tsc" --strict --noEmit --target ES2022 --lib ES2022,DOM --module ESNext --moduleResolution Bundler integrations/report/test-types.ts
       - name: GitHub Actions PR driver regression
         env:

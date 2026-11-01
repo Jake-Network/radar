@@ -76,6 +76,10 @@ func (a *app) doctor(_ options) int {
 	if !topLevel {
 		result["git_diagnostic"] = "selected root is inside a larger Git repository; checkpoint analysis requires repository top-level root"
 	}
+	proposal := supersetSetupProposal(a.root)
+	if proposal != nil {
+		result["runner_setup_proposal"] = proposal
+	}
 	var proj *doctorProject
 	if info.Root != "" && topLevel {
 		proj = a.inspectProject()
@@ -100,6 +104,9 @@ func (a *app) doctor(_ options) int {
 		line("Repository", fmt.Sprintf("%s  %s @ %s (%s)", p.bold(filepath.Base(a.root)), p.cyan(info.Branch), short(info.Head), state))
 		if d, ok := result["git_diagnostic"]; ok {
 			line("Git note", fmt.Sprintf("%s %v", p.mark("!"), d))
+		}
+		if proposal != nil {
+			line("Setup hint", proposal.Source+": "+proposal.Note)
 		}
 		if proj == nil {
 			return

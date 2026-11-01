@@ -12,15 +12,17 @@ import (
 )
 
 type configuredLocation struct {
-	Path string `json:"path"`
-	Tool string `json:"tool"`
+	Path      string `json:"path"`
+	Tool      string `json:"tool"`
+	Group     string `json:"group,omitempty"`
+	Recursive bool   `json:"recursive,omitempty"`
 }
 type configuration struct {
 	Version   int                  `json:"version"`
 	Locations []configuredLocation `json:"locations"`
 }
 
-func readConfig(t Tree, read Reader) ([]configuredLocation, bool, error) {
+func readManifestConfig(t Tree, read Reader) ([]configuredLocation, bool, error) {
 	for _, f := range t.Files {
 		if f.Path != ".radar/migrations.json" {
 			continue
@@ -44,8 +46,14 @@ func readConfig(t Tree, read Reader) ([]configuredLocation, bool, error) {
 			if l.Path == "" || path.IsAbs(l.Path) || strings.Contains(l.Path, "\\") || path.Clean(l.Path) != l.Path || l.Path == ".." || strings.HasPrefix(l.Path, "../") {
 				return nil, true, fmt.Errorf("Migration location must stay inside repository")
 			}
+			if l.Group != "" && (l.Tool != toolAlembic || path.IsAbs(l.Group) || path.Clean(l.Group) != l.Group || l.Group == ".." || strings.HasPrefix(l.Group, "../") || strings.Contains(l.Group, "\\") || !(l.Group == "." || l.Path == l.Group || strings.HasPrefix(l.Path, l.Group+"/"))) {
+				return nil, true, fmt.Errorf("Alembic group must be an ancestor repository directory")
+			}
+			if l.Recursive && l.Tool != toolAlembic {
+				return nil, true, fmt.Errorf("Recursive migration locations are supported only for Alembic")
+			}
 			switch l.Tool {
-			case toolAlembic, toolDjango, toolFlyway, toolSQL, toolPrisma, toolLiquibase, toolSQLX, toolDiesel:
+			case toolAlembic, toolDjango, toolFlyway, toolSQL, toolPrisma, toolLiquibase, toolSQLX, toolDiesel, toolGoose, toolAtlas, toolDrizzle, toolTypeORM, toolKnex:
 			case "golang-migrate":
 				c.Locations[i].Tool = toolSQL
 			default:
@@ -76,6 +84,9 @@ func classifyConfigured(p string, dirs map[string]map[string]bool, configs []con
 	}
 	if selected != nil {
 		l := location{selected.Tool, selected.Path}
+		if selected.Group != "" {
+			l.dir = selected.Group
+		}
 		name := path.Base(p)
 		switch l.tool {
 		case toolAlembic, toolDjango:
@@ -88,6 +99,18 @@ func classifyConfigured(p string, dirs map[string]map[string]bool, configs []con
 			}
 		case toolSQL:
 			if !sqlName.MatchString(name) {
+				return location{}, false
+			}
+		case toolTypeORM, toolKnex:
+			if !(strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".mjs") || strings.HasSuffix(name, ".cjs")) {
+				return location{}, false
+			}
+		case toolAtlas, toolDrizzle:
+			if !strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".json") && name != "atlas.sum" {
+				return location{}, false
+			}
+		case toolGoose:
+			if !sqlxName.MatchString(name) && !strings.HasSuffix(name, ".go") {
 				return location{}, false
 			}
 		case toolSQLX:
@@ -108,6 +131,17 @@ func classifyConfigured(p string, dirs map[string]map[string]bool, configs []con
 			}
 		}
 		return l, true
+	}
+	if dirs[path.Dir(p)]["atlas.sum"] {
+		return location{toolAtlas, path.Dir(p)}, true
+	}
+	for dir := path.Dir(p); ; dir = path.Dir(dir) {
+		if dirs[path.Join(dir, "meta")]["_journal.json"] {
+			return location{toolDrizzle, dir}, true
+		}
+		if dir == "." {
+			break
+		}
 	}
 	if path.Base(p) == "migration.sql" && timestampName.MatchString(path.Base(path.Dir(p))) && path.Base(path.Dir(path.Dir(p))) == "migrations" {
 		return location{toolPrisma, path.Dir(path.Dir(p))}, true
@@ -199,16 +233,16 @@ func (h *history) liquibaseIssues(l location, files []File, read Reader) {
 	}
 }
 func combinedConfig(base, current []configuredLocation) ([]configuredLocation, error) {
-	byPath := map[string]string{}
+	byPath := map[string]configuredLocation{}
 	out := []configuredLocation{}
 	for _, c := range append(append([]configuredLocation{}, base...), current...) {
-		if tool, ok := byPath[c.Path]; ok {
-			if tool != c.Tool {
+		if before, ok := byPath[c.Path]; ok {
+			if before != c {
 				return nil, fmt.Errorf("Migration tool changed for %s; base obligations cannot be reinterpreted", c.Path)
 			}
 			continue
 		}
-		byPath[c.Path] = c.Tool
+		byPath[c.Path] = c
 		out = append(out, c)
 	}
 	return out, nil

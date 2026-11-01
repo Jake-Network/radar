@@ -159,11 +159,21 @@ func selectPython(byPath map[string]indexer.Entry, entries []indexer.Entry, read
 			plan.Unconfigured = append(plan.Unconfigured, f)
 		}
 	}
-	paths := make([]string, 0, len(entries)+len(changed))
+	selectMypyDependents(byPath, entries, read, changed, mypyRoots, selected, target)
+	var paths, deleted []string
 	for _, e := range entries {
-		paths = append(paths, e.Path)
+		if pythonSource(e.Path) && !pythonDependency(e.Path) {
+			paths = append(paths, e.Path)
+		}
 	}
-	paths = append(paths, changed...)
+	for _, f := range changed {
+		if _, exists := byPath[f]; !exists && pythonSource(f) && !pythonDependency(f) {
+			paths = append(paths, f)
+			deleted = append(deleted, f)
+		}
+	}
+	sort.Strings(paths)
+	sort.Strings(deleted)
 	for _, t := range selected {
 		if t.Tool == ToolRuff && len(t.Files) == 0 || t.Tool == ToolMypy && !t.Declared && len(t.Files) == 0 {
 			// Only deletions: nothing in the combined tree to give the tool.
@@ -185,40 +195,221 @@ func selectPython(byPath map[string]indexer.Entry, entries []indexer.Entry, read
 		t.Command = append(t.Command, t.Files...)
 		t.Packages = pythonPackages(t.Root, paths)
 		if t.Tool == ToolMypy {
-			t.Modules = pythonModules(paths)
+			t.Paths, t.Deleted = paths, deleted
 		}
 		plan.Targets = append(plan.Targets, *t)
 	}
 }
 
 // mypyDeclaresTargets reports whether the mypy configuration mypy reads in
-// dir (mypy.ini, then .mypy.ini, pyproject.toml, setup.cfg) names files,
-// packages or modules to check.
+// dir names files, packages or modules to check.
 func mypyDeclaresTargets(dir string, read func(string) ([]byte, bool)) bool {
+	values := mypyConfig(dir, read)
+	_, files := values["files"]
+	_, packages := values["packages"]
+	_, modules := values["modules"]
+	return files || packages || modules
+}
+
+// mypyConfig returns the raw values of the global section of the mypy
+// configuration mypy reads in dir (mypy.ini, then .mypy.ini, pyproject.toml,
+// setup.cfg). A TOML array continued over several lines is joined.
+func mypyConfig(dir string, read func(string) ([]byte, bool)) map[string]string {
+	values := map[string]string{}
 	for _, c := range []struct{ name, table string }{{"mypy.ini", "mypy"}, {".mypy.ini", "mypy"}, {"pyproject.toml", "tool.mypy"}, {"setup.cfg", "mypy"}} {
 		b, ok := read(path.Join(dir, c.name))
 		if !ok || !hasTable(b, c.table) {
 			continue
 		}
-		section := false
+		section, key, open := false, "", false
 		for _, line := range strings.Split(string(b), "\n") {
 			line = strings.TrimSpace(line)
+			if open {
+				values[key] += " " + line
+				open = !strings.Contains(line, "]")
+				continue
+			}
 			if strings.HasPrefix(line, "[") {
 				section = strings.Trim(line, "[] ") == c.table
 				continue
 			}
-			key, _, ok := strings.Cut(line, "=")
+			k, v, ok := strings.Cut(line, "=")
 			if !ok || !section {
 				continue
 			}
-			switch strings.TrimSpace(key) {
-			case "files", "packages", "modules":
-				return true
+			key = strings.TrimSpace(k)
+			v = strings.TrimSpace(v)
+			values[key] = v
+			open = strings.HasPrefix(v, "[") && !strings.Contains(v, "]")
+		}
+		return values
+	}
+	return values
+}
+
+// mypyPaths returns the repository directories that the mypy configuration
+// in dir adds to its search path through mypy_path. Relative entries are
+// read from dir, where mypy runs. Entries outside the repository, or that
+// name an environment variable other than MYPY_CONFIG_FILE_DIR, are left
+// out: what mypy reads there is found by asking mypy before it runs.
+func mypyPaths(dir string, read func(string) ([]byte, bool)) []string {
+	raw := mypyConfig(dir, read)["mypy_path"]
+	var out []string
+	for _, entry := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ':' || r == ';' }) {
+		entry = strings.Trim(strings.TrimSpace(entry), "[]\"' ")
+		entry = strings.ReplaceAll(strings.ReplaceAll(entry, "${MYPY_CONFIG_FILE_DIR}", "."), "$MYPY_CONFIG_FILE_DIR", ".")
+		if entry == "" || strings.Contains(entry, "$") || strings.HasPrefix(entry, "/") || strings.HasPrefix(entry, "~") {
+			continue
+		}
+		joined := path.Join(dir, entry)
+		if joined == ".." || strings.HasPrefix(joined, "../") {
+			continue
+		}
+		out = append(out, joined)
+	}
+	return out
+}
+
+// maxDependentScan bounds the files read to decide whether another mypy
+// project imports a changed one. A larger project is selected unread.
+const maxDependentScan = 5000
+
+// selectMypyDependents adds a mypy target for each other configured mypy
+// project whose own files import a changed or deleted Python file through
+// its search path: the project directory itself (the file lies below it,
+// under a nested configuration) or a mypy_path entry. mypy type-checks
+// such imports against the combined source, so a change in one project can
+// break another. A project that imports none of them is left out; its
+// files cannot reach the change.
+func selectMypyDependents(byPath map[string]indexer.Entry, entries []indexer.Entry, read func(string) ([]byte, bool), changed []string, mypyRoots map[string]bool, selected map[[2]string]*Target, target func(tool, root string) *Target) {
+	var files []string
+	for _, f := range changed {
+		if pythonSource(f) && !pythonDependency(f) {
+			files = append(files, f)
+		}
+	}
+	if len(files) == 0 {
+		return
+	}
+	roots := make([]string, 0, len(mypyRoots))
+	for r := range mypyRoots {
+		roots = append(roots, r)
+	}
+	sort.Strings(roots)
+	for progress := true; progress; {
+		progress = false
+		for _, q := range roots {
+			if selected[[2]string{ToolMypy, q}] != nil {
+				continue
+			}
+			bases := append([]string{q, path.Join(q, "src")}, mypyPaths(q, read)...)
+			byTop := map[string]map[string]bool{}
+			for _, f := range files {
+				owner, owned := nearest(mypyRoots, f)
+				if owned && owner == q {
+					continue
+				}
+				for _, b := range bases {
+					if b == f || !within(b, f) {
+						continue
+					}
+					parts := strings.Split(relativeTo(b, f), "/")
+					top := parts[0]
+					if len(parts) == 1 {
+						top = strings.TrimSuffix(strings.TrimSuffix(top, ".pyi"), ".py")
+					}
+					if !pythonIdentifier(top) {
+						continue
+					}
+					if byTop[top] == nil {
+						byTop[top] = map[string]bool{}
+					}
+					if owned {
+						byTop[top][owner] = true
+					} else {
+						byTop[top][f] = true
+					}
+				}
+			}
+			// A path depending on the execution environment cannot be resolved
+			// statically. Select conservatively; the actual probe verifies it.
+			raw := strings.ReplaceAll(strings.ReplaceAll(mypyConfig(q, read)["mypy_path"], "${MYPY_CONFIG_FILE_DIR}", "."), "$MYPY_CONFIG_FILE_DIR", ".")
+			if strings.ContainsAny(raw, "$~") || strings.Contains(raw, "\"/") || strings.HasPrefix(strings.TrimSpace(raw), "/") {
+				byTop["*"] = map[string]bool{"unresolved mypy_path": true}
+			}
+			if len(byTop) == 0 {
+				continue
+			}
+			tops := map[string]bool{}
+			for top := range byTop {
+				tops[top] = true
+			}
+			used := projectImports(entries, read, mypyRoots, q, tops)
+			if len(used) == 0 {
+				continue
+			}
+			t := target(ToolMypy, q)
+			if !t.Declared {
+				t.Files = []string{"."}
+			}
+			via := map[string]bool{}
+			for top := range used {
+				for v := range byTop[top] {
+					via[v] = true
+				}
+			}
+			for v := range via {
+				t.Via = append(t.Via, v)
+			}
+			sort.Strings(t.Via)
+			// Its public types and reexports may propagate the change to
+			// another project; reach a fixed point over project-owned files.
+			for _, e := range entries {
+				if owner, ok := nearest(mypyRoots, e.Path); ok && owner == q && pythonSource(e.Path) && !pythonDependency(e.Path) {
+					files = append(files, e.Path)
+				}
+			}
+			progress = true
+		}
+	}
+}
+
+// projectImports returns the reachable top-level names a project's files
+// import. Unreadable syntax and relative imports conservatively widen selection.
+func projectImports(entries []indexer.Entry, read func(string) ([]byte, bool), mypyRoots map[string]bool, q string, tops map[string]bool) map[string]bool {
+	used := map[string]bool{}
+	scanned := 0
+	for _, e := range entries {
+		if !pythonSource(e.Path) || pythonDependency(e.Path) || !within(q, e.Path) {
+			continue
+		}
+		if owner, ok := nearest(mypyRoots, e.Path); !ok || owner != q {
+			continue
+		}
+		if scanned++; scanned > maxDependentScan {
+			return tops
+		}
+		b, ok := read(e.Path)
+		if !ok {
+			return tops
+		}
+		imports, err := readPythonImports(b)
+		if err != nil {
+			return tops
+		}
+		for _, imp := range imports {
+			if imp.Level > 0 || tops["*"] {
+				return tops
+			}
+			for _, m := range imp.Modules("") {
+				top, _, _ := strings.Cut(m, ".")
+				if tops[top] {
+					used[top] = true
+				}
 			}
 		}
-		return false
 	}
-	return false
+	return used
 }
 
 func relativeTo(root, f string) string {
@@ -258,24 +449,27 @@ func pythonPackages(root string, paths []string) []string {
 	return out
 }
 
-// pythonModules lists the dotted names of two or more parts that the
-// repository's Python files and packages can be imported as from some base
-// directory (mypy_path, package bases), including files a branch deleted.
-func pythonModules(paths []string) []string {
+// ModulesUnder lists the dotted module names that paths (repository Python
+// files, including deleted ones) have below the search bases mypy reported,
+// and their package prefixes. An import of one of them that mypy cannot find
+// is the source's: a branch removed or moved it. A name that is only a tail
+// of some repository path, not a module below a base, is not.
+func ModulesUnder(bases, paths []string) []string {
 	seen := map[string]bool{}
-	for _, p := range paths {
-		if !pythonSource(p) || pythonDependency(p) {
-			continue
-		}
-		parts := strings.Split(strings.TrimSuffix(strings.TrimSuffix(p, ".pyi"), ".py"), "/")
-		if parts[len(parts)-1] == "__init__" {
-			parts = parts[:len(parts)-1]
-		}
-		for i := range parts {
-			for j := i + 2; j <= len(parts); j++ {
-				if name := strings.Join(parts[i:j], "."); pythonDotted(parts[i:j]) {
-					seen[name] = true
+	for _, b := range bases {
+		for _, p := range paths {
+			if !pythonSource(p) || pythonDependency(p) || b == p || !within(b, p) {
+				continue
+			}
+			parts := strings.Split(strings.TrimSuffix(strings.TrimSuffix(relativeTo(b, p), ".pyi"), ".py"), "/")
+			if parts[len(parts)-1] == "__init__" {
+				parts = parts[:len(parts)-1]
+			}
+			for j := 1; j <= len(parts); j++ {
+				if !pythonDotted(parts[:j]) {
+					break
 				}
+				seen[strings.Join(parts[:j], ".")] = true
 			}
 		}
 	}
