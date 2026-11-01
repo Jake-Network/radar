@@ -80,12 +80,13 @@ type TypecheckObservation struct {
 	cargoArtifacts []string
 }
 
-// All returns every located diagnostic observed in this process, or the
-// persisted prefix for an observation decoded from JSON.
+// CargoArtifacts returns the compiler artifacts this cargo run reported.
 func (o TypecheckObservation) CargoArtifacts() []string {
 	return append([]string(nil), o.cargoArtifacts...)
 }
 
+// All returns every located diagnostic observed in this process, or the
+// persisted prefix for an observation decoded from JSON.
 func (o TypecheckObservation) All() []TypecheckDiagnostic {
 	if o.all != nil {
 		return o.all
@@ -113,6 +114,12 @@ type TypecheckScope struct {
 	// keeps import classification bound to that project rather than another
 	// tsconfig nearer a diagnostic's source file.
 	TypeScriptConfig string
+	// Deleted are repository paths the combined change removed: a missing
+	// C/C++ header named by one of them is a source failure, not environment.
+	Deleted []string
+	// IncludeDirs are the repository directories a C/C++ command searches
+	// for headers (its relative -I, -iquote and -isystem operands).
+	IncludeDirs []string
 }
 
 // typecheckLabels names each tool in diagnoses.
@@ -241,6 +248,8 @@ func parseTypecheck(tool string, data []byte, root, dir, cwd string, scope Typec
 	n := newTypecheckNormalizer(tool, root, dir, cwd)
 	n.local, n.python, n.modules = scope.GoModules, scope.PythonPackages, scope.PythonModules
 	n.tsconfig = scope.TypeScriptConfig
+	n.deleted = scope.Deleted
+	n.includeDirs = scope.IncludeDirs
 	return parser(ansi.ReplaceAllString(string(data), ""), n)
 }
 
@@ -253,6 +262,8 @@ type typecheckNormalizer struct {
 	python               []string
 	modules              []string
 	tsconfig             string
+	deleted              []string
+	includeDirs          []string
 }
 
 // localPythonModule reports a dotted module name whose top-level package is

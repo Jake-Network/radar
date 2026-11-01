@@ -307,5 +307,12 @@ workspaces, literal Maven/Gradle JVM layouts, and committed gcc/clang compilatio
 databases. Unsupported layouts remain explicit gaps. TypeScript project references
 and composite builds are unsupported; C++ response files and unrelocatable build
 paths are unsupported. Actual compiler input inventory is required for a passing
-check. Cargo/JVM native toolchain qualification and user macOS measurements must
-be reported separately from parser and synthetic fixture tests.
+check. A changed header selects the translation units whose committed literal
+`#include` chains can reach a file of that name. A computed include or a quoted
+include of an uncommitted file selects every unit; an angle-bracket include of a
+generated header is not followed. A missing C/C++ header is an environment
+problem unless it resolves, where the compiler searches, to a repository file
+the combined change deleted. Under
+`--locked`, a repository `Cargo.lock` that no longer matches the manifests is a
+source failure. Cargo/JVM native toolchain qualification and user macOS
+measurements must be reported separately from parser and synthetic fixture tests.

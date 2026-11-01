@@ -184,6 +184,9 @@ type typecheckPreparation struct {
 	prepared  map[string]evidence.RunnerPreparation
 	artifacts []string
 	last      *evidence.RunnerPreparation
+	// sourceChanged: declared setup changed the private copy or its
+	// integrity could not be inspected; no later result describes it.
+	sourceChanged bool
 }
 
 func newTypecheckPreparation(profiles runners.Config) *typecheckPreparation {
@@ -220,6 +223,7 @@ func (p *typecheckPreparation) prepare(ctx context.Context, dir string, cp evide
 			inspection, inspectErr := evidence.InspectCandidateSource(sourceCtx, dir, cp, p.artifacts)
 			cancel()
 			if inspectErr != nil || !inspection.Matches {
+				p.sourceChanged = true
 				prep.Status = model.StatusIncomplete
 				prep.Error = "Declared runner setup changed source or source integrity is unknown"
 			}

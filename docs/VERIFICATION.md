@@ -385,5 +385,12 @@ Type-check input inventory is independent of a successful process exit. Files
 excluded by compiler configuration, unsupported layouts and unverified custom
 command inputs remain gaps. Suppressed imports of deleted local Python modules
 produce inferred findings and incomplete coverage, not observed type errors.
+Changed cgo and assembly files are gaps because `go vet` does not check them,
+unless a committed compilation database selects them for C/C++ checking.
+In type checking only, a missing C/C++ header is a source error when it resolves,
+through the includer's directory or the command's relative include directories,
+to a file the combined change deleted. Base runs use the same rule, so a header
+base also lacks is not new. `--run` execution still reports missing headers as
+`module_missing`.
 Type-check preparation is bound separately to the candidate and base tree.
 Desktop notifications and historical board records never satisfy gate checks.

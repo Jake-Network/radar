@@ -252,7 +252,7 @@ func TestTypecheckCommandThatChangesSourceIsDiscarded(t *testing.T) {
 		t.Fatal(err)
 	}
 	cp := evidence.CandidateCheckpoint{Repository: identity, Revision: c.Commit, Tree: c.Tree}
-	ev := observeTypecheck(context.Background(), c.Dir, cp, typecheck.Target{ID: "t", Tool: typecheck.ToolGo, Root: ".", CWD: ".", Command: []string{"./tc.sh"}}, nil, Report{CandidateCommit: c.Commit, CandidateTree: c.Tree}, time.Minute)
+	ev := observeTypecheck(context.Background(), c.Dir, cp, typecheck.Target{ID: "t", Tool: typecheck.ToolGo, Root: ".", CWD: ".", Command: []string{"./tc.sh"}}, nil, Report{CandidateCommit: c.Commit, CandidateTree: c.Tree}, nil, time.Minute)
 	if ev.SourceAfterExecution != "modified" || ev.Status != model.StatusIncomplete || ev.Observation.Status != model.StatusFailed {
 		t.Fatalf("a failure observed on a changed tree was kept: %+v", ev)
 	}

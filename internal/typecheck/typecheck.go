@@ -298,11 +298,17 @@ func hasSegment(f, name string) bool {
 // assembly and object files of cgo and assembly packages, and files beside
 // Go source that //go:embed may name.
 func goInput(f string, goDirs map[string]bool) bool {
+	return GoNativeSource(f) || goDirs[path.Dir(f)]
+}
+
+// GoNativeSource reports a cgo, assembly or other non-Go source the go tool
+// builds into a package. go vet does not type-check these files.
+func GoNativeSource(f string) bool {
 	switch path.Ext(f) {
 	case ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".m", ".s", ".S", ".sx", ".syso", ".f", ".F", ".for", ".f90", ".swig", ".swigcxx":
 		return true
 	}
-	return goDirs[path.Dir(f)]
+	return false
 }
 
 func within(dir, p string) bool { return dir == "." || p == dir || strings.HasPrefix(p, dir+"/") }

@@ -102,6 +102,14 @@ func selectCompiled(files map[string]indexer.Entry, entries []indexer.Entry, rea
 
 func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func(string) ([]byte, bool), changed []string, plan *Plan, add func(string, string, string, []string)) {
 	covered := map[string]bool{}
+	unincluded := map[string]bool{}
+	var includes *cppIncludeGraph
+	for _, f := range changed {
+		if CPPHeader(f) {
+			includes = newCPPIncludeGraph(entries, read, changed)
+			break
+		}
+	}
 	for _, e := range entries {
 		if path.Base(e.Path) != "compile_commands.json" {
 			continue
@@ -156,8 +164,14 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 				if f != source && !header {
 					continue
 				}
-				// Checking every TU is conservative for a changed header; exact include
-				// coverage is confirmed at execution rather than inferred from filenames.
+				// A changed header selects the TUs that may include it, directly
+				// or through other headers, by name. Matching by basename only
+				// over-selects; when includes cannot be bounded every TU is
+				// checked. Exact coverage is still confirmed at execution.
+				if f != source && !includes.mayInclude(source, argv, f) {
+					unincluded[f] = true
+					continue
+				}
 				add("cpp", dir, f, argv)
 				covered[f] = true
 			}
@@ -174,7 +188,11 @@ func selectCC(files map[string]indexer.Entry, entries []indexer.Entry, read func
 			if goOwned {
 				continue
 			}
-			plan.Gaps = append(plan.Gaps, Gap{f, "no safely relocatable gcc/clang arguments entry covers this source; shell commands and external build paths are unsupported"})
+			reason := "no safely relocatable gcc/clang arguments entry covers this source; shell commands and external build paths are unsupported"
+			if unincluded[f] {
+				reason = "no compile_commands.json translation unit includes this header"
+			}
+			plan.Gaps = append(plan.Gaps, Gap{f, reason})
 		}
 	}
 	// A compile database can describe a separate native project inside a Go

@@ -542,7 +542,8 @@ TTY output refreshes the board. `--notify` opts into supported local desktop
 notifications. Missing notification tools do not change verification verdicts.
 Historical gate reports remain historical even when their commit inputs match.
 Single-repository gate history includes failing and blocked runs; records are
-immutable and their hashes detect edits, not writer identity.
+immutable and their hashes detect edits, not writer identity. The history list
+keeps the newest 500 runs; older entries leave the list, not the record store.
 
 
 ### Declared type checks

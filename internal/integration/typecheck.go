@@ -29,9 +29,11 @@ type TypecheckExecution struct {
 	Root     string   `json:"root"`
 	CWD      string   `json:"cwd"`
 	Command  []string `json:"command"`
-	// ExecutionCommand records fixed compiler instrumentation when it adds
+	// EnvironmentNames lists variables Radar set for the command (names only);
+	// CompilerCacheScope is the tree a compiler cache was bound to.
 	EnvironmentNames   []string `json:"environment_names,omitempty"`
 	CompilerCacheScope string   `json:"compiler_cache_scope,omitempty"`
+	// ExecutionCommand records fixed compiler instrumentation when it adds
 	// arguments to Command; base comparison recreates its own instrumentation.
 	ExecutionCommand []string                       `json:"execution_command,omitempty"`
 	CandidateCommit  string                         `json:"candidate_commit"`
@@ -97,18 +99,27 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 		return nil
 	}
 	provider := indexer.NewCommit(temp, r.CandidateCommit)
+	selectionTimeout := func() error {
+		r.Checks = append(r.Checks, Check{ID: typecheck.CheckID, Status: model.StatusTimeout, Evidence: model.Unknown, Explanation: "The verification budget expired while choosing type-check targets; nothing was type-checked."})
+		return nil
+	}
 	plan, err := typecheck.Select(ctx, provider, r.Changed)
+	if err != nil {
+		provider.Close()
+		if ctx.Err() != nil {
+			return selectionTimeout()
+		}
+		return fmt.Errorf("type-check targets: %w", err)
+	}
 	profiles, profileErr := typecheckProfiles(ctx, provider, &plan, r.Changed)
 	provider.Close()
 	if profileErr != nil {
-		return fmt.Errorf("type-check profiles: %w", profileErr)
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			r.Checks = append(r.Checks, Check{ID: typecheck.CheckID, Status: model.StatusTimeout, Evidence: model.Unknown, Explanation: "The verification budget expired while choosing type-check targets; nothing was type-checked."})
-			return nil
+		if ctx.Err() != nil || errors.Is(profileErr, context.DeadlineExceeded) {
+			return selectionTimeout()
 		}
-		return fmt.Errorf("type-check targets: %w", err)
+		// A malformed runner declaration is an error, as it is for
+		// integration_execution, never a silently skipped profile.
+		return fmt.Errorf("type-check profiles: %w", profileErr)
 	}
 	r.TypecheckGaps = plan.Gaps
 	r.TypecheckRequested = true
@@ -162,6 +173,7 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 		return err
 	}
 	cp := evidence.CandidateCheckpoint{Repository: identity, Base: r.Base, Revision: r.CandidateCommit, Tree: r.CandidateTree, Inputs: r.Inputs}
+	deleted := deletedPaths(c.Dir, r.Changed)
 	preparation := newTypecheckPreparation(profiles)
 	tainted := false
 	type run struct {
@@ -183,7 +195,10 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 		t, why, explanation = preparation.prepare(ctx, c.Dir, cp, t, r, o)
 		if why != "" {
 			omit(t, why, explanation)
-			if why == "runner_setup_unavailable" {
+			// Only setup that changed the copy (or left its integrity
+			// unknown) invalidates later targets; an unresolved cache
+			// location or an exhausted budget leaves the source intact.
+			if preparation.sourceChanged {
 				tainted = true
 			}
 			continue
@@ -193,7 +208,11 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 			var err error
 			t, probe, err = mypyTarget(ctx, c.Dir, t, o.Timeout)
 			if err != nil {
-				omit(t, "environment_unavailable", err.Error())
+				if errors.Is(err, errTypecheckBudget) || ctx.Err() != nil {
+					omit(t, "time_budget_exhausted", "the verification timeout expired before mypy reported its checked sources")
+				} else {
+					omit(t, "environment_unavailable", err.Error())
+				}
 				continue
 			}
 		}
@@ -206,7 +225,7 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 			continue
 		}
 		o.step(Step{Stage: StageTypecheck, Index: i + 1, Total: len(plan.Targets), Command: t.Command})
-		ev := observeTypecheck(ctx, c.Dir, cp, t, local, *r, o.Timeout)
+		ev := observeTypecheck(ctx, c.Dir, cp, t, local, *r, deleted, o.Timeout)
 		if ev.SourceAfterExecution != "unchanged" {
 			tainted = true
 		}
@@ -244,7 +263,7 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 		sort.Strings(changed)
 		recordUncompiled(r, c.Dir, typecheck.Target{Tool: "cpp", Changed: changed}, TypecheckExecution{compiled: cppCompiled})
 	}
-	base := typecheckBase{local: local, preparation: newTypecheckPreparation(profiles), gone: func(p string) bool {
+	base := typecheckBase{local: local, deleted: deleted, preparation: newTypecheckPreparation(profiles), gone: func(p string) bool {
 		_, err := os.Lstat(filepath.Join(c.Dir, filepath.FromSlash(p)))
 		return errors.Is(err, os.ErrNotExist)
 	}}
@@ -272,13 +291,24 @@ func runTypecheck(ctx context.Context, temp string, r *Report, o Options) error 
 	return nil
 }
 
-func observeTypecheck(ctx context.Context, dir string, cp evidence.CandidateCheckpoint, t typecheck.Target, local []evidence.GoModule, r Report, timeout time.Duration) TypecheckExecution {
+// deleted lists the repository paths the combined change removed. Base runs
+// receive the same list, so a missing header that base also lacks matches as
+// an existing error instead of becoming a new source failure.
+func observeTypecheck(ctx context.Context, dir string, cp evidence.CandidateCheckpoint, t typecheck.Target, local []evidence.GoModule, r Report, deleted []string, timeout time.Duration) TypecheckExecution {
 	started := time.Now()
 	ev := TypecheckExecution{TargetID: t.ID, Tool: t.Tool, Root: t.Root, CWD: t.CWD, Command: append([]string(nil), t.Command...), CandidateCommit: r.CandidateCommit, CandidateTree: r.CandidateTree, Base: r.Base, Inputs: append([]string{}, r.Inputs...), StartedAt: started.UTC().Format(time.RFC3339Nano)}
 	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < timeout {
 		timeout = time.Until(deadline)
 	}
-	scope := evidence.TypecheckScope{GoModules: local, PythonPackages: t.Packages, PythonModules: t.Modules}
+	scope := evidence.TypecheckScope{GoModules: local, PythonPackages: t.Packages, PythonModules: t.Modules, Deleted: deleted}
+	if t.Tool == "cpp" {
+		// The compiler argv, without a profile launcher prefix.
+		compiler := t.LogicalCommand
+		if len(compiler) == 0 {
+			compiler = t.Command
+		}
+		scope.IncludeDirs = typecheck.CPPIncludeDirs(compiler, t.CWD)
+	}
 	argv := t.Command
 	jvmInventory := ""
 	if t.Tool == "java" && len(argv) > 0 && (filepath.Base(argv[0]) == "mvn" || filepath.Base(argv[0]) == "mvnw") {
@@ -371,7 +401,29 @@ func observeTypecheck(ctx context.Context, dir string, cp evidence.CandidateChec
 	return ev
 }
 
-// recordUncompiled adds a gap for each changed Go file of t that exists in
+// deletedPaths returns the changed paths absent from the candidate tree.
+func deletedPaths(dir string, changed []string) []string {
+	var out []string
+	for _, f := range changed {
+		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(f))); errors.Is(err, os.ErrNotExist) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// uncompiledCandidate reports whether a changed file of a target is source the
+// tool's input inventory must account for. Go targets also own cgo and
+// assembly sources, which go vet never type-checks; module files and other
+// files beside Go source (embedded data, documentation) are not sources.
+func uncompiledCandidate(tool, f string) bool {
+	if tool == typecheck.ToolGo {
+		return strings.HasSuffix(f, ".go") || typecheck.GoNativeSource(f)
+	}
+	return typecheckFileForTool(tool, f)
+}
+
+// recordUncompiled adds a gap for each changed source file of t that exists in
 // the candidate but that the type-checking toolchain did not compile.
 func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExecution) {
 	if ev.compiled == nil && ev.compiledErr == nil {
@@ -382,7 +434,7 @@ func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExe
 		seen[g.Path] = true
 	}
 	for _, f := range t.Changed {
-		if seen[f] {
+		if seen[f] || !uncompiledCandidate(t.Tool, f) {
 			continue
 		}
 		if info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil || !info.Mode().IsRegular() {
@@ -396,6 +448,8 @@ func recordUncompiled(r *Report, dir string, t typecheck.Target, ev TypecheckExe
 			} else {
 				reason = "the compiler could not confirm which source files it checked"
 			}
+		case t.Tool == typecheck.ToolGo && !strings.HasSuffix(f, ".go"):
+			reason = "go vet does not type-check non-Go sources (cgo C/C++ or assembly files)"
 		case !ev.compiled[f]:
 			if t.Tool == typecheck.ToolGo {
 				reason = "go vet ./... did not compile it here (build constraints or custom tags, cgo without a C compiler, or a directory the pattern skips)"
@@ -438,6 +492,7 @@ type typecheckBase struct {
 	initialized bool
 	unavailable string
 	local       []evidence.GoModule
+	deleted     []string
 	preparation *typecheckPreparation
 	gone        func(string) bool
 }
@@ -527,7 +582,7 @@ func (b *typecheckBase) compare(ctx context.Context, temp string, r Report, ev T
 			return cmp
 		}
 	}
-	baseRun := observeTypecheck(ctx, b.candidate.Dir, cp, target, b.local, Report{Base: b.candidate.Base, Inputs: b.candidate.Inputs, CandidateCommit: b.candidate.Commit, CandidateTree: b.candidate.Tree}, o.Timeout)
+	baseRun := observeTypecheck(ctx, b.candidate.Dir, cp, target, b.local, Report{Base: b.candidate.Base, Inputs: b.candidate.Inputs, CandidateCommit: b.candidate.Commit, CandidateTree: b.candidate.Tree}, b.deleted, o.Timeout)
 	cmp.Observation = &baseRun.Observation
 	if baseRun.SourceAfterExecution != "unchanged" {
 		b.unavailable = "Base type checking changed source or source integrity is unknown."
@@ -641,6 +696,8 @@ func baseFiles(baseDir string, t typecheck.Target) []string {
 	return out
 }
 
+var errTypecheckBudget = errors.New("time budget exhausted before mypy inventory")
+
 // mypyTarget resolves import scope and inventory with the actual launcher,
 // configuration and search bases, independently for candidate and base.
 func mypyTarget(ctx context.Context, dir string, t typecheck.Target, timeout time.Duration) (typecheck.Target, evidence.MypyProbe, error) {
@@ -649,7 +706,7 @@ func mypyTarget(ctx context.Context, dir string, t typecheck.Target, timeout tim
 		timeout = time.Until(deadline)
 	}
 	if timeout <= 0 {
-		return t, probe, errors.New("time budget exhausted before mypy inventory")
+		return t, probe, errTypecheckBudget
 	}
 	probe, err := evidence.RunMypyProbeCommand(ctx, dir, t.CWD, t.Command, t.Deleted, timeout)
 	if err != nil {
